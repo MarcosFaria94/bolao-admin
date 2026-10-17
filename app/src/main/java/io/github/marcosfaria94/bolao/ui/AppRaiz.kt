@@ -1,5 +1,10 @@
 package io.github.marcosfaria94.bolao.ui
 
+import android.Manifest
+import android.content.Context
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,6 +44,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.notificacoes.Notificador
 import io.github.marcosfaria94.bolao.ui.ajustes.AjustesTela
 import io.github.marcosfaria94.bolao.ui.aporte.AporteTela
 import io.github.marcosfaria94.bolao.ui.aposta.ApostaTela
@@ -92,6 +98,29 @@ fun AppRaiz() {
 @Composable
 private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel) {
     val nav = rememberNavController()
+    val ctx = LocalContext.current
+
+    // Notificação tocada: abre a tela correspondente.
+    val destino by ctx.bolao.destinoPendente.collectAsStateWithLifecycle()
+    LaunchedEffect(destino) {
+        destino?.let { d ->
+            ctx.bolao.destinoPendente.value = null
+            if (d != "painel") runCatching { nav.navigate(d) { launchSingleTop = true } }
+        }
+    }
+
+    // Android 13+: pede a permissão de notificação uma vez, logo depois do cadastro.
+    val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= 33 && !Notificador.permitido(ctx)) {
+            val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("pediu_notificacao", false)) {
+                prefs.edit().putBoolean("pediu_notificacao", true).apply()
+                pedirPermissao.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
     val entrada by nav.currentBackStackEntryAsState()
     val rota = entrada?.destination?.route ?: "painel"
     val ehAba = ABAS.any { it.rota == rota }

@@ -169,6 +169,20 @@ object Operacoes {
 
     // ---------- apuração ----------
 
+    /** Registro da apuração a partir do resultado da Caixa e da conferência. */
+    fun apuracaoDe(c: io.github.marcosfaria94.bolao.domain.Concurso, r: io.github.marcosfaria94.bolao.domain.Conferencia.Resultado, premio: Long, agora: Long) = Apuracao(
+        acertos = r.acertos,
+        premio = premio,
+        dezenasSorteadas = c.dezenas,
+        segundoSorteio = c.segundoSorteio,
+        trevosSorteados = c.trevos,
+        extraSorteado = c.timeOuMes,
+        resultadosLoteca = (0 until io.github.marcosfaria94.bolao.domain.Volante.JOGOS_LOTECA).map { c.jogosLoteca.getOrNull(it)?.resultado.orEmpty() },
+        premiosFederal = c.bilhetesFederal,
+        faixa = r.faixas.joinToString(" + ") { it.descricao }.ifBlank { null },
+        conferidaEm = agora,
+    )
+
     /** Guarda a conferência automática (ainda sem confirmar). */
     fun guardarConferencia(e: Estado, id: String, apuracao: Apuracao): Estado =
         e.copy(apostas = e.apostas.map { if (it.id == id && it.apuracao?.confirmadaEm == null) it.copy(apuracao = apuracao) else it })

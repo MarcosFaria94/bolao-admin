@@ -50,6 +50,7 @@ import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.net.Atualizador
+import io.github.marcosfaria94.bolao.notificacoes.Notificador
 import io.github.marcosfaria94.bolao.ui.atualizacao.AtualizacaoViewModel
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoDinheiro
@@ -75,6 +76,10 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel) {
     var editandoPreco by remember { mutableStateOf<Modalidade?>(null) }
     var confirmandoRestauracao by remember { mutableStateOf(false) }
     var trabalhando by remember { mutableStateOf(false) }
+
+    val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) Notificador.teste(ctx)
+    }
 
     val escolherTermo = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) escopo.launch {
@@ -270,12 +275,21 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = {
-                        ctx.startActivity(
-                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
-                    }) { Text("Abrir ajustes do app") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            ctx.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }) { Text("Ajustes do app") }
+                        OutlinedButton(onClick = {
+                            if (Notificador.permitido(ctx)) {
+                                Notificador.teste(ctx)
+                            } else if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                pedirPermissao.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        }) { Text(if (Notificador.permitido(ctx)) "Testar aviso" else "Permitir avisos") }
+                    }
                 }
             }
         }

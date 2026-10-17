@@ -82,18 +82,8 @@ private sealed interface Busca {
 }
 
 /** Monta o registro da apuração a partir do resultado e da conferência. */
-private fun apuracaoDe(a: Aposta, c: Concurso, r: Conferencia.Resultado, premio: Long) = Apuracao(
-    acertos = r.acertos,
-    premio = premio,
-    dezenasSorteadas = c.dezenas,
-    segundoSorteio = c.segundoSorteio,
-    trevosSorteados = c.trevos,
-    extraSorteado = c.timeOuMes,
-    resultadosLoteca = (0 until Volante.JOGOS_LOTECA).map { c.jogosLoteca.getOrNull(it)?.resultado.orEmpty() },
-    premiosFederal = c.bilhetesFederal,
-    faixa = r.faixas.joinToString(" + ") { it.descricao }.ifBlank { null },
-    conferidaEm = System.currentTimeMillis(),
-)
+private fun apuracaoDe(c: Concurso, r: Conferencia.Resultado, premio: Long, agora: Long) =
+    Operacoes.apuracaoDe(c, r, premio, agora)
 
 @Composable
 fun ApuracaoTela(estado: Estado, id: String) {
@@ -136,11 +126,13 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
 
     val pronto = busca as? Busca.Pronto
     val conferencia = pronto?.let { Conferencia.conferir(m, a.palpite, it.concurso, a.bilheteFederal, a.fracoesFederal) }
+    // Mesmo instante enquanto o resultado não muda (evita refazer a imagem a cada toque).
+    val instante = remember(conferencia) { System.currentTimeMillis() }
     LaunchedEffect(conferencia) {
         if (conferencia != null && !premioEditado) premio = conferencia.premio
         // Guarda a conferência (sem confirmar) para o Painel já mostrar o resultado.
         if (conferencia != null && pronto?.manual == false) {
-            val ap = apuracaoDe(a, pronto.concurso, conferencia, conferencia.premio)
+            val ap = apuracaoDe(pronto.concurso, conferencia, conferencia.premio, System.currentTimeMillis())
             repo.enfileirar { Operacoes.guardarConferencia(it, a.id, ap) }
         }
     }
@@ -180,7 +172,7 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
                 }
             }
 
-            val ap = apuracaoDe(a, pronto.concurso, conferencia, premio)
+            val ap = apuracaoDe(pronto.concurso, conferencia, premio, instante)
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Contagem de acertos: ${conferencia.acertos}", style = MaterialTheme.typography.titleMedium)
