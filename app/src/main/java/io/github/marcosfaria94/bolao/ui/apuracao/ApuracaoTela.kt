@@ -170,6 +170,13 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
                         ResultadoManual(a, pronto.concurso) { busca = Busca.Pronto(it, manual = true) }
                     }
                 }
+            } else {
+                Text(
+                    "Resultado oficial da Caixa, concurso ${pronto.concurso.numero}.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = { busca = Busca.Pronto(pronto.concurso, manual = true) }) { Text("Corrigir o resultado") }
             }
 
             val ap = apuracaoDe(pronto.concurso, conferencia, premio, instante)

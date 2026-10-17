@@ -48,6 +48,8 @@ object Compartilhar {
             intent.clipData = clip
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        // Cópia de segurança: se o WhatsApp não puser o texto junto do anexo, é só colar.
+        if (uris.isNotEmpty()) copiar(context, "Mensagem do bolão", mensagem)
         val pacote = PACOTES_WHATSAPP.firstOrNull { instalado(context, it) }
         try {
             if (pacote != null) {

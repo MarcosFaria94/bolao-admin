@@ -90,13 +90,15 @@ object Conferencia {
             }
             Extra.NENHUM -> Unit
         }
+        val semExtra = m.extra != Extra.NENHUM && c.timeOuMes.isNullOrBlank()
         return Resultado(
             acertos = texto,
             faixas = faixas,
             premio = faixas.sumOf { it.valor },
             acertados = acertados,
             extraAcertado = extraAcertado,
-            precisaConfirmarValor = faixas.any { it.valor == 0L },
+            precisaConfirmarValor = semExtra || faixas.any { it.valor == 0L },
+            observacoes = if (semExtra) listOf("A Caixa não informou o Time do Coração/Mês de Sorte: use \"Corrigir o resultado\".") else emptyList(),
         )
     }
 
@@ -143,13 +145,15 @@ object Conferencia {
             1 -> " + 1 trevo"
             else -> " + $t trevos"
         }
+        val semTrevos = c.trevos.isEmpty()
         return Resultado(
             acertos = "$n/6$textoTrevos",
             faixas = faixas,
             premio = faixas.sumOf { it.valor },
             acertados = acertados,
             trevosAcertados = trevos,
-            precisaConfirmarValor = faixas.any { it.valor == 0L },
+            precisaConfirmarValor = semTrevos || faixas.any { it.valor == 0L },
+            observacoes = if (semTrevos) listOf("A Caixa não informou os trevos: use \"Corrigir o resultado\".") else emptyList(),
         )
     }
 
