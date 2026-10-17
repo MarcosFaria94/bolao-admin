@@ -5,15 +5,15 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import androidx.core.util.AtomicFile
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -23,6 +23,9 @@ import java.util.UUID
  * Guarda todos os dados do bolão num único arquivo JSON dentro do celular,
  * e os anexos (comprovantes, termo) na pasta "arquivos". Nada sai do aparelho
  * a não ser pelo backup.
+ *
+ * Todas as mudanças passam por uma fila única, na ordem em que foram pedidas,
+ * e são gravadas no disco antes de aparecerem na tela.
  */
 class Repositorio(private val context: Context) {
 
@@ -43,11 +46,26 @@ class Repositorio(private val context: Context) {
     private val _aviso = MutableStateFlow<String?>(null)
     val aviso: StateFlow<String?> = _aviso.asStateFlow()
 
-    private val mutex = Mutex()
+    private class Pedido(val mudanca: (Estado) -> Estado, val resposta: CompletableDeferred<Estado>?)
+
+    private val fila = Channel<Pedido>(Channel.UNLIMITED)
     private val escopo = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
-        escopo.launch { mutex.withLock { _estado.value = lerDoDisco() } }
+        escopo.launch {
+            _estado.value = lerDoDisco()
+            for (p in fila) {
+                try {
+                    val atual = _estado.value ?: lerDoDisco()
+                    val novo = p.mudanca(atual)
+                    if (novo != atual) gravar(novo)
+                    _estado.value = novo
+                    p.resposta?.complete(novo)
+                } catch (t: Throwable) {
+                    p.resposta?.completeExceptionally(t)
+                }
+            }
+        }
     }
 
     private fun lerDoDisco(): Estado {
@@ -78,27 +96,25 @@ class Repositorio(private val context: Context) {
         }
     }
 
-    /** Espera o carregamento inicial e devolve o estado atual. */
-    suspend fun atual(): Estado = mutex.withLock { _estado.value ?: lerDoDisco().also { _estado.value = it } }
-
-    /** Aplica uma mudança e grava no disco antes de devolver. */
-    suspend fun atualizar(mudanca: (Estado) -> Estado): Estado = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            val atual = _estado.value ?: lerDoDisco()
-            val novo = mudanca(atual)
-            if (novo != atual) gravar(novo)
-            _estado.value = novo
-            novo
-        }
+    /** Aplica uma mudança (na ordem da fila), grava no disco e devolve o novo estado. */
+    suspend fun atualizar(mudanca: (Estado) -> Estado): Estado {
+        val resposta = CompletableDeferred<Estado>()
+        fila.send(Pedido(mudanca, resposta))
+        return resposta.await()
     }
 
+    /** Mesma fila, sem esperar (para gravar o rascunho a cada toque). Erros são ignorados. */
+    fun enfileirar(mudanca: (Estado) -> Estado) {
+        fila.trySend(Pedido(mudanca, null))
+    }
+
+    /** Estado atual, depois de tudo o que já estava na fila. */
+    suspend fun atual(): Estado = atualizar { it }
+
     /** Troca tudo (usado pela restauração do backup). */
-    suspend fun substituir(novo: Estado) = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            gravar(novo)
-            _estado.value = novo
-            _aviso.value = null
-        }
+    suspend fun substituir(novo: Estado) {
+        atualizar { novo }
+        _aviso.value = null
     }
 
     fun limparAviso() {
@@ -127,26 +143,24 @@ class Repositorio(private val context: Context) {
         Arquivo(nome = nome, nomeOriginal = nomeOriginal, mime = mime, guardadoEm = System.currentTimeMillis())
     }
 
-    /** Guarda bytes gerados pelo app (ex.: imagem da apuração). */
-    suspend fun guardarBytes(bytes: ByteArray, prefixo: String, extensao: String, mime: String): Arquivo =
-        withContext(Dispatchers.IO) {
-            val nome = "$prefixo-${UUID.randomUUID().toString().take(8)}.$extensao"
-            File(pastaArquivos, nome).writeBytes(bytes)
-            Arquivo(nome = nome, nomeOriginal = nome, mime = mime, guardadoEm = System.currentTimeMillis())
-        }
-
     /** Apaga anexos que nenhum registro usa mais. */
-    suspend fun limparArquivosSoltos() = withContext(Dispatchers.IO) {
+    suspend fun limparArquivosSoltos() {
         val e = atual()
-        val usados = buildSet {
-            e.termo?.let { add(it.nome) }
-            e.apostas.forEach { a -> a.comprovante?.let { add(it.nome) } }
-            e.rateios.forEach { r -> r.comprovantes.forEach { add(it.nome) } }
+        withContext(Dispatchers.IO) {
+            val usados = buildSet {
+                e.termo?.let { add(it.nome) }
+                e.apostas.forEach { a -> a.comprovante?.let { add(it.nome) } }
+                e.rateios.forEach { r -> r.comprovantes.forEach { add(it.nome) } }
+            }
+            // Anexos recentes podem ser de um rateio ainda em andamento: só apaga os antigos.
+            val limite = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+            pastaArquivos.listFiles()
+                ?.filter { it.isFile && it.name !in usados && it.lastModified() < limite }
+                ?.forEach { it.delete() }
         }
-        pastaArquivos.listFiles()?.filter { it.isFile && it.name !in usados }?.forEach { it.delete() }
     }
 
     companion object {
-        fun novoId(): String = UUID.randomUUID().toString()
+        fun novoId(): String = io.github.marcosfaria94.bolao.data.novoId()
     }
 }

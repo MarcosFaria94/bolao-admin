@@ -40,6 +40,12 @@ import androidx.navigation.compose.rememberNavController
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.ui.ajustes.AjustesTela
+import io.github.marcosfaria94.bolao.ui.aporte.AporteTela
+import io.github.marcosfaria94.bolao.ui.aposta.ApostaTela
+import io.github.marcosfaria94.bolao.ui.aposta.NovaApostaTela
+import io.github.marcosfaria94.bolao.ui.apuracao.ApuracaoTela
+import io.github.marcosfaria94.bolao.ui.extrato.ExtratoTela
+import io.github.marcosfaria94.bolao.ui.rateio.RateioTela
 import io.github.marcosfaria94.bolao.ui.atualizacao.AtualizacaoViewModel
 import io.github.marcosfaria94.bolao.ui.atualizacao.DialogosAtualizacao
 import io.github.marcosfaria94.bolao.ui.cadastro.CadastroTela
@@ -93,6 +99,12 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel) {
         "painel" -> estado.nomeGrupo.ifBlank { "Bolão" }
         "jogos" -> "Jogos"
         "ajustes" -> "Ajustes"
+        "aporte" -> "Aporte"
+        "apostar" -> "Nova aposta"
+        "aposta/{id}" -> "Aposta"
+        "apuracao/{id}" -> "Apuração"
+        "rateio" -> "Rateio"
+        "extrato" -> "Extrato do mês"
         else -> ""
     }
 
@@ -137,6 +149,23 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel) {
             composable("painel") { PainelTela(estado, abrir = { nav.navigate(it) }) }
             composable("jogos") { JogosTela(estado) }
             composable("ajustes") { AjustesTela(estado, atualizacao) }
+            composable("aporte") { AporteTela(estado, aoConcluir = { nav.popBackStack() }) }
+            composable("apostar") {
+                NovaApostaTela(estado, abrirAposta = { id ->
+                    nav.navigate("aposta/$id") { popUpTo("apostar") { inclusive = true } }
+                })
+            }
+            composable("aposta/{id}") { e ->
+                ApostaTela(
+                    estado,
+                    id = e.arguments?.getString("id").orEmpty(),
+                    abrirApuracao = { nav.navigate("apuracao/$it") },
+                    aoSair = { nav.popBackStack() },
+                )
+            }
+            composable("apuracao/{id}") { e -> ApuracaoTela(estado, e.arguments?.getString("id").orEmpty()) }
+            composable("rateio") { RateioTela(estado, aoConcluir = { nav.popBackStack() }) }
+            composable("extrato") { ExtratoTela(estado, aoConcluir = { nav.popBackStack() }) }
         }
     }
 }

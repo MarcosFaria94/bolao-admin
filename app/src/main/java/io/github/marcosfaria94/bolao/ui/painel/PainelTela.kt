@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.painel
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,7 +27,6 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -35,57 +35,80 @@ import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Lancamento
+import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Calendario
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
-import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.TextoVazio
 import io.github.marcosfaria94.bolao.ui.comum.TituloSecao
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
 @Composable
 fun PainelTela(estado: Estado, abrir: (String) -> Unit) {
     val hoje = LocalDate.now()
-    val avisos = LocalAvisos.current
-    val escopo = rememberCoroutineScope()
-    val emBreve: () -> Unit = {
-        escopo.launch { avisos.showSnackbar("Esta parte chega numa próxima atualização.") }
-    }
 
     val registradas = estado.apostas.filter { it.registrada }
     val naoSorteados = registradas
-        .filter { it.apuracao == null && (it.dataSorteio == null || !it.dataSorteio.isBefore(hoje)) }
+        .filter { it.apuracao?.confirmadaEm == null && (it.dataSorteio == null || !it.dataSorteio.isBefore(hoje)) }
         .sortedBy { it.dataSorteio ?: hoje }
     val sorteados = registradas
         .filter { it.dataSorteio != null && it.dataSorteio.isBefore(hoje) && it.apuracao?.confirmadaEm == null }
         .sortedBy { it.dataSorteio }
-    val apostaDeHojeFeita = registradas.any { it.dataAposta == hoje && !it.eventual }
+    val apuradosRecentes = registradas
+        .filter { it.apuracao?.confirmadaEm != null }
+        .sortedByDescending { it.apuracao?.confirmadaEm }
+        .take(3)
+    val rascunhos = Operacoes.rascunhos(estado)
+    val apostaDeHojeFeita = Operacoes.apostaRegularFeitaEm(estado, hoje)
 
     LazyColumn(
         contentPadding = PaddingTela,
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        item { CartaoSaldo(estado, aoAportar = emBreve, aoRatear = emBreve, aoExtrato = emBreve) }
-        item { CartaoProximaAposta(hoje, apostaDeHojeFeita, aoApostar = emBreve) }
+        item {
+            CartaoSaldo(
+                estado,
+                aoAportar = { abrir("aporte") },
+                aoRatear = { abrir("rateio") },
+                aoExtrato = { abrir("extrato") },
+            )
+        }
+        item { CartaoProximaAposta(hoje, apostaDeHojeFeita, aoApostar = { abrir("apostar") }) }
+
+        if (rascunhos.isNotEmpty()) {
+            item { TituloSecao("Aposta em andamento") }
+            items(rascunhos, key = { "r-" + it.id }) { r ->
+                ListItem(
+                    leadingContent = { SeloModalidade(r.modalidade) },
+                    headlineContent = { Text("${r.modalidade.nome}${if (r.concurso > 0) " ${r.concurso}" else ""}") },
+                    supportingContent = {
+                        Text(if (r.comprovante == null) "Falta anexar o comprovante da Caixa" else "Pronta para registrar")
+                    },
+                    trailingContent = { Text("Continuar", color = MaterialTheme.colorScheme.primary) },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    modifier = Modifier.clickable { abrir("aposta/${r.id}") },
+                )
+            }
+        }
 
         item { TituloSecao("Jogos não sorteados") }
         if (naoSorteados.isEmpty()) {
             item { TextoVazio("Nenhum jogo aguardando sorteio.") }
         } else {
-            items(naoSorteados, key = { it.id }) { ItemAposta(it, hoje) }
+            items(naoSorteados, key = { it.id }) { a -> ItemAposta(a, hoje, aoTocar = { abrir("aposta/${a.id}") }) }
         }
 
         item { TituloSecao("Jogos sorteados") }
-        if (sorteados.isEmpty()) {
+        if (sorteados.isEmpty() && apuradosRecentes.isEmpty()) {
             item { TextoVazio("Nenhum jogo esperando apuração.") }
         } else {
-            items(sorteados, key = { it.id }) { ItemAposta(it, hoje) }
+            items(sorteados, key = { it.id }) { a -> ItemAposta(a, hoje, aoTocar = { abrir("apuracao/${a.id}") }) }
+            items(apuradosRecentes, key = { "ap-" + it.id }) { a -> ItemAposta(a, hoje, aoTocar = { abrir("apuracao/${a.id}") }) }
         }
 
         val ultimos = estado.lancamentos.sortedByDescending { it.criadoEm }.take(6)
@@ -166,9 +189,12 @@ private fun CartaoProximaAposta(hoje: LocalDate, apostaDeHojeFeita: Boolean, aoA
 }
 
 @Composable
-private fun ItemAposta(a: Aposta, hoje: LocalDate) {
+private fun ItemAposta(a: Aposta, hoje: LocalDate, aoTocar: () -> Unit) {
     val sorteio = a.dataSorteio
+    val ap = a.apuracao
     val quando = when {
+        ap?.confirmadaEm != null -> if (ap.premio > 0) "Apurado · prêmio ${Dinheiro.rs(ap.premio)}" else "Apurado · ${ap.acertos}"
+        ap != null -> "Conferido: ${ap.acertos}" + (if (ap.premio > 0) " · ${Dinheiro.rs(ap.premio)}" else "") + " · confirmar"
         sorteio == null -> "Data do sorteio a confirmar"
         sorteio == hoje -> "Sorteio hoje"
         sorteio.isBefore(hoje) -> "Sorteado em ${Datas.diaMes(sorteio)} · aguardando apuração"
@@ -182,6 +208,7 @@ private fun ItemAposta(a: Aposta, hoje: LocalDate) {
         supportingContent = { Text(quando) },
         trailingContent = { Text(Dinheiro.rs(a.valor), style = MaterialTheme.typography.bodyMedium) },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.clickable(onClick = aoTocar),
     )
 }
 

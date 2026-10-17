@@ -104,6 +104,8 @@ data class Aposta(
     val extra: String? = null,
     /** Loteca: "1", "X" ou "2" para cada um dos 14 jogos. */
     val palpitesLoteca: List<String> = emptyList(),
+    /** Loteca: "TIME A x TIME B" de cada jogo, quando a Caixa informa a programação. */
+    val jogosLoteca: List<String> = emptyList(),
     val bilheteFederal: String? = null,
     val fracoesFederal: Int? = null,
     val comprovante: Arquivo? = null,

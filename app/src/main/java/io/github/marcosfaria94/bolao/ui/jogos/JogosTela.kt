@@ -22,7 +22,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -30,6 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.domain.Concurso
+import io.github.marcosfaria94.bolao.domain.Datas
+import io.github.marcosfaria94.bolao.net.CaixaApi
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import io.github.marcosfaria94.bolao.domain.Formato
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Probabilidades
@@ -57,25 +65,48 @@ fun regraDaAposta(m: Modalidade): String = when (m.formato) {
 
 @Composable
 fun JogosTela(estado: Estado) {
+    // Próximo concurso, data e prêmio de cada modalidade, consultados na Caixa em paralelo.
+    val infos = remember { mutableStateMapOf<Modalidade, Concurso>() }
+    var falhou by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        coroutineScope {
+            Modalidade.entries.forEach { m ->
+                launch {
+                    runCatching { CaixaApi.ultimo(m) }
+                        .onSuccess { infos[m] = it }
+                        .onFailure { falhou = true }
+                }
+            }
+        }
+    }
+
     LazyColumn(
         contentPadding = PaddingTela,
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         item {
-            Text(
-                "Preço da aposta simples e chance de acerto em cada faixa. " +
-                    "Concurso, data e prêmio estimado vêm da Caixa na hora de apostar.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column {
+                Text(
+                    "Preço da aposta simples, próximo concurso e chance de acerto em cada faixa.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (falhou && infos.isEmpty()) {
+                    Text(
+                        "Não foi possível consultar a Caixa agora.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
         }
-        items(Modalidade.entries, key = { it.name }) { m -> CartaoModalidade(m, estado) }
+        items(Modalidade.entries, key = { it.name }) { m -> CartaoModalidade(m, estado, infos[m]) }
     }
 }
 
 @Composable
-private fun CartaoModalidade(m: Modalidade, estado: Estado) {
+private fun CartaoModalidade(m: Modalidade, estado: Estado, info: Concurso?) {
     var aberto by rememberSaveable(m.name) { mutableStateOf(false) }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -98,6 +129,19 @@ private fun CartaoModalidade(m: Modalidade, estado: Estado) {
                     contentDescription = if (aberto) "Recolher" else "Ver chances",
                 )
             }
+            if (info != null) {
+                Spacer(Modifier.height(8.dp))
+                val proximo = info.proximoNumero?.let { "Concurso $it" } ?: "Próximo concurso"
+                val data = info.proximaData?.let { " · ${Datas.diaSemana(it)}, ${Datas.diaMes(it)}" }.orEmpty()
+                Text("$proximo$data", style = MaterialTheme.typography.bodyMedium)
+                info.premioEstimadoProximo?.let {
+                    Text(
+                        "Prêmio estimado: ${Dinheiro.rs(it)}" + if (info.acumulado) " (acumulado)" else "",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
             if (aberto) {
                 Spacer(Modifier.height(12.dp))
                 Text(regraDaAposta(m), style = MaterialTheme.typography.bodyMedium)
@@ -110,6 +154,11 @@ private fun CartaoModalidade(m: Modalidade, estado: Estado) {
                 }
                 Probabilidades.faixas(m).mapNotNull { it.observacao }.distinct().forEach { obs ->
                     Text("* $obs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                info?.faixas?.filter { it.valor > 0 }?.takeIf { it.isNotEmpty() }?.let { faixas ->
+                    Spacer(Modifier.height(8.dp))
+                    Text("Prêmios pagos no concurso ${info.numero}", style = MaterialTheme.typography.labelLarge)
+                    faixas.forEach { f -> LinhaValor(f.descricao.ifBlank { "${f.faixa}ª faixa" }, Dinheiro.rs(f.valor)) }
                 }
             }
         }

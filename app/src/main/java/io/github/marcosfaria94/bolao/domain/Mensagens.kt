@@ -17,7 +17,7 @@ object Mensagens {
     }
 
     /** Envolve o texto em bloco monoespaçado do WhatsApp. */
-    fun monoespacado(texto: String): String = "```\n$texto\n```"
+    fun monoespacado(texto: String): String = "```$texto```"
 
     /**
      * Identificação do jogo, ex.: "#132 010626 LF-3060 2M 030626".
