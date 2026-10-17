@@ -43,8 +43,9 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_PASSWORD" ]; then
-            echo "::error::Falta o segredo KEYSTORE_PASSWORD (Settings > Secrets and variables > Actions)."
-            exit 1
+            # Sem a senha o build roda assim mesmo (para conferir o código), mas não publica.
+            echo "::warning::Falta o segredo KEYSTORE_PASSWORD (Settings > Secrets and variables > Actions)."
+            exit 0
           fi
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
             -in keystore/bolao.p12.enc -out "$RUNNER_TEMP/bolao.p12" -pass env:KEYSTORE_PASSWORD
@@ -56,6 +57,7 @@ jobs:
         run: ./gradlew --no-daemon --stacktrace testReleaseUnitTest assembleRelease
 
       - name: Publicar no Releases
+        if: env.KEYSTORE_FILE != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -69,6 +71,12 @@ jobs:
             --notes-file notas.txt \
             --latest
           echo "### Versão $VERSION_NAME publicada" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Avisar que não publicou
+        if: env.KEYSTORE_FILE == ''
+        run: |
+          echo "::error::O código compilou, mas a versão não foi publicada: falta o segredo KEYSTORE_PASSWORD."
+          exit 1
 
       - name: Relatório dos testes (se falharem)
         if: failure()
