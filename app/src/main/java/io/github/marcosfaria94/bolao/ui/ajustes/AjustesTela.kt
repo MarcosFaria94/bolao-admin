@@ -59,6 +59,8 @@ import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.TituloSecao
 import io.github.marcosfaria94.bolao.ui.comum.copiar
+import io.github.marcosfaria94.bolao.ui.teste.CartaoModoTeste
+import io.github.marcosfaria94.bolao.ui.teste.DialogoSairDoTeste
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -71,6 +73,8 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel) {
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
     val ultima by atualizacao.ultima.collectAsStateWithLifecycle()
+    val teste by repo.modoTeste.collectAsStateWithLifecycle()
+    var sairDoTeste by remember { mutableStateOf(false) }
 
     var editandoAporte by remember { mutableStateOf(false) }
     var editandoPreco by remember { mutableStateOf<Modalidade?>(null) }
@@ -293,7 +297,13 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel) {
                 }
             }
         }
+
+        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+        item { TituloSecao("Modo de teste") }
+        item { CartaoModoTeste(emTeste = teste, aoPedirSaida = { sairDoTeste = true }) }
     }
+
+    if (sairDoTeste) DialogoSairDoTeste(aoFechar = { sairDoTeste = false })
 
     if (editandoAporte) {
         DialogoDinheiro(

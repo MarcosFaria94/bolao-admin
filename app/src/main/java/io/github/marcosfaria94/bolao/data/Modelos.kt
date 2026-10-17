@@ -151,6 +151,8 @@ data class Estado(
     val extratos: List<Extrato> = emptyList(),
     /** PDF do termo assinado. */
     val termo: Arquivo? = null,
+    /** Dados fictícios do modo de teste (nunca entram nos dados reais). */
+    val exemplo: Boolean = false,
 ) {
     val saldo: Long get() = lancamentos.sumOf { it.valor }
     val administrador: Pessoa? get() = pessoas.firstOrNull { it.administrador } ?: pessoas.firstOrNull()

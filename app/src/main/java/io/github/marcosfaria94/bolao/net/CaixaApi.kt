@@ -38,6 +38,8 @@ object CaixaApi {
         val chave = "${m.name}-$numero"
         cacheConcurso[chave]?.let { return it }
         val c = buscar(m, BASE + m.slugApi + "/" + numero)
+        // Nunca apurar com o resultado de outro concurso.
+        if (c.numero != numero) throw IOException("A Caixa devolveu o concurso ${c.numero} em vez do $numero.")
         if (c.temResultado) cacheConcurso[chave] = c
         return c
     }

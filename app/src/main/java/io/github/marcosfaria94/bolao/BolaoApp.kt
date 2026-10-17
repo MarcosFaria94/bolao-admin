@@ -6,6 +6,9 @@ import io.github.marcosfaria94.bolao.data.Backup
 import io.github.marcosfaria94.bolao.data.Repositorio
 import io.github.marcosfaria94.bolao.notificacoes.Notificador
 import io.github.marcosfaria94.bolao.notificacoes.Vigia
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class BolaoApp : Application() {
@@ -14,6 +17,9 @@ class BolaoApp : Application() {
 
     /** Tela pedida por uma notificação tocada (rota da navegação). */
     val destinoPendente = MutableStateFlow<String?>(null)
+
+    /** Para tarefas que não podem parar quando a tela muda (ligar e desligar o modo de teste). */
+    val escopo: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
         super.onCreate()

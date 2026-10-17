@@ -3,4 +3,6 @@
     <cache-path name="atualizacao" path="atualizacao/" />
     <cache-path name="compartilhar" path="compartilhar/" />
     <files-path name="arquivos" path="arquivos/" />
+    <!-- Anexos do modo de teste (dados de exemplo). -->
+    <files-path name="teste" path="teste/arquivos/" />
 </paths>

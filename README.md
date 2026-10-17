@@ -10,6 +10,16 @@ Os dados (integrantes, chaves Pix, saldo, comprovantes) ficam **só no celular**
 2. Abra o arquivo baixado. O Android vai pedir para permitir a instalação pelo navegador: permita e toque em **Instalar**.
 3. Ao abrir o app, faça o cadastro inicial (ou restaure um backup).
 
+## Modo de teste
+
+Para conhecer o app (ou experimentar uma versão nova) sem digitar nada e sem mexer nos dados reais: na primeira abertura, ou em Ajustes > **Modo de teste**, toque em **Experimentar com dados de exemplo**.
+
+- O app cria um mês anterior completo (aportes, 10 apostas apuradas com um prêmio, rateio e extrato) e o mês atual até ontem, com o último jogo esperando a apuração. Quando a Caixa responde, esse último jogo usa um concurso de verdade.
+- Os dados de exemplo ficam numa pasta separada; os reais não são lidos nem alterados. Uma faixa "Modo de teste" aparece em todas as telas.
+- As mensagens abrem o WhatsApp com a linha *TESTE* no começo. Os avisos no celular começam com "Teste ·".
+- Nas apostas e no rateio aparece o botão para usar um comprovante de exemplo.
+- **Sair** (na faixa ou em Ajustes) apaga os dados de exemplo e volta aos dados reais.
+
 ## Atualizações
 
 Toda alteração enviada para a branch `main` gera uma versão nova automaticamente (GitHub Actions). Ao abrir, o app confere se há versão nova e instala com um toque. Na primeira atualização o Android pede para liberar "Instalar apps desconhecidos" para o Bolão Admin.

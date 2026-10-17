@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.domain.Mensagens
 import java.io.File
 
@@ -16,6 +17,9 @@ data class Anexo(val arquivo: File, val mime: String)
 object Compartilhar {
 
     private val PACOTES_WHATSAPP = listOf("com.whatsapp", "com.whatsapp.w4b")
+
+    /** Primeira linha das mensagens enviadas no modo de teste, para ninguém confundir com o bolão real. */
+    const val AVISO_TESTE = "*TESTE do app (dados de exemplo) – pode ignorar*"
 
     private fun instalado(context: Context, pacote: String): Boolean = try {
         context.packageManager.getPackageInfo(pacote, 0)
@@ -32,7 +36,8 @@ object Compartilhar {
      * O Administrador escolhe o grupo e toca em Enviar.
      */
     fun whatsapp(context: Context, texto: String, anexos: List<Anexo> = emptyList(), monoespacado: Boolean = true) {
-        val mensagem = if (monoespacado) Mensagens.monoespacado(texto) else texto
+        val bloco = if (monoespacado) Mensagens.monoespacado(texto) else texto
+        val mensagem = if (context.bolao.repo.emTeste) "$AVISO_TESTE\n$bloco" else bloco
         val uris = anexos.map { uri(context, it.arquivo) }
         val intent = when (uris.size) {
             0 -> Intent(Intent.ACTION_SEND).setType("text/plain")

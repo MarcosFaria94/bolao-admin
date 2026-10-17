@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Estado
@@ -54,6 +55,7 @@ import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PreviaMensagem
 import io.github.marcosfaria94.bolao.ui.comum.TituloSecao
 import io.github.marcosfaria94.bolao.ui.comum.copiar
+import io.github.marcosfaria94.bolao.ui.teste.ModoTeste
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -65,6 +67,7 @@ fun RateioTela(estado: Estado, aoConcluir: () -> Unit) {
     val escopo = rememberCoroutineScope()
     val hoje = LocalDate.now()
     val sugestao = remember(estado.lancamentos.size) { Operacoes.sugestaoProvisionado(estado, hoje) }
+    val teste by repo.modoTeste.collectAsStateWithLifecycle()
     val saldo = Operacoes.saldo(estado)
 
     var provisionado by remember { mutableLongStateOf(sugestao.provisionado) }
@@ -138,6 +141,17 @@ fun RateioTela(estado: Estado, aoConcluir: () -> Unit) {
             }
 
             TituloSecao("Pix de cada integrante")
+            if (teste) {
+                TextButton(onClick = {
+                    escopo.launch {
+                        try {
+                            estado.pessoas.forEach { p -> comprovantes[p.id] = ModoTeste.pix(ctx, p, calculo.cota, estado.proximoRateio) }
+                        } catch (t: Throwable) {
+                            avisos.showSnackbar("Não foi possível criar os comprovantes de exemplo: ${t.message}")
+                        }
+                    }
+                }) { Text("Usar comprovantes de Pix de exemplo") }
+            }
             estado.pessoas.forEach { p ->
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.padding(12.dp)) {

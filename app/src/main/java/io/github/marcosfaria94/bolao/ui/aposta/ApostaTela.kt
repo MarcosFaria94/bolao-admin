@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Estado
@@ -71,6 +72,7 @@ import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PreviaMensagem
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
+import io.github.marcosfaria94.bolao.ui.teste.ModoTeste
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -115,6 +117,7 @@ private fun EditorAposta(estado: Estado, inicial: Aposta, aoSair: () -> Unit) {
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
     val m = inicial.modalidade
+    val teste by repo.modoTeste.collectAsStateWithLifecycle()
 
     // O rascunho na tela é a fonte da verdade; cada mudança vai para a fila de gravação.
     var r by remember(inicial.id) { mutableStateOf(inicial) }
@@ -269,6 +272,18 @@ private fun EditorAposta(estado: Estado, inicial: Aposta, aoSair: () -> Unit) {
                     arquivo = r.comprovante?.let { repo.arquivo(it) },
                     mime = r.comprovante?.mime,
                 )
+                if (teste) {
+                    TextButton(onClick = {
+                        escopo.launch {
+                            try {
+                                val arq = ModoTeste.comprovante(ctx, r)
+                                mudar(r.copy(comprovante = arq))
+                            } catch (t: Throwable) {
+                                avisos.showSnackbar("Não foi possível criar o comprovante de exemplo: ${t.message}")
+                            }
+                        }
+                    }) { Text("Usar um comprovante de exemplo") }
+                }
             }
         }
 

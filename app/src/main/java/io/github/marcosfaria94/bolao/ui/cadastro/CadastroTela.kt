@@ -55,6 +55,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.marcosfaria94.bolao.bolao
@@ -70,6 +71,8 @@ import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.CampoInteiro
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
+import io.github.marcosfaria94.bolao.ui.teste.BotaoExperimentar
+import io.github.marcosfaria94.bolao.ui.teste.ModoTeste
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -209,6 +212,7 @@ fun CadastroTela(vm: CadastroViewModel = viewModel()) {
     val avisar: (String) -> Unit = { msg -> escopo.launch { avisos.showSnackbar(msg) } }
     var restaurando by remember { mutableStateOf(false) }
     var confirmarRestaurar by remember { mutableStateOf(false) }
+    val preparandoExemplo by ModoTeste.trabalhando.collectAsStateWithLifecycle()
 
     val escolherBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) escopo.launch {
@@ -270,6 +274,8 @@ fun CadastroTela(vm: CadastroViewModel = viewModel()) {
                         restaurando = restaurando,
                         aoComecar = { vm.passo = 1 },
                         aoRestaurar = { confirmarRestaurar = true },
+                        preparandoExemplo = preparandoExemplo,
+                        aoExperimentar = { ModoTeste.entrar(ctx) },
                     )
                     1 -> PassoIntegrantes(vm)
                     2 -> PassoSaldo(vm)
@@ -320,7 +326,13 @@ fun CadastroTela(vm: CadastroViewModel = viewModel()) {
 }
 
 @Composable
-private fun PassoBoasVindas(restaurando: Boolean, aoComecar: () -> Unit, aoRestaurar: () -> Unit) {
+private fun PassoBoasVindas(
+    restaurando: Boolean,
+    aoComecar: () -> Unit,
+    aoRestaurar: () -> Unit,
+    preparandoExemplo: Boolean,
+    aoExperimentar: () -> Unit,
+) {
     Spacer(Modifier.height(24.dp))
     Text("Bem-vindo ao Bolão Admin", style = MaterialTheme.typography.headlineMedium)
     Text(
@@ -347,6 +359,22 @@ private fun PassoBoasVindas(restaurando: Boolean, aoComecar: () -> Unit, aoResta
                 Spacer(Modifier.width(8.dp))
                 Text(if (restaurando) "Restaurando..." else "Restaurar backup")
             }
+        }
+    }
+    Spacer(Modifier.height(4.dp))
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Só quer conhecer o app?", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Abre com um mês de exemplo já preenchido (integrantes, aportes, apostas com comprovante, " +
+                    "um prêmio, rateio e extrato), sem digitar nada. Fica separado dos dados reais e sai com um toque.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.height(8.dp))
+            BotaoExperimentar(preparando = preparandoExemplo, aoTocar = aoExperimentar)
         }
     }
 }

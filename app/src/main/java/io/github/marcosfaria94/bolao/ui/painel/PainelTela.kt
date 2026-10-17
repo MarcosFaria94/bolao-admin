@@ -44,11 +44,12 @@ import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.TextoVazio
 import io.github.marcosfaria94.bolao.ui.comum.TituloSecao
+import io.github.marcosfaria94.bolao.ui.teste.RoteiroDeTeste
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
 @Composable
-fun PainelTela(estado: Estado, abrir: (String) -> Unit) {
+fun PainelTela(estado: Estado, abrir: (String) -> Unit, teste: Boolean = false) {
     val hoje = LocalDate.now()
 
     val registradas = estado.apostas.filter { it.registrada }
@@ -70,6 +71,7 @@ fun PainelTela(estado: Estado, abrir: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
+        if (teste) item { RoteiroDeTeste() }
         item {
             CartaoSaldo(
                 estado,

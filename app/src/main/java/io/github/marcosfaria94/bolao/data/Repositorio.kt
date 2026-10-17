@@ -24,74 +24,118 @@ import java.util.UUID
  * e os anexos (comprovantes, termo) na pasta "arquivos". Nada sai do aparelho
  * a não ser pelo backup.
  *
+ * O modo de teste usa um espaço separado (pasta "teste"), com dados de exemplo:
+ * enquanto ele está ligado, os dados reais não são lidos nem alterados.
+ *
  * Todas as mudanças passam por uma fila única, na ordem em que foram pedidas,
  * e são gravadas no disco antes de aparecerem na tela.
  */
 class Repositorio(private val context: Context) {
+
+    enum class Espaco { REAL, TESTE }
 
     val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
 
-    private val pastaDados = File(context.filesDir, "dados").apply { mkdirs() }
-    private val arquivoEstado = AtomicFile(File(pastaDados, "estado.json"))
-    val pastaArquivos: File = File(context.filesDir, "arquivos").apply { mkdirs() }
+    private val prefs = context.getSharedPreferences("app", Context.MODE_PRIVATE)
+
+    /** Espaço em uso. Só muda dentro da fila. */
+    @Volatile
+    private var espaco: Espaco = if (prefs.getBoolean(CHAVE_MODO_TESTE, false)) Espaco.TESTE else Espaco.REAL
+
+    private val _modoTeste = MutableStateFlow(espaco == Espaco.TESTE)
+    /** true enquanto o app mostra os dados de exemplo do modo de teste. */
+    val modoTeste: StateFlow<Boolean> = _modoTeste.asStateFlow()
+    val emTeste: Boolean get() = espaco == Espaco.TESTE
+
+    private fun raiz(e: Espaco): File = if (e == Espaco.TESTE) File(context.filesDir, PASTA_TESTE) else context.filesDir
+    private fun pastaDados(e: Espaco): File = File(raiz(e), "dados").apply { mkdirs() }
+    private fun arquivoEstado(e: Espaco) = AtomicFile(File(pastaDados(e), "estado.json"))
+    private fun pastaDeArquivos(e: Espaco): File = File(raiz(e), "arquivos").apply { mkdirs() }
+
+    /** Pasta dos anexos do espaço em uso. */
+    val pastaArquivos: File get() = pastaDeArquivos(espaco)
 
     private val _estado = MutableStateFlow<Estado?>(null)
     /** null enquanto carrega. */
     val estado: StateFlow<Estado?> = _estado.asStateFlow()
 
-    /** Aviso para mostrar na tela se o arquivo de dados estava ilegível. */
+    /** Aviso para mostrar na tela (arquivo de dados ilegível, modo de teste...). */
     private val _aviso = MutableStateFlow<String?>(null)
     val aviso: StateFlow<String?> = _aviso.asStateFlow()
 
-    private class Pedido(val mudanca: (Estado) -> Estado, val resposta: CompletableDeferred<Estado>?)
+    private sealed interface Pedido {
+        /** Mudança nos dados do espaço que estava em uso quando foi pedida. */
+        class Mudanca(val espaco: Espaco, val mudanca: (Estado) -> Estado, val resposta: CompletableDeferred<Estado>?) : Pedido
+
+        /** Tarefa que mexe com os espaços ou com os anexos, na mesma ordem das mudanças. */
+        class Tarefa(val acao: suspend () -> Any?, val resposta: CompletableDeferred<Any?>) : Pedido
+    }
 
     private val fila = Channel<Pedido>(Channel.UNLIMITED)
     private val escopo = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         escopo.launch {
-            _estado.value = lerDoDisco()
+            _estado.value = lerDoDisco(espaco)
             for (p in fila) {
-                try {
-                    val atual = _estado.value ?: lerDoDisco()
-                    val novo = p.mudanca(atual)
-                    if (novo != atual) gravar(novo)
-                    _estado.value = novo
-                    p.resposta?.complete(novo)
-                } catch (t: Throwable) {
-                    p.resposta?.completeExceptionally(t)
+                when (p) {
+                    is Pedido.Mudanca -> try {
+                        // Uma mudança pedida antes de trocar entre teste e dados reais não vale para o outro espaço.
+                        check(p.espaco == espaco) { "O app trocou entre o modo de teste e os dados reais. Tente de novo." }
+                        val atual = _estado.value ?: lerDoDisco(espaco)
+                        val novo = p.mudanca(atual)
+                        if (novo != atual) gravar(espaco, novo)
+                        _estado.value = novo
+                        p.resposta?.complete(novo)
+                    } catch (t: Throwable) {
+                        p.resposta?.completeExceptionally(t)
+                    }
+
+                    is Pedido.Tarefa -> try {
+                        p.resposta.complete(p.acao())
+                    } catch (t: Throwable) {
+                        p.resposta.completeExceptionally(t)
+                    }
                 }
             }
         }
     }
 
-    private fun lerDoDisco(): Estado {
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun <T> naFila(acao: suspend () -> T): T {
+        val resposta = CompletableDeferred<Any?>()
+        fila.send(Pedido.Tarefa(acao, resposta))
+        return resposta.await() as T
+    }
+
+    private fun lerDoDisco(e: Espaco): Estado {
         val bytes = try {
-            arquivoEstado.readFully()
-        } catch (e: java.io.FileNotFoundException) {
+            arquivoEstado(e).readFully()
+        } catch (x: java.io.FileNotFoundException) {
             return Estado()
         }
         return try {
             json.decodeFromString(Estado.serializer(), bytes.decodeToString())
         } catch (t: Throwable) {
             // Não sobrescreve: guarda uma cópia do arquivo ilegível e começa vazio.
-            val copia = File(pastaDados, "estado-ilegivel-${System.currentTimeMillis()}.json")
+            val copia = File(pastaDados(e), "estado-ilegivel-${System.currentTimeMillis()}.json")
             runCatching { copia.writeBytes(bytes) }
             _aviso.value = "O arquivo de dados não pôde ser lido. Uma cópia foi guardada e é possível restaurar um backup."
             Estado()
         }
     }
 
-    private fun gravar(e: Estado) {
-        val saida = arquivoEstado.startWrite()
+    private fun gravar(e: Espaco, estado: Estado) {
+        val arquivo = arquivoEstado(e)
+        val saida = arquivo.startWrite()
         try {
-            saida.write(json.encodeToString(Estado.serializer(), e).encodeToByteArray())
-            arquivoEstado.finishWrite(saida)
+            saida.write(json.encodeToString(Estado.serializer(), estado).encodeToByteArray())
+            arquivo.finishWrite(saida)
         } catch (t: Throwable) {
-            arquivoEstado.failWrite(saida)
+            arquivo.failWrite(saida)
             throw t
         }
     }
@@ -99,22 +143,20 @@ class Repositorio(private val context: Context) {
     /** Aplica uma mudança (na ordem da fila), grava no disco e devolve o novo estado. */
     suspend fun atualizar(mudanca: (Estado) -> Estado): Estado {
         val resposta = CompletableDeferred<Estado>()
-        fila.send(Pedido(mudanca, resposta))
+        fila.send(Pedido.Mudanca(espaco, mudanca, resposta))
         return resposta.await()
     }
 
     /** Mesma fila, sem esperar (para gravar o rascunho a cada toque). Erros são ignorados. */
     fun enfileirar(mudanca: (Estado) -> Estado) {
-        fila.trySend(Pedido(mudanca, null))
+        fila.trySend(Pedido.Mudanca(espaco, mudanca, null))
     }
 
     /** Estado atual, depois de tudo o que já estava na fila. */
-    suspend fun atual(): Estado = atualizar { it }
+    suspend fun atual(): Estado = naFila { _estado.value ?: lerDoDisco(espaco) }
 
-    /** Troca tudo (usado pela restauração do backup). */
-    suspend fun substituir(novo: Estado) {
-        atualizar { novo }
-        _aviso.value = null
+    fun avisar(texto: String) {
+        _aviso.value = texto
     }
 
     fun limparAviso() {
@@ -143,10 +185,10 @@ class Repositorio(private val context: Context) {
         Arquivo(nome = nome, nomeOriginal = nomeOriginal, mime = mime, guardadoEm = System.currentTimeMillis())
     }
 
-    /** Apaga anexos que nenhum registro usa mais. */
+    /** Apaga anexos que nenhum registro usa mais (só no espaço em uso). */
     suspend fun limparArquivosSoltos() {
-        val e = atual()
-        withContext(Dispatchers.IO) {
+        naFila {
+            val e = _estado.value ?: lerDoDisco(espaco)
             val usados = buildSet {
                 e.termo?.let { add(it.nome) }
                 e.apostas.forEach { a -> a.comprovante?.let { add(it.nome) } }
@@ -154,13 +196,75 @@ class Repositorio(private val context: Context) {
             }
             // Anexos recentes podem ser de um rateio ainda em andamento: só apaga os antigos.
             val limite = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
-            pastaArquivos.listFiles()
+            pastaDeArquivos(espaco).listFiles()
                 ?.filter { it.isFile && it.name !in usados && it.lastModified() < limite }
                 ?.forEach { it.delete() }
         }
     }
 
+    /** Dados e pasta de anexos do mesmo espaço, lidos juntos (para o backup). */
+    class Retrato(val estado: Estado, val pastaArquivos: File, val teste: Boolean)
+
+    suspend fun retrato(): Retrato = naFila { Retrato(_estado.value ?: lerDoDisco(espaco), pastaDeArquivos(espaco), espaco == Espaco.TESTE) }
+
+    /** Troca todos os dados do espaço em uso pelos de um backup; [anexos] é a pasta com os anexos extraídos. */
+    suspend fun restaurar(novo: Estado, anexos: File) {
+        naFila {
+            require(espaco == Espaco.TESTE || !novo.exemplo) {
+                "Este backup é do modo de teste (dados de exemplo). Para não misturar com os dados reais, restaure-o com o modo de teste ligado."
+            }
+            val destino = pastaDeArquivos(espaco)
+            anexos.listFiles()?.filter { it.isFile }?.forEach { it.copyTo(File(destino, it.name), overwrite = true) }
+            gravar(espaco, novo)
+            _estado.value = novo
+            _aviso.value = null
+        }
+    }
+
+    // ---------- modo de teste ----------
+
+    /** Dados reais, mesmo com o modo de teste ligado (só leitura). */
+    suspend fun estadoReal(): Estado = naFila {
+        if (espaco == Espaco.REAL) _estado.value ?: lerDoDisco(Espaco.REAL) else lerDoDisco(Espaco.REAL)
+    }
+
+    /**
+     * Liga o modo de teste com o [exemplo] (um teste anterior é apagado antes).
+     * [prepararAnexos] grava os anexos fictícios na pasta recebida, antes da troca.
+     */
+    suspend fun entrarNoTeste(exemplo: Estado, prepararAnexos: (File) -> Unit) {
+        require(exemplo.exemplo) { "Só dados de exemplo podem ir para o modo de teste." }
+        naFila {
+            apagarTeste()
+            prepararAnexos(pastaDeArquivos(Espaco.TESTE))
+            gravar(Espaco.TESTE, exemplo)
+            mudarPara(Espaco.TESTE, exemplo)
+        }
+    }
+
+    /** Desliga o modo de teste: volta aos dados reais e apaga os dados de exemplo. */
+    suspend fun sairDoTeste() {
+        naFila {
+            mudarPara(Espaco.REAL, lerDoDisco(Espaco.REAL))
+            apagarTeste()
+        }
+    }
+
+    private fun mudarPara(e: Espaco, estado: Estado) {
+        prefs.edit().putBoolean(CHAVE_MODO_TESTE, e == Espaco.TESTE).commit()
+        espaco = e
+        _estado.value = estado
+        _modoTeste.value = e == Espaco.TESTE
+    }
+
+    private fun apagarTeste() {
+        File(context.filesDir, PASTA_TESTE).deleteRecursively()
+    }
+
     companion object {
+        const val PASTA_TESTE = "teste"
+        private const val CHAVE_MODO_TESTE = "modo_teste"
+
         fun novoId(): String = io.github.marcosfaria94.bolao.data.novoId()
     }
 }

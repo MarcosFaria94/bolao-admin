@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
@@ -30,7 +31,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -45,6 +49,7 @@ import androidx.navigation.compose.rememberNavController
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.notificacoes.Notificador
+import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.ui.ajustes.AjustesTela
 import io.github.marcosfaria94.bolao.ui.aporte.AporteTela
 import io.github.marcosfaria94.bolao.ui.aposta.ApostaTela
@@ -58,6 +63,8 @@ import io.github.marcosfaria94.bolao.ui.cadastro.CadastroTela
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.jogos.JogosTela
 import io.github.marcosfaria94.bolao.ui.painel.PainelTela
+import io.github.marcosfaria94.bolao.ui.teste.DialogoSairDoTeste
+import io.github.marcosfaria94.bolao.ui.teste.FaixaModoTeste
 
 private data class Aba(val rota: String, val rotulo: String, val icone: ImageVector)
 
@@ -73,6 +80,7 @@ fun AppRaiz() {
     val repo = remember { ctx.bolao.repo }
     val estado by repo.estado.collectAsStateWithLifecycle()
     val aviso by repo.aviso.collectAsStateWithLifecycle()
+    val teste by repo.modoTeste.collectAsStateWithLifecycle()
     val avisos = remember { SnackbarHostState() }
     val atualizacao: AtualizacaoViewModel = viewModel()
 
@@ -88,7 +96,8 @@ fun AppRaiz() {
         when {
             e == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             !e.cadastroConcluido -> CadastroTela()
-            else -> Principal(e, atualizacao)
+            // Ao entrar ou sair do modo de teste, a navegação recomeça do Painel.
+            else -> key(teste) { Principal(e, atualizacao, teste) }
         }
         DialogosAtualizacao(atualizacao)
     }
@@ -96,9 +105,10 @@ fun AppRaiz() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel) {
+private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: Boolean) {
     val nav = rememberNavController()
     val ctx = LocalContext.current
+    var sairDoTeste by remember { mutableStateOf(false) }
 
     // Notificação tocada: abre a tela correspondente.
     val destino by ctx.bolao.destinoPendente.collectAsStateWithLifecycle()
@@ -110,7 +120,10 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel) {
     }
 
     // Android 13+: pede a permissão de notificação uma vez, logo depois do cadastro.
-    val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    // Com a permissão dada, os avisos pendentes já aparecem (sem esperar a próxima hora).
+    val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) Vigia.rodarAgora(ctx)
+    }
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= 33 && !Notificador.permitido(ctx)) {
             val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
@@ -139,16 +152,19 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(titulo) },
-                navigationIcon = {
-                    if (!ehAba) {
-                        IconButton(onClick = { nav.popBackStack() }) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Voltar")
+            Column {
+                TopAppBar(
+                    title = { Text(titulo) },
+                    navigationIcon = {
+                        if (!ehAba) {
+                            IconButton(onClick = { nav.popBackStack() }) {
+                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Voltar")
+                            }
                         }
-                    }
-                },
-            )
+                    },
+                )
+                if (teste) FaixaModoTeste(aoSair = { sairDoTeste = true })
+            }
         },
         bottomBar = {
             if (ehAba) {
@@ -175,7 +191,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel) {
         contentWindowInsets = if (ehAba) WindowInsets(0, 0, 0, 0) else WindowInsets.navigationBars,
     ) { padding ->
         NavHost(nav, startDestination = "painel", modifier = Modifier.padding(padding)) {
-            composable("painel") { PainelTela(estado, abrir = { nav.navigate(it) }) }
+            composable("painel") { PainelTela(estado, abrir = { nav.navigate(it) }, teste = teste) }
             composable("jogos") { JogosTela(estado) }
             composable("ajustes") { AjustesTela(estado, atualizacao) }
             composable("aporte") { AporteTela(estado, aoConcluir = { nav.popBackStack() }) }
@@ -197,4 +213,6 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel) {
             composable("extrato") { ExtratoTela(estado, aoConcluir = { nav.popBackStack() }) }
         }
     }
+
+    if (sairDoTeste) DialogoSairDoTeste(aoFechar = { sairDoTeste = false })
 }

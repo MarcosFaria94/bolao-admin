@@ -29,12 +29,13 @@ class Backup(private val context: Context, private val repo: Repositorio) {
     }
 
     suspend fun gerar(saida: OutputStream) = withContext(Dispatchers.IO) {
-        val e = repo.atual()
+        // Dados e anexos do mesmo espaço (reais ou do modo de teste).
+        val r = repo.retrato()
         ZipOutputStream(BufferedOutputStream(saida)).use { zip ->
             zip.putNextEntry(ZipEntry(ESTADO))
-            zip.write(repo.json.encodeToString(Estado.serializer(), e).encodeToByteArray())
+            zip.write(repo.json.encodeToString(Estado.serializer(), r.estado).encodeToByteArray())
             zip.closeEntry()
-            repo.pastaArquivos.listFiles()?.filter { it.isFile }?.forEach { f ->
+            r.pastaArquivos.listFiles()?.filter { it.isFile }?.forEach { f ->
                 zip.putNextEntry(ZipEntry(PASTA + f.name))
                 f.inputStream().use { it.copyTo(zip) }
                 zip.closeEntry()
@@ -42,6 +43,7 @@ class Backup(private val context: Context, private val repo: Repositorio) {
             zip.putNextEntry(ZipEntry("LEIA-ME.txt"))
             zip.write(
                 ("Backup do app Bolão Admin.\n" +
+                    (if (r.teste) "Atenção: backup do MODO DE TESTE (dados de exemplo).\n" else "") +
                     "Para restaurar: abra o app > Ajustes > Restaurar backup e escolha este arquivo.\n")
                     .encodeToByteArray(),
             )
@@ -52,7 +54,7 @@ class Backup(private val context: Context, private val repo: Repositorio) {
     /** Grava o backup em Downloads/Bolao e devolve o endereço do arquivo. */
     suspend fun salvarEmDownloads(): Uri = withContext(Dispatchers.IO) {
         val agora = LocalDateTime.now()
-        val nome = "bolao-backup-%04d-%02d-%02d-%02d%02d.zip".format(
+        val nome = (if (repo.emTeste) "bolao-teste-backup-" else "bolao-backup-") + "%04d-%02d-%02d-%02d%02d.zip".format(
             agora.year, agora.monthValue, agora.dayOfMonth, agora.hour, agora.minute,
         )
         val valores = ContentValues().apply {
@@ -101,8 +103,7 @@ class Backup(private val context: Context, private val repo: Repositorio) {
                 }
             }
             val e = estado ?: throw IllegalArgumentException("Este arquivo não é um backup do Bolão.")
-            temp.listFiles()?.forEach { f -> f.copyTo(File(repo.pastaArquivos, f.name), overwrite = true) }
-            repo.substituir(e)
+            repo.restaurar(e, temp)
             repo.limparArquivosSoltos()
             Restaurado(e, anexos)
         } finally {
