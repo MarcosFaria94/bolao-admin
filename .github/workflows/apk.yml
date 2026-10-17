@@ -1,0 +1,79 @@
+name: Gerar APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Número da versão
+        run: |
+          CODIGO=$(git rev-list --count HEAD)
+          BASE=$(grep '^bolao.versao=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+          echo "VERSION_CODE=$CODIGO" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$BASE.$CODIGO" >> "$GITHUB_ENV"
+          echo "Versão $BASE.$CODIGO"
+
+      - name: Chave de assinatura
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Falta o segredo KEYSTORE_PASSWORD (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+            -in keystore/bolao.p12.enc -out "$RUNNER_TEMP/bolao.p12" -pass env:KEYSTORE_PASSWORD
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/bolao.p12" >> "$GITHUB_ENV"
+
+      - name: Testes e APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: ./gradlew --no-daemon --stacktrace testReleaseUnitTest assembleRelease
+
+      - name: Publicar no Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="bolao-admin-$VERSION_NAME.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          # Notas = mensagem do commit, sem as linhas de coautoria.
+          git log -1 --pretty=%B | sed '/^Co-Authored-By:/Id; /^Claude-Session:/d' > notas.txt
+          gh release create "v$VERSION_NAME" "$APK" \
+            --target "$GITHUB_SHA" \
+            --title "Versão $VERSION_NAME" \
+            --notes-file notas.txt \
+            --latest
+          echo "### Versão $VERSION_NAME publicada" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Relatório dos testes (se falharem)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-testes
+          path: app/build/reports/tests/
+          retention-days: 7

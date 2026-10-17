@@ -1,0 +1,16 @@
+*.iml
+.gradle/
+.kotlin/
+/local.properties
+.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+
+# Chave de assinatura: só a versão cifrada (keystore/*.enc) vai para o repositório.
+*.jks
+*.p12
+*.keystore
+!keystore/*.enc
