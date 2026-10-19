@@ -1,0 +1,530 @@
+{
+  "versao": "1.2",
+  "gerado_em": "2026-10-18",
+  "descricao": "Parâmetros dos índices k1 e k2 e das odds das Loterias Caixa (aposta simples).",
+  "ir_aliquota": 0.3,
+  "limite_isencao": 2428.8,
+  "k2_p_minimo": 0.001,
+  "casas_exibicao": 3,
+  "r_conjunto_faixas_raras": 1.177341432002413,
+  "janela_popularidade": ["2019-12-01", "2099-12-31"],
+  "gauss_hermite_9": {
+    "nos": [
+      -3.1909932017815277, -2.266580584531843, -1.468553289216668, -0.7235510187528376, 0.0,
+      0.7235510187528376, 1.468553289216668, 2.266580584531843, 3.1909932017815277
+    ],
+    "pesos": [
+      3.9606977263264365e-05, 0.004943624275536941, 0.08847452739437664, 0.43265155900255564,
+      0.720235215606051, 0.43265155900255564, 0.08847452739437664, 0.004943624275536941, 3.9606977263264365e-05
+    ]
+  },
+  "api": {
+    "params_url": "https://loterias.caixa.gov.br/Style%20Library/json/params.txt",
+    "campo_base": "urlapiloterias",
+    "bases_reserva": [
+      "https://servicebus3.caixa.gov.br/portaldeloterias", "https://servicebus2.caixa.gov.br/portaldeloterias"
+    ],
+    "caminhos": ["/api/{modalidade}", "/api/{modalidade}/{concurso}"]
+  },
+  "modalidades": {
+    "megasena": {
+      "nome": "Mega-Sena",
+      "preco": 6.0,
+      "frac_premio": 0.4379,
+      "frac_rgp": 0.0,
+      "ordem_cascata": [],
+      "faixas": [
+        {
+          "faixa": 1, "nome": "6 acertos", "p": 1.997448858318156e-08, "um_em": 50063860.0, "grupo": "dezenas",
+          "principal": true, "tipo": "rateio", "fracao": 0.4, "r": 1.177341432002413,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 2, "nome": "5 acertos", "p": 6.4717343009508255e-06, "um_em": 154518.0864197531,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.13, "r": 3.9966288727574106,
+          "herda_mesma_faixa": true, "cascata": false
+        },
+        {
+          "faixa": 3, "nome": "4 acertos", "p": 0.0004287523974379922, "um_em": 2332.3484742604237,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.15, "r": 11.941866524205604,
+          "herda_mesma_faixa": true, "cascata": false
+        }
+      ],
+      "dispersao_r": {
+        "6 acertos": 1.177341432002413, "5 acertos": 3.9966288727574106, "4 acertos": 11.941866524205604
+      },
+      "vendas": {
+        "intercepto": 5.679225865402687,
+        "efeito_dia_semana": {
+          "1": 0.0, "2": 0.24364792702119337, "3": 0.10829204437426354, "4": 0.3539861849900839,
+          "5": 0.3271885923783374, "6": 0.2005352843254063
+        },
+        "efeito_dia_ausente": 0.20560833884821408,
+        "b_log_estimativa": 0.31779251178672535,
+        "b_log_N_anterior": 0.2926802785083301,
+        "b_reserva": -0.049040845604729134,
+        "sigma_log": 0.15504114368567085,
+        "preco_regime": 6.0,
+        "erro_fora_amostra_log": 0.1371963518795599,
+        "n_treino": 806
+      }
+    },
+    "lotofacil": {
+      "nome": "Lotofácil",
+      "preco": 3.5,
+      "frac_premio": 0.4379,
+      "frac_rgp": 0.0,
+      "ordem_cascata": [],
+      "faixas": [
+        {
+          "faixa": 1, "nome": "15 acertos", "p": 3.0592640634368994e-07, "um_em": 3268760.0,
+          "grupo": "dezenas", "principal": true, "tipo": "rateio", "fracao": 0.62, "r": 1.9888886892558708,
+          "fracao_final_zero": 0.72, "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 2, "nome": "14 acertos", "p": 4.58889609515535e-05, "um_em": 21791.733333333334,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.13, "r": 6.749886612277265,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 3, "nome": "13 acertos", "p": 0.0014455022699739351, "um_em": 691.8010582010581,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 35.0
+        },
+        {
+          "faixa": 4, "nome": "12 acertos", "p": 0.01670358178636547, "um_em": 59.86739926739927,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 14.0
+        },
+        {
+          "faixa": 5, "nome": "11 acertos", "p": 0.08769380437841873, "um_em": 11.403314146171288,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 7.0
+        }
+      ],
+      "dispersao_r": {"15 acertos": 1.9888886892558708, "14 acertos": 6.749886612277265},
+      "vendas": {
+        "intercepto": 6.705830190754683,
+        "efeito_dia_semana": {
+          "0": 0.0, "1": -0.08278572567819328, "2": -0.022826995537971854, "3": -0.0944188650517554,
+          "4": 0.028083158659677553, "5": -0.0938520428427839, "6": -0.10889513290423034
+        },
+        "efeito_dia_ausente": -0.053527943336465315,
+        "b_log_estimativa": 0.5119256184726787,
+        "b_log_N_anterior": 0.09802626619898504,
+        "b_reserva": -0.0034656043536747377,
+        "sigma_log": 0.10018517776467087,
+        "preco_regime": 3.5,
+        "erro_fora_amostra_log": 0.1001131123202008,
+        "n_treino": 1863
+      }
+    },
+    "quina": {
+      "nome": "Quina",
+      "preco": 3.0,
+      "frac_premio": 0.4379,
+      "frac_rgp": 0.0,
+      "ordem_cascata": [],
+      "faixas": [
+        {
+          "faixa": 1, "nome": "5 acertos", "p": 4.159731008498497e-08, "um_em": 24040016.0, "grupo": "dezenas",
+          "principal": true, "tipo": "rateio", "fracao": 0.35, "r": 1.177341432002413,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 2, "nome": "4 acertos", "p": 1.5598991281869363e-05, "um_em": 64106.70933333333,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.15, "r": 6.7927478413419315,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 3, "nome": "3 acertos", "p": 0.001154325354858333, "um_em": 866.3068828828829,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.1, "r": 17.48495062887629,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 4, "nome": "2 acertos", "p": 0.0280885836348861, "um_em": 35.601652721214364,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.1, "r": 49.303657574925744,
+          "herda_mesma_faixa": false, "cascata": false
+        }
+      ],
+      "dispersao_r": {
+        "5 acertos": 1.177341432002413, "4 acertos": 6.7927478413419315, "3 acertos": 17.48495062887629,
+        "2 acertos": 49.303657574925744
+      },
+      "vendas": {
+        "intercepto": 7.373627092094457,
+        "efeito_dia_semana": {
+          "0": 0.0, "1": -0.0068486867231878235, "2": 0.022600001455702436, "3": -0.020553992414586292,
+          "4": 0.05560110866985029, "5": 0.02760104833393394, "6": 0.030194689662009805
+        },
+        "efeito_dia_ausente": 0.015513452711960337,
+        "b_log_estimativa": 0.2525671221543896,
+        "b_log_N_anterior": 0.24536581235334592,
+        "b_reserva": -0.015225551854091565,
+        "sigma_log": 0.10048378814012146,
+        "preco_regime": 3.0,
+        "erro_fora_amostra_log": 0.08898969312458589,
+        "n_treino": 1957
+      }
+    },
+    "maismilionaria": {
+      "nome": "+Milionária",
+      "preco": 6.0,
+      "frac_premio": 0.4379,
+      "frac_rgp": 0.05,
+      "ordem_cascata": [2, 3, 4, 5, 6],
+      "faixas": [
+        {
+          "faixa": 1, "nome": "6 + 2 trevos", "p": 4.19532598731753e-09, "um_em": 238360500.0,
+          "grupo": "dezenas", "principal": true, "tipo": "rateio", "fracao": 0.62, "r": 1.177341432002413,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 2, "nome": "6 + 0/1 trevo", "p": 5.873456382244541e-08, "um_em": 17025750.0,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.1, "r": 1.177341432002413,
+          "herda_mesma_faixa": false, "cascata": true
+        },
+        {
+          "faixa": 3, "nome": "5 + 2 trevos", "p": 1.1075660606518278e-06, "um_em": 902880.6818181819,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.08, "r": 2.567839825087434,
+          "herda_mesma_faixa": false, "cascata": true
+        },
+        {
+          "faixa": 4, "nome": "5 + 0/1 trevo", "p": 1.550592484912559e-05, "um_em": 64491.47727272727,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.08, "r": 5.370336220636873,
+          "herda_mesma_faixa": false, "cascata": true
+        },
+        {
+          "faixa": 5, "nome": "4 + 2 trevos", "p": 5.953167576003574e-05, "um_em": 16797.780126849895,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.06, "r": 17.690895883862495,
+          "herda_mesma_faixa": false, "cascata": true
+        },
+        {
+          "faixa": 6, "nome": "4 + 0/1 trevo", "p": 0.0008334434606405004, "um_em": 1199.8414376321355,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.06, "r": 27.888559449780605,
+          "herda_mesma_faixa": false, "cascata": true
+        },
+        {
+          "faixa": 7, "nome": "3 + 2 trevos", "p": 0.0011112579475206672, "um_em": 899.8810782241014,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 50.0
+        },
+        {
+          "faixa": 8, "nome": "3 + 1 trevo", "p": 0.008890063580165338, "um_em": 112.48513477801268,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 24.0
+        },
+        {
+          "faixa": 9, "nome": "2 + 2 trevos", "p": 0.00854279547156513, "um_em": 117.05770123240345,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 12.0
+        },
+        {
+          "faixa": 10, "nome": "2 + 1 trevo", "p": 0.06834236377252104, "um_em": 14.63221265405043,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 6.0
+        }
+      ],
+      "dispersao_r": {
+        "6 + 2 trevos": 1.177341432002413, "6 + 0/1 trevo": 1.177341432002413,
+        "5 + 2 trevos": 2.567839825087434, "5 + 0/1 trevo": 5.370336220636873,
+        "4 + 2 trevos": 17.690895883862495, "4 + 0/1 trevo": 27.888559449780605
+      },
+      "vendas": {
+        "intercepto": 2.452760020333384,
+        "efeito_dia_semana": {
+          "2": 0.0, "3": 0.05017947286894621, "4": -0.142934307527659, "5": 0.14957179220279454,
+          "6": 0.07420237714394656
+        },
+        "efeito_dia_ausente": 0.02620386693760566,
+        "b_log_estimativa": 0.19606426908134225,
+        "b_log_N_anterior": 0.5765688519203344,
+        "b_reserva": 0.0,
+        "sigma_log": 0.11624647438677502,
+        "preco_regime": 6.0,
+        "erro_fora_amostra_log": 0.10299933898428261,
+        "n_treino": 397
+      }
+    },
+    "lotomania": {
+      "nome": "Lotomania",
+      "preco": 3.0,
+      "frac_premio": 0.4379,
+      "frac_rgp": 0.0,
+      "ordem_cascata": [],
+      "faixas": [
+        {
+          "faixa": 1, "nome": "20 acertos", "p": 8.79303628551999e-08, "um_em": 11372635.885135135,
+          "grupo": "dezenas", "principal": true, "tipo": "rateio", "fracao": 0.45, "r": 1.177341432002413,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 2, "nome": "19 acertos", "p": 2.8364633179096745e-06, "um_em": 352551.7124391892,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.16, "r": 4.611794914789631,
+          "herda_mesma_faixa": true, "cascata": false
+        },
+        {
+          "faixa": 3, "nome": "18 acertos", "p": 4.126167732771729e-05, "um_em": 24235.56347594856,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.1, "r": 3.0190419456817605,
+          "herda_mesma_faixa": true, "cascata": false
+        },
+        {
+          "faixa": 4, "nome": "17 acertos", "p": 0.0003601019112237146, "um_em": 2776.9916482857725,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.07, "r": 18.890212516860167,
+          "herda_mesma_faixa": true, "cascata": false
+        },
+        {
+          "faixa": 5, "nome": "16 acertos", "p": 0.002115598728439323, "um_em": 472.6794294954506,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.07, "r": 23.197344198372736,
+          "herda_mesma_faixa": true, "cascata": false
+        },
+        {
+          "faixa": 6, "nome": "15 acertos", "p": 0.008897603795036239, "um_em": 112.38981000231503,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.07, "r": 64.10277266833054,
+          "herda_mesma_faixa": true, "cascata": false
+        },
+        {
+          "faixa": 7, "nome": "0 acertos", "p": 8.79303628551999e-08, "um_em": 11372635.885135135,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.08, "r": 1.177341432002413,
+          "herda_mesma_faixa": false, "cascata": false
+        }
+      ],
+      "dispersao_r": {
+        "20 acertos": 1.177341432002413, "19 acertos": 4.611794914789631, "18 acertos": 3.0190419456817605,
+        "17 acertos": 18.890212516860167, "16 acertos": 23.197344198372736, "15 acertos": 64.10277266833054,
+        "0 acertos": 1.177341432002413
+      },
+      "vendas": {
+        "intercepto": 6.442845141981653,
+        "efeito_dia_semana": {
+          "0": 0.0, "1": 0.09867012321240504, "2": 0.0005394839862986878, "3": -0.1657072912892008,
+          "4": 0.09323104799394206, "5": -0.05813378323206784
+        },
+        "efeito_dia_ausente": -0.005233403221437143,
+        "b_log_estimativa": 0.20124068670111162,
+        "b_log_N_anterior": 0.3377265402420292,
+        "b_reserva": 0.0,
+        "sigma_log": 0.09408062875004146,
+        "preco_regime": 3.0,
+        "erro_fora_amostra_log": 0.0886813700243396,
+        "n_treino": 938
+      }
+    },
+    "timemania": {
+      "nome": "Timemania",
+      "preco": 3.5,
+      "frac_premio": 0.5,
+      "frac_rgp": 0.0,
+      "ordem_cascata": [],
+      "faixas": [
+        {
+          "faixa": 1, "nome": "7 acertos", "p": 3.7774854563662024e-08, "um_em": 26472636.666666668,
+          "grupo": "dezenas", "principal": true, "tipo": "rateio", "fracao": 0.5, "r": 1.177341432002413,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 2, "nome": "6 acertos", "p": 4.627419684048598e-06, "um_em": 216103.15646258503,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.2, "r": 12.48377860847973,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 3, "nome": "5 acertos", "p": 0.00019157517491961195, "um_em": 5219.883006342634,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.2, "r": 27.00866445378795,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 4, "nome": "4 acertos", "p": 0.0036186421929260038, "um_em": 276.34674739461,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 10.5
+        },
+        {
+          "faixa": 5, "nome": "3 acertos", "p": 0.03463557527514889, "um_em": 28.872048235257765,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 3.5
+        },
+        {
+          "faixa": 6, "nome": "Time do Coração", "p": 0.0125, "um_em": 80.0, "grupo": "time",
+          "principal": false, "tipo": "fixo", "valor": 8.5
+        }
+      ],
+      "dispersao_r": {
+        "7 acertos": 1.177341432002413, "6 acertos": 12.48377860847973, "5 acertos": 27.00866445378795
+      },
+      "vendas": {
+        "intercepto": 1.5741030676424375,
+        "efeito_dia_semana": {
+          "0": 0.0, "1": 0.5764145469631107, "2": 0.026362022610357326, "3": 0.5948991730066201,
+          "4": 0.5606272265924305, "5": 0.6450244044322094, "6": 0.599158551863801
+        },
+        "efeito_dia_ausente": 0.42892656078121844,
+        "b_log_estimativa": 0.21442700446198232,
+        "b_log_N_anterior": 0.5838836721529959,
+        "b_reserva": 0.0035198087848486276,
+        "sigma_log": 0.13970787647143515,
+        "preco_regime": 3.5,
+        "erro_fora_amostra_log": 0.11920388713064851,
+        "n_treino": 1023
+      }
+    },
+    "duplasena": {
+      "nome": "Dupla Sena",
+      "preco": 3.0,
+      "frac_premio": 0.4379,
+      "frac_rgp": 0.0,
+      "ordem_cascata": [],
+      "faixas": [
+        {
+          "faixa": 1, "nome": "1º sorteio 6 acertos", "p": 6.292988980976294e-08, "um_em": 15890700.0,
+          "grupo": "sorteio1", "principal": true, "tipo": "rateio", "fracao": 0.3, "r": 1.177341432002413,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 2, "nome": "1º sorteio 5 acertos", "p": 1.6613490909777416e-05, "um_em": 60192.045454545456,
+          "grupo": "sorteio1", "principal": false, "tipo": "rateio", "fracao": 0.1, "r": 8.502254266604606,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 3, "nome": "1º sorteio 4 acertos", "p": 0.0008929751364005361, "um_em": 1119.8520084566596,
+          "grupo": "sorteio1", "principal": false, "tipo": "rateio", "fracao": 0.08, "r": 32.06205766230003,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 4, "nome": "1º sorteio 3 acertos", "p": 0.01666886921281001, "um_em": 59.99207188160676,
+          "grupo": "sorteio1", "principal": false, "tipo": "rateio", "fracao": 0.04, "r": 90.35436522040223,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 5, "nome": "2º sorteio 6 acertos", "p": 6.292988980976294e-08, "um_em": 15890700.0,
+          "grupo": "sorteio2", "principal": false, "tipo": "rateio", "fracao": 0.11, "r": 1.177341432002413,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 6, "nome": "2º sorteio 5 acertos", "p": 1.6613490909777416e-05, "um_em": 60192.045454545456,
+          "grupo": "sorteio2", "principal": false, "tipo": "rateio", "fracao": 0.09, "r": 7.173173445492094,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 7, "nome": "2º sorteio 4 acertos", "p": 0.0008929751364005361, "um_em": 1119.8520084566596,
+          "grupo": "sorteio2", "principal": false, "tipo": "rateio", "fracao": 0.08, "r": 31.128533723545996,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 8, "nome": "2º sorteio 3 acertos", "p": 0.01666886921281001, "um_em": 59.99207188160676,
+          "grupo": "sorteio2", "principal": false, "tipo": "rateio", "fracao": 0.04, "r": 86.32658036006983,
+          "herda_mesma_faixa": false, "cascata": false
+        }
+      ],
+      "dispersao_r": {
+        "1º sorteio 6 acertos": 1.177341432002413, "1º sorteio 5 acertos": 8.502254266604606,
+        "1º sorteio 4 acertos": 32.06205766230003, "1º sorteio 3 acertos": 90.35436522040223,
+        "2º sorteio 6 acertos": 1.177341432002413, "2º sorteio 5 acertos": 7.173173445492094,
+        "2º sorteio 4 acertos": 31.128533723545996, "2º sorteio 3 acertos": 86.32658036006983
+      },
+      "vendas": {
+        "intercepto": 3.41184350965622,
+        "efeito_dia_semana": {
+          "0": 0.0, "1": 0.01714457258274076, "2": -0.05100335028966469, "3": 0.022887916490227967,
+          "4": 0.03696872801779344, "5": 0.05884869885523607
+        },
+        "efeito_dia_ausente": 0.01414109427605559,
+        "b_log_estimativa": 0.23088520574861832,
+        "b_log_N_anterior": 0.49619528460493456,
+        "b_reserva": 0.0,
+        "sigma_log": 0.14429979496014989,
+        "preco_regime": 3.0,
+        "erro_fora_amostra_log": 0.12394810322362705,
+        "n_treino": 976
+      }
+    },
+    "diadesorte": {
+      "nome": "Dia de Sorte",
+      "preco": 2.5,
+      "frac_premio": 0.4379,
+      "frac_rgp": 0.0,
+      "ordem_cascata": [],
+      "faixas": [
+        {
+          "faixa": 1, "nome": "7 acertos", "p": 3.802895905231834e-07, "um_em": 2629575.0, "grupo": "dezenas",
+          "principal": true, "tipo": "rateio", "fracao": 0.7, "r": 1.177341432002413,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 2, "nome": "6 acertos", "p": 6.388865120789481e-05, "um_em": 15652.232142857143,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.3, "r": 10.026029826812664,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 3, "nome": "5 acertos", "p": 0.0022041584666723712, "um_em": 453.6878881987577,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 25.0
+        },
+        {
+          "faixa": 4, "nome": "4 acertos", "p": 0.02693971459266231, "um_em": 37.11991812535291,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 5.0
+        },
+        {
+          "faixa": 5, "nome": "Mês de Sorte", "p": 0.08333333333333333, "um_em": 12.0, "grupo": "mes",
+          "principal": false, "tipo": "fixo", "valor": 2.5
+        }
+      ],
+      "dispersao_r": {"7 acertos": 1.177341432002413, "6 acertos": 10.026029826812664},
+      "vendas": {
+        "intercepto": 4.678240301752329,
+        "efeito_dia_semana": {
+          "0": 0.0, "1": 0.2942527382691608, "2": 0.0006305875788728411, "3": 0.2765972208978221,
+          "4": 0.1402272354814064, "5": 0.32256683828722826, "6": 0.22313067366096725
+        },
+        "efeito_dia_ausente": 0.17962932773935109,
+        "b_log_estimativa": 0.26500644656913086,
+        "b_log_N_anterior": 0.3715908791049792,
+        "b_reserva": 0.0,
+        "sigma_log": 0.12976151315002377,
+        "preco_regime": 2.5,
+        "erro_fora_amostra_log": 0.1107794966890236,
+        "n_treino": 1073
+      }
+    },
+    "supersete": {
+      "nome": "Super Sete",
+      "preco": 3.0,
+      "frac_premio": 0.4379,
+      "frac_rgp": 0.0,
+      "ordem_cascata": [],
+      "faixas": [
+        {
+          "faixa": 1, "nome": "7 acertos", "p": 1.0000000000000004e-07, "um_em": 9999999.999999996,
+          "grupo": "dezenas", "principal": true, "tipo": "rateio", "fracao": 0.55, "r": 1.177341432002413,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 2, "nome": "6 acertos", "p": 6.300000000000002e-06, "um_em": 158730.15873015867,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.15, "r": 4.001309556314746,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 3, "nome": "5 acertos", "p": 0.00017010000000000007, "um_em": 5878.894767783654,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.15, "r": 20.649595031796476,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 4, "nome": "4 acertos", "p": 0.002551500000000001, "um_em": 391.92631785224364,
+          "grupo": "dezenas", "principal": false, "tipo": "rateio", "fracao": 0.15, "r": 68.5324019509688,
+          "herda_mesma_faixa": false, "cascata": false
+        },
+        {
+          "faixa": 5, "nome": "3 acertos", "p": 0.022963500000000008, "um_em": 43.54736865024929,
+          "grupo": "dezenas", "principal": false, "tipo": "fixo", "valor": 6.0
+        }
+      ],
+      "dispersao_r": {
+        "7 acertos": 1.177341432002413, "6 acertos": 4.001309556314746, "5 acertos": 20.649595031796476,
+        "4 acertos": 68.5324019509688
+      },
+      "vendas": {
+        "intercepto": 1.5867030736739436,
+        "efeito_dia_semana": {
+          "0": 0.0, "1": -0.1187141211254779, "2": -0.08312546055348827, "3": -0.08673458329726165,
+          "4": 0.005401537778532754, "5": -0.016940474028492823
+        },
+        "efeito_dia_ausente": -0.05001885020436464,
+        "b_log_estimativa": 0.12471609573124509,
+        "b_log_N_anterior": 0.7300569267694017,
+        "b_reserva": 0.0,
+        "sigma_log": 0.14078947236704692,
+        "preco_regime": 3.0,
+        "erro_fora_amostra_log": 0.14329633797693603,
+        "n_treino": 888
+      }
+    }
+  }
+}

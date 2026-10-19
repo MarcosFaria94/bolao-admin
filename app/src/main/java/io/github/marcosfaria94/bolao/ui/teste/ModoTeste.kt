@@ -5,6 +5,7 @@ import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.DadosDeExemplo
+import io.github.marcosfaria94.bolao.domain.Autenticacao
 import io.github.marcosfaria94.bolao.data.Pessoa
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Modalidade
@@ -59,7 +60,13 @@ object ModoTeste {
                         semente = agora,
                     )
                 }
-                app.repo.entrarNoTeste(exemplo) { pasta -> ImagensDeExemplo.desenharTodos(pasta, exemplo) }
+                app.repo.entrarNoTeste(exemplo) { pasta, e ->
+                    ImagensDeExemplo.desenharTodos(app, pasta, e)
+                    // Com os anexos desenhados, as impressões digitais entram e a autenticação é refeita.
+                    DadosDeExemplo.comImpressoesDigitais(e) { a ->
+                        File(pasta, a.nome).takeIf { it.isFile }?.let { Autenticacao.sha256(it.readBytes()) }
+                    }
+                }
                 Vigia.esquecerAvisosDeTeste(app)
                 // Confere o último jogo na Caixa já agora: o aviso de "jogo sorteado" chega em instantes.
                 Vigia.rodarAgora(app)
@@ -123,24 +130,28 @@ object ModoTeste {
     /** Comprovante fictício para uma aposta feita no modo de teste. */
     suspend fun comprovante(context: Context, a: Aposta): Arquivo = withContext(Dispatchers.IO) {
         val nome = "${DadosDeExemplo.PREFIXO}comprovante-${UUID.randomUUID().toString().take(8)}.png"
-        ImagensDeExemplo.comprovanteAposta(File(context.bolao.repo.pastaArquivos, nome), a)
+        val arquivo = File(context.bolao.repo.pastaArquivos, nome)
+        ImagensDeExemplo.comprovanteAposta(arquivo, a)
         Arquivo(
             nome = nome,
             nomeOriginal = "comprovante-exemplo-${a.modalidade.sigla}.png",
             mime = "image/png",
             guardadoEm = System.currentTimeMillis(),
+            sha256 = Autenticacao.sha256(arquivo.readBytes()),
         )
     }
 
-    /** Comprovante fictício de um Pix do rateio, no modo de teste. */
-    suspend fun pix(context: Context, p: Pessoa, valor: Long, rateio: Int): Arquivo = withContext(Dispatchers.IO) {
+    /** Comprovante fictício de um Pix (rateio ou divisão final), no modo de teste. */
+    suspend fun pix(context: Context, p: Pessoa, valor: Long): Arquivo = withContext(Dispatchers.IO) {
         val nome = "${DadosDeExemplo.PREFIXO}pix-${UUID.randomUUID().toString().take(8)}.png"
-        ImagensDeExemplo.pix(File(context.bolao.repo.pastaArquivos, nome), p.apelido, p.chavePix, valor, rateio, LocalDate.now())
+        val arquivo = File(context.bolao.repo.pastaArquivos, nome)
+        ImagensDeExemplo.pix(arquivo, p.apelido, p.chavePix, valor, LocalDate.now())
         Arquivo(
             nome = nome,
             nomeOriginal = "pix-exemplo-${p.apelido}.png",
             mime = "image/png",
             guardadoEm = System.currentTimeMillis(),
+            sha256 = Autenticacao.sha256(arquivo.readBytes()),
         )
     }
 }

@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.data
 
+import io.github.marcosfaria94.bolao.domain.FaixaPremio
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -23,10 +24,12 @@ typealias Data = @Serializable(with = DataSerializer::class) LocalDate
 data class Pessoa(
     val id: String,
     val nome: String,
-    /** Nome curto usado nas mensagens, ex.: "Marcos". */
+    /** Nome curto usado na tela, ex.: "Marcos". */
     val apelido: String,
     val chavePix: String,
     val administrador: Boolean = false,
+    /** CPF só com os dígitos do meio, como no termo: "***.099.906-**". Vazio = não informado. */
+    val cpf: String = "",
 )
 
 @Serializable
@@ -48,12 +51,17 @@ data class Arquivo(
     val nomeOriginal: String,
     val mime: String,
     val guardadoEm: Long,
+    /** SHA-256 do conteúdo (entra na autenticação do comprovante). */
+    val sha256: String? = null,
 )
 
 @Serializable
-enum class TipoLancamento { SALDO_INICIAL, APORTE, APOSTA, PREMIO, RATEIO, RENDIMENTO }
+enum class TipoLancamento { SALDO_INICIAL, APORTE, APOSTA, PREMIO, RATEIO, RENDIMENTO, COMPLEMENTO, DIVISAO_FINAL }
 
-/** Toda entrada e saída de dinheiro. O saldo é a soma de todos os lançamentos. */
+/**
+ * Toda entrada e saída de dinheiro. O saldo é a soma de todos os lançamentos.
+ * Lançamentos nunca são alterados nem apagados (registro só cresce).
+ */
 @Serializable
 data class Lancamento(
     val id: String,
@@ -65,13 +73,14 @@ data class Lancamento(
     val pessoaId: String? = null,
     val apostaId: String? = null,
     val rateioNumero: Int? = null,
+    /** Aporte adicional (fora do aporte mensal do dia 1º). */
     val eventual: Boolean = false,
     val obs: String? = null,
 )
 
 @Serializable
 data class Apuracao(
-    /** Texto da "Contagem de acertos", ex.: "12/15". */
+    /** Texto dos acertos, ex.: "12/15". */
     val acertos: String,
     val premio: Long,
     val dezenasSorteadas: List<Int> = emptyList(),
@@ -81,6 +90,12 @@ data class Apuracao(
     val resultadosLoteca: List<String> = emptyList(),
     val premiosFederal: List<String> = emptyList(),
     val faixa: String? = null,
+    /** Números das faixas em que a aposta ganhou (para destacar no rateio oficial). */
+    val faixasPremiadas: List<Int> = emptyList(),
+    /** Rateio oficial do concurso (faixa, ganhadores e prêmio), como a Caixa divulga. */
+    val rateioOficial: List<FaixaPremio> = emptyList(),
+    /** O prêmio principal acumulou? null = a Caixa não informou. */
+    val acumulou: Boolean? = null,
     val conferidaEm: Long,
     val confirmadaEm: Long? = null,
 )
@@ -88,7 +103,7 @@ data class Apuracao(
 @Serializable
 data class Aposta(
     val id: String,
-    /** Número do jogo no bolão (#132). */
+    /** Número da aposta no mês (Nº1 = primeira aposta do mês, como no termo). 0 enquanto rascunho. */
     val numero: Int,
     val modalidade: Modalidade,
     val concurso: Int,
@@ -109,7 +124,7 @@ data class Aposta(
     val bilheteFederal: String? = null,
     val fracoesFederal: Int? = null,
     val comprovante: Arquivo? = null,
-    /** Mensagem enviada e valor descontado do saldo. */
+    /** Registrada no bolão (valor descontado do saldo). Depois disso nada muda, só a apuração entra. */
     val registrada: Boolean = false,
     val criadaEm: Long,
     val apuracao: Apuracao? = null,
@@ -136,25 +151,91 @@ data class Extrato(
 )
 
 @Serializable
+enum class TipoComprovante { APORTE, APOSTA, APURACAO, RATEIO, EXTRATO, EXTINCAO }
+
+/**
+ * Comprovante único de cada registro: o texto do termo vira uma imagem (estilo comprovante
+ * térmico) e os anexos originais vão junto. Nunca é alterado depois de criado.
+ */
+@Serializable
+data class Comprovante(
+    val id: String,
+    val tipo: TipoComprovante,
+    /** O que vai escrito no WhatsApp: só o título, ex.: "APURAÇÃO Nº 1 - 04/06/26". */
+    val titulo: String,
+    /** Bloco do termo (o conteúdo do comprovante), linha a linha. */
+    val texto: String,
+    /** Data da operação (aporte, aposta, apuração...). */
+    val data: Data,
+    val criadoEm: Long,
+    /** Imagem gerada pelo app (PNG). */
+    val imagem: Arquivo,
+    /** Anexos originais (PDF da Caixa, Pix, imagem dos acertos), sem nenhuma mudança. */
+    val anexos: List<Arquivo> = emptyList(),
+    /** Código de autenticação (SHA-256 encadeado com o comprovante anterior). */
+    val autenticacao: String,
+    /** Aporte mensal: só é registrado, sem mensagem para o grupo. */
+    val envioDispensado: Boolean = false,
+    val apostaId: String? = null,
+    val rateioNumero: Int? = null,
+    /** Extrato: "2026-10". */
+    val mes: String? = null,
+)
+
+/** Cada vez que um comprovante foi aberto no WhatsApp para enviar ao grupo. */
+@Serializable
+data class Envio(val comprovanteId: String, val em: Long)
+
+/** Extinção do bolão em andamento (tela que não deixa sair até terminar). */
+@Serializable
+data class Extincao(
+    val iniciadaEm: Long,
+    /** Comprovantes da divisão final (Pix de cada integrante), na ordem dos integrantes. */
+    val comprovantes: Map<String, Arquivo> = emptyMap(),
+    /** Divisão final registrada (lançamentos e comprovante). */
+    val registradaEm: Long? = null,
+    /** PDF da auditoria completa. */
+    val auditoria: Arquivo? = null,
+    /** O PDF foi aberto no WhatsApp: ao voltar, o app é limpo. */
+    val auditoriaEnviadaEm: Long? = null,
+)
+
+@Serializable
 data class Estado(
-    val versao: Int = 1,
+    val versao: Int = 2,
     val cadastroConcluido: Boolean = false,
+    /** Dia do cadastro inicial (o aporte de um mês já começado não é cobrado). */
+    val cadastradoEm: Data? = null,
     val nomeGrupo: String = "",
+    /** ID do grupo no WhatsApp (só aparece no termo). */
+    val grupoWhatsapp: String = "",
     val pessoas: List<Pessoa> = emptyList(),
     val config: Config = Config(),
-    /** Próximo número de jogo (#) e de rateio (Nº). */
-    val proximoJogo: Int = 1,
+    /** Próximo número de rateio (controle interno). */
     val proximoRateio: Int = 1,
     val lancamentos: List<Lancamento> = emptyList(),
     val apostas: List<Aposta> = emptyList(),
     val rateios: List<Rateio> = emptyList(),
     val extratos: List<Extrato> = emptyList(),
+    val comprovantes: List<Comprovante> = emptyList(),
+    val envios: List<Envio> = emptyList(),
+    val extincao: Extincao? = null,
     /** PDF do termo assinado. */
     val termo: Arquivo? = null,
     /** Dados fictícios do modo de teste (nunca entram nos dados reais). */
     val exemplo: Boolean = false,
+    /**
+     * Registros feitos até este instante vieram de versões sem comprovante (até a 0.2.6):
+     * o verificador de integridade não cobra comprovante deles.
+     */
+    val legadoAte: Long? = null,
+    /** Primeiro mês com aporte mensal ("2026-11"). Vazio = regra do dia do cadastro. */
+    val inicioAportes: String? = null,
 ) {
     val saldo: Long get() = lancamentos.sumOf { it.valor }
     val administrador: Pessoa? get() = pessoas.firstOrNull { it.administrador } ?: pessoas.firstOrNull()
     fun pessoa(id: String?): Pessoa? = pessoas.firstOrNull { it.id == id }
+    fun comprovante(id: String?): Comprovante? = comprovantes.firstOrNull { it.id == id }
+    fun enviado(c: Comprovante): Boolean = envios.any { it.comprovanteId == c.id }
+    val nomeExibicao: String get() = nomeGrupo.ifBlank { "Bolão dos Amigos" }
 }

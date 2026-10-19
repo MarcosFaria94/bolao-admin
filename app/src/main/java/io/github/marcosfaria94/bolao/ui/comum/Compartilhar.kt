@@ -8,7 +8,10 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import io.github.marcosfaria94.bolao.bolao
-import io.github.marcosfaria94.bolao.domain.Mensagens
+import io.github.marcosfaria94.bolao.data.Comprovante
+import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.data.Operacoes
+import io.github.marcosfaria94.bolao.imagem.Recibos
 import java.io.File
 
 /** Anexo para mandar junto com a mensagem. */
@@ -31,13 +34,15 @@ object Compartilhar {
     fun uri(context: Context, arquivo: File): Uri =
         FileProvider.getUriForFile(context, "${context.packageName}.arquivos", arquivo)
 
+    private fun comAvisoDeTeste(context: Context, texto: String): String =
+        if (context.bolao.repo.emTeste) "$AVISO_TESTE\n$texto" else texto
+
     /**
-     * Abre o WhatsApp com a mensagem (em bloco monoespaçado) e os anexos prontos.
-     * O Administrador escolhe o grupo e toca em Enviar.
+     * Abre o WhatsApp com o texto e os anexos prontos (o Administrador escolhe o grupo e envia).
+     * Devolve false se não deu para abrir.
      */
-    fun whatsapp(context: Context, texto: String, anexos: List<Anexo> = emptyList(), monoespacado: Boolean = true) {
-        val bloco = if (monoespacado) Mensagens.monoespacado(texto) else texto
-        val mensagem = if (context.bolao.repo.emTeste) "$AVISO_TESTE\n$bloco" else bloco
+    fun whatsapp(context: Context, texto: String, anexos: List<Anexo> = emptyList()): Boolean {
+        val mensagem = comAvisoDeTeste(context, texto)
         val uris = anexos.map { uri(context, it.arquivo) }
         val intent = when (uris.size) {
             0 -> Intent(Intent.ACTION_SEND).setType("text/plain")
@@ -52,25 +57,48 @@ object Compartilhar {
             uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
             intent.clipData = clip
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // Se o WhatsApp não puser o texto junto dos anexos, é só colar.
+            copiar(context, "Mensagem do bolão", mensagem)
         }
-        // Cópia de segurança: se o WhatsApp não puser o texto junto do anexo, é só colar.
-        if (uris.isNotEmpty()) copiar(context, "Mensagem do bolão", mensagem)
         val pacote = PACOTES_WHATSAPP.firstOrNull { instalado(context, it) }
-        try {
+        return try {
             if (pacote != null) {
                 context.startActivity(intent.setPackage(pacote).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } else {
-                context.startActivity(Intent.createChooser(intent, "Enviar mensagem").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                context.startActivity(Intent.createChooser(intent, "Enviar").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
+            true
         } catch (e: ActivityNotFoundException) {
             Toast.makeText(context, "Não encontrei o WhatsApp neste celular.", Toast.LENGTH_LONG).show()
+            false
         }
     }
 
-    /** Abre um anexo guardado (comprovante, termo) no visualizador do celular. */
-    fun abrir(context: Context, arquivo: File, mime: String) {
+    /** Anexos que vão ao grupo: a imagem do comprovante e os anexos originais, sem mudança. */
+    suspend fun anexosDo(context: Context, e: Estado, c: Comprovante): List<Anexo> {
+        val repo = context.bolao.repo
+        val recibo = Recibos.arquivo(context, e, c)
+        return listOf(Anexo(recibo, "image/png")) + c.anexos.map { Anexo(repo.arquivo(it), it.mime) }
+    }
+
+    /**
+     * Envia um comprovante ao grupo: no texto só o título (como no termo); a imagem do
+     * comprovante e os anexos vão juntos. Fica registrado que foi aberto no WhatsApp.
+     */
+    suspend fun comprovante(context: Context, e: Estado, c: Comprovante): Boolean {
+        val ok = whatsapp(context, c.titulo, anexosDo(context, e, c))
+        if (ok) {
+            runCatching { context.bolao.repo.atualizar { Operacoes.registrarEnvio(it, c.id, System.currentTimeMillis()) } }
+        }
+        return ok
+    }
+
+    /** Abre um anexo guardado (comprovante, termo, PDF) no visualizador do celular. */
+    fun abrir(context: Context, arquivo: File, mime: String) = abrir(context, uri(context, arquivo), mime)
+
+    fun abrir(context: Context, uri: Uri, mime: String) {
         val intent = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(uri(context, arquivo), mime)
+            .setDataAndType(uri, mime)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             context.startActivity(intent)
@@ -79,8 +107,19 @@ object Compartilhar {
         }
     }
 
-    /** Pasta para arquivos gerados na hora (ex.: imagem da apuração). */
-    fun pastaTemporaria(context: Context): File = File(context.cacheDir, "compartilhar").apply { mkdirs() }
+    /** Menu do sistema para enviar um arquivo (Drive, e-mail, WhatsApp...). */
+    fun enviarArquivo(context: Context, uri: Uri, mime: String, titulo: String) {
+        val enviar = Intent(Intent.ACTION_SEND)
+            .setType(mime)
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try {
+            context.startActivity(Intent.createChooser(enviar, titulo).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(context, "Nenhum app para enviar este arquivo.", Toast.LENGTH_LONG).show()
+        }
+    }
 
-    fun textoParaCopiar(texto: String): String = Mensagens.monoespacado(texto)
+    /** Pasta para arquivos gerados na hora. */
+    fun pastaTemporaria(context: Context): File = File(context.cacheDir, "compartilhar").apply { mkdirs() }
 }

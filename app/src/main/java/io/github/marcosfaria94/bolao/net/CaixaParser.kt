@@ -6,6 +6,7 @@ import io.github.marcosfaria94.bolao.domain.FaixaPremio
 import io.github.marcosfaria94.bolao.domain.Formato
 import io.github.marcosfaria94.bolao.domain.JogoLoteca
 import io.github.marcosfaria94.bolao.domain.Modalidade
+import io.github.marcosfaria94.bolao.domain.indices.RegistroK
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -76,6 +77,7 @@ object CaixaParser {
             premioEstimadoProximo = centavos(o.dbl("valorEstimadoProximoConcurso"))?.takeIf { it > 0 },
             numeroConcursoEspecial = o.int("numeroConcursoFinal_0_5")?.takeIf { it > 0 },
             acumuladoEspecial = centavos(o.dbl("valorAcumuladoConcursoEspecial"))?.takeIf { it > 0 },
+            registro = runCatching { RegistroK.deJson(o) }.getOrNull(),
         )
     }
 

@@ -1,6 +1,7 @@
 package io.github.marcosfaria94.bolao.ui.teste
 
 import android.graphics.Bitmap
+import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -8,6 +9,8 @@ import android.graphics.Typeface
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.DadosDeExemplo
 import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.imagem.ImagemConferencia
+import io.github.marcosfaria94.bolao.data.TipoComprovante
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Extra
@@ -36,7 +39,7 @@ object ImagensDeExemplo {
     }
 
     /** Desenha todos os anexos fictícios que o estado de exemplo usa. */
-    fun desenharTodos(pasta: File, e: Estado) {
+    fun desenharTodos(context: Context, pasta: File, e: Estado) {
         e.apostas.forEach { a ->
             val c = a.comprovante ?: return@forEach
             if (c.nome.startsWith(DadosDeExemplo.PREFIXO)) comprovanteAposta(File(pasta, c.nome), a)
@@ -45,8 +48,16 @@ object ImagensDeExemplo {
             r.comprovantes.forEachIndexed { i, arq ->
                 if (arq.nome.startsWith(DadosDeExemplo.PREFIXO)) {
                     val p = e.pessoas.getOrNull(i)
-                    pix(File(pasta, arq.nome), p?.apelido ?: "Integrante ${i + 1}", p?.chavePix.orEmpty(), r.cota, r.numero, r.data)
+                    pix(File(pasta, arq.nome), p?.apelido ?: "Integrante ${i + 1}", p?.chavePix.orEmpty(), r.cota, r.data)
                 }
+            }
+        }
+        // Imagens dos acertos das apurações (as mesmas que o app gera ao apurar).
+        e.comprovantes.filter { it.tipo == TipoComprovante.APURACAO }.forEach { c ->
+            val a = e.apostas.firstOrNull { it.id == c.apostaId } ?: return@forEach
+            val ap = a.apuracao ?: return@forEach
+            c.anexos.filter { it.nome.startsWith(DadosDeExemplo.PREFIXO) }.forEach { arq ->
+                ImagemConferencia.salvar(context, a, ap, File(pasta, arq.nome))
             }
         }
     }
@@ -63,12 +74,12 @@ object ImagensDeExemplo {
         desenhar(destino, m.cor.toInt(), "${m.nome} ${a.concurso}", "Comprovante de aposta", linhas)
     }
 
-    fun pix(destino: File, apelido: String, chave: String, valor: Long, rateio: Int, data: LocalDate) {
+    fun pix(destino: File, apelido: String, chave: String, valor: Long, data: LocalDate) {
         desenhar(
             destino,
             VERDE_PIX,
             "Pix de ${Dinheiro.rs(valor)}",
-            "Comprovante de Pix · Rateio Nº$rateio",
+            "Comprovante de Pix",
             listOf(
                 "Para: $apelido",
                 "Chave: ${chave.ifBlank { "-" }}",
@@ -120,7 +131,7 @@ object ImagensDeExemplo {
             y += 52f
         }
 
-        c.drawText("Criado pelo modo de teste do Bolão Admin", MARGEM, ALTURA - 56f, pincel(28f, CINZA))
+        c.drawText("Criado pelo modo de teste do Bolão dos Amigos", MARGEM, ALTURA - 56f, pincel(28f, CINZA))
         destino.parentFile?.mkdirs()
         destino.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bmp.recycle()

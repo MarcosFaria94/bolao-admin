@@ -1,10 +1,7 @@
 package io.github.marcosfaria94.bolao.data
 
-import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
-import android.os.Environment
-import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
@@ -42,7 +39,7 @@ class Backup(private val context: Context, private val repo: Repositorio) {
             }
             zip.putNextEntry(ZipEntry("LEIA-ME.txt"))
             zip.write(
-                ("Backup do app Bolão Admin.\n" +
+                ("Backup do app Bolão dos Amigos.\n" +
                     (if (r.teste) "Atenção: backup do MODO DE TESTE (dados de exemplo).\n" else "") +
                     "Para restaurar: abra o app > Ajustes > Restaurar backup e escolha este arquivo.\n")
                     .encodeToByteArray(),
@@ -52,31 +49,12 @@ class Backup(private val context: Context, private val repo: Repositorio) {
     }
 
     /** Grava o backup em Downloads/Bolao e devolve o endereço do arquivo. */
-    suspend fun salvarEmDownloads(): Uri = withContext(Dispatchers.IO) {
+    suspend fun salvarEmDownloads(): Uri {
         val agora = LocalDateTime.now()
         val nome = (if (repo.emTeste) "bolao-teste-backup-" else "bolao-backup-") + "%04d-%02d-%02d-%02d%02d.zip".format(
             agora.year, agora.monthValue, agora.dayOfMonth, agora.hour, agora.minute,
         )
-        val valores = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, nome)
-            put(MediaStore.MediaColumns.MIME_TYPE, "application/zip")
-            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Bolao")
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-        }
-        val resolver = context.contentResolver
-        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, valores)
-            ?: error("Não foi possível criar o arquivo em Downloads.")
-        try {
-            val saida = resolver.openOutputStream(uri) ?: error("Não foi possível gravar em Downloads.")
-            saida.use { gerar(it) }
-            valores.clear()
-            valores.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            resolver.update(uri, valores, null, null)
-        } catch (t: Throwable) {
-            runCatching { resolver.delete(uri, null, null) }
-            throw t
-        }
-        uri
+        return Downloads.salvar(context, nome, "application/zip") { gerar(it) }
     }
 
     data class Restaurado(val estado: Estado, val anexos: Int)
@@ -93,7 +71,7 @@ class Backup(private val context: Context, private val repo: Repositorio) {
                     val nome = item.name
                     if (item.isDirectory) continue
                     if (nome == ESTADO) {
-                        estado = repo.json.decodeFromString(Estado.serializer(), zip.readBytes().decodeToString())
+                        estado = Migracao.migrar(repo.json.decodeFromString(Estado.serializer(), zip.readBytes().decodeToString()), java.time.LocalDate.now())
                     } else if (nome.startsWith(PASTA)) {
                         val simples = nome.removePrefix(PASTA)
                         if (simples.isBlank() || simples.contains('/') || simples.contains('\\') || simples.contains("..")) continue

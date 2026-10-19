@@ -84,8 +84,8 @@ fun RoteiroDeTeste() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Mês de exemplo pronto", style = MaterialTheme.typography.titleSmall)
             Text(
-                "Apure o jogo em \"Jogos sorteados\", faça uma aposta nova, um aporte, o rateio e o extrato. " +
-                    "As mensagens abrem o WhatsApp com a linha TESTE no começo: mande para você mesmo.",
+                "Apure o último jogo (aba Apostas, com o número vermelho), faça uma aposta nova, um aporte, o rateio, " +
+                    "o extrato e a auditoria. Os comprovantes abrem o WhatsApp com a linha TESTE no começo: mande para você mesmo.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }

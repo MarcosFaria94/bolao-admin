@@ -71,8 +71,8 @@ object Notificador {
         Lembrete(
             "teste-${System.currentTimeMillis()}", Lembrete.Canal.RESULTADOS,
             "Notificações funcionando",
-            "É assim que chegam os avisos de aporte, dia de aposta, sorteios e extrato.",
-            "painel",
+            "É assim que chegam os avisos de aporte, dia de aposta, resultados para apurar e extrato.",
+            "financeiro",
         ),
     )
 }

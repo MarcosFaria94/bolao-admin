@@ -76,4 +76,27 @@ object Dinheiro {
             else -> "${decimos / 10},${decimos % 10}$sufixo"
         }
     }
+
+    /**
+     * Prêmio por extenso, para as telas: "R$ 170 Milhões", "R$ 1,7 Milhão", "R$ 450 Mil", "R$ 1,2 Bilhão".
+     * [maiuscula] = false dá "170 milhões" (lista das apostas do mês).
+     */
+    fun porExtenso(centavos: Long, comRs: Boolean = true, maiuscula: Boolean = true): String {
+        val reais = centavos / 100
+        val (unidade, singular, plural) = when {
+            reais >= 1_000_000_000L -> Triple(1_000_000_000L, "Bilhão", "Bilhões")
+            reais >= 1_000_000L -> Triple(1_000_000L, "Milhão", "Milhões")
+            reais >= 1_000L -> Triple(1_000L, "Mil", "Mil")
+            else -> return (if (comRs) "R$ " else "") + formatar(centavos)
+        }
+        val decimos = (reais * 10 + unidade / 2) / unidade
+        val numero = when {
+            decimos >= 1000 -> "${(reais + unidade / 2) / unidade}"
+            decimos % 10 == 0L -> "${decimos / 10}"
+            else -> "${decimos / 10},${decimos % 10}"
+        }
+        val palavra = if (decimos < 20) singular else plural
+        val texto = "$numero ${if (maiuscula) palavra else palavra.lowercase()}"
+        return if (comRs) "R$ $texto" else texto
+    }
 }

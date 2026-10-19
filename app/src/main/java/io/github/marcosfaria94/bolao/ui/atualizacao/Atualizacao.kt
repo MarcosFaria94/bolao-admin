@@ -163,7 +163,7 @@ fun DialogosAtualizacao(vm: AtualizacaoViewModel) {
                 text = {
                     Text(
                         "Só na primeira vez: o Android pede para liberar \"Instalar apps desconhecidos\" " +
-                            "para o Bolão Admin. Toque em Liberar, ative a opção e volte para cá.",
+                            "para o Bolão dos Amigos. Toque em Liberar, ative a opção e volte para cá.",
                     )
                 },
             )

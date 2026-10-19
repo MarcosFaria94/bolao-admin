@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Backup
+import androidx.compose.material.icons.outlined.Badge
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.PictureAsPdf
@@ -51,7 +54,9 @@ import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.net.Atualizador
 import io.github.marcosfaria94.bolao.notificacoes.Notificador
+import io.github.marcosfaria94.bolao.pdf.PdfsDoApp
 import io.github.marcosfaria94.bolao.ui.atualizacao.AtualizacaoViewModel
+import io.github.marcosfaria94.bolao.ui.comum.DialogoArquivoPronto
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
@@ -66,7 +71,7 @@ import java.time.Instant
 import java.time.ZoneId
 
 @Composable
-fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel) {
+fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (String) -> Unit) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
     val backup = remember { ctx.bolao.backup }
@@ -80,6 +85,9 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel) {
     var editandoPreco by remember { mutableStateOf<Modalidade?>(null) }
     var confirmandoRestauracao by remember { mutableStateOf(false) }
     var trabalhando by remember { mutableStateOf(false) }
+    var editandoDadosDoTermo by remember { mutableStateOf(false) }
+    var termoPronto by remember { mutableStateOf<Uri?>(null) }
+    var pedindoExtincao by remember { mutableStateOf(false) }
 
     val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) Notificador.teste(ctx)
@@ -161,15 +169,55 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel) {
         }
 
         item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
-        item { TituloSecao("Termo assinado") }
+        item { TituloSecao("Termo") }
+        item {
+            ListItem(
+                leadingContent = { Icon(Icons.Outlined.Description, contentDescription = null) },
+                headlineContent = { Text("Termo sem assinaturas (PDF)") },
+                supportingContent = { Text("Gerado com os dados do cadastro, para assinar. Vai para Downloads/Bolao e não fica no GitHub.") },
+                trailingContent = {
+                    OutlinedButton(
+                        enabled = !trabalhando,
+                        onClick = {
+                            escopo.launch {
+                                trabalhando = true
+                                try {
+                                    termoPronto = PdfsDoApp.termoEmDownloads(ctx, estado)
+                                } catch (t: Throwable) {
+                                    avisos.showSnackbar("Não foi possível gerar o termo: ${t.message}")
+                                } finally {
+                                    trabalhando = false
+                                }
+                            }
+                        },
+                    ) { Text("Baixar") }
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+        }
+        item {
+            val faltaCpf = estado.pessoas.count { it.cpf.isBlank() }
+            ListItem(
+                leadingContent = { Icon(Icons.Outlined.Badge, contentDescription = null) },
+                headlineContent = { Text("Dados do termo") },
+                supportingContent = {
+                    Text(
+                        "CPF dos integrantes (só os 6 dígitos do meio) e ID do grupo do WhatsApp." +
+                            if (faltaCpf > 0) " Falta o CPF de $faltaCpf integrante(s)." else "",
+                    )
+                },
+                modifier = Modifier.clickable { editandoDadosDoTermo = true },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+        }
         item {
             val termo = estado.termo
             ListItem(
                 leadingContent = { Icon(Icons.Outlined.PictureAsPdf, contentDescription = null) },
-                headlineContent = { Text(termo?.nomeOriginal ?: "Nenhum PDF guardado") },
+                headlineContent = { Text(termo?.nomeOriginal ?: "Termo assinado: nenhum PDF guardado") },
                 supportingContent = {
                     Text(
-                        termo?.let { "Guardado em ${Datas.longa(Instant.ofEpochMilli(it.guardadoEm).atZone(ZoneId.systemDefault()).toLocalDate())}" }
+                        termo?.let { "Termo assinado, guardado em ${Datas.longa(Instant.ofEpochMilli(it.guardadoEm).atZone(ZoneId.systemDefault()).toLocalDate())}" }
                             ?: "Guarde aqui o PDF do termo com as 3 assinaturas.",
                     )
                 },
@@ -178,6 +226,18 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel) {
                         Text(if (termo == null) "Guardar" else "Trocar")
                     }
                 },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+        }
+
+        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+        item { TituloSecao("Integridade") }
+        item {
+            ListItem(
+                leadingContent = { Icon(Icons.Outlined.VerifiedUser, contentDescription = null) },
+                headlineContent = { Text("Verificar integridade") },
+                supportingContent = { Text("Confere a autenticação de todos os comprovantes, os anexos originais e um código de comprovante.") },
+                modifier = Modifier.clickable { abrir("integridade") },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
             )
         }
@@ -301,6 +361,27 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel) {
         item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
         item { TituloSecao("Modo de teste") }
         item { CartaoModoTeste(emTeste = teste, aoPedirSaida = { sairDoTeste = true }) }
+
+        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+        item { TituloSecao("Extinção do Bolão") }
+        item { CartaoExtincao(estado, aoPedir = { pedindoExtincao = true }) }
+    }
+
+    termoPronto?.let { uri ->
+        DialogoArquivoPronto(
+            titulo = "Termo pronto",
+            texto = "O PDF do termo (sem assinaturas) foi salvo em Downloads/Bolao.",
+            uri = uri,
+            aoFechar = { termoPronto = null },
+        )
+    }
+
+    if (editandoDadosDoTermo) {
+        DialogoDadosDoTermo(estado, aoFechar = { editandoDadosDoTermo = false })
+    }
+
+    if (pedindoExtincao) {
+        DialogoExtincao(estado, aoFechar = { pedindoExtincao = false })
     }
 
     if (sairDoTeste) DialogoSairDoTeste(aoFechar = { sairDoTeste = false })

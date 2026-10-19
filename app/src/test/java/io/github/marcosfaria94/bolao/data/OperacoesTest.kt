@@ -6,18 +6,19 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 import java.time.YearMonth
 
-/** Simula o mês de junho do exemplo do termo, do aporte ao extrato. */
+/** Simula o mês de junho do exemplo do termo, do aporte ao extrato, e as regras de registro. */
 class OperacoesTest {
 
     private val junho = YearMonth.of(2026, 6)
     private fun d(dia: Int) = LocalDate.of(2026, 6, dia)
     private var relogio = 1_000L
-    private fun agora() = relogio++.also { relogio += 10 }
+    private fun agora() = relogio.also { relogio += 10 }
 
     private val pessoas = listOf(
         Pessoa("p1", "Fulano de Tal", "Fulano", "chave1", administrador = true),
@@ -27,52 +28,81 @@ class OperacoesTest {
 
     private fun inicial() = Estado(
         cadastroConcluido = true,
+        cadastradoEm = d(1),
         pessoas = pessoas,
-        proximoJogo = 132,
         proximoRateio = 1,
         lancamentos = listOf(
-            Lancamento("ini", LocalDate.of(2026, 5, 31), 0, TipoLancamento.SALDO_INICIAL, 1000),
+            Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 1000),
         ),
     )
 
-    private fun aposta(e: Estado, dia: Int, m: Modalidade, valor: Long, sorteio: Int = dia + 1): Pair<Estado, Aposta> {
+    private fun anexo(nome: String) = Arquivo(nome, nome, "application/pdf", 0, sha256 = "AB")
+
+    private fun aposta(e: Estado, dia: Int, m: Modalidade, valor: Long, sorteio: Int = dia + 1, premio: Long? = null): Pair<Estado, Aposta> {
         val a = Aposta(
             id = novoId(), numero = 0, modalidade = m, concurso = 3000 + dia, dataAposta = d(dia),
-            dataSorteio = d(sorteio), valor = valor, criadaEm = agora(),
+            dataSorteio = d(sorteio), premioEstimado = premio, valor = valor, criadaEm = agora(), comprovante = anexo("caixa-$dia.pdf"),
         )
         val comRascunho = Operacoes.salvarRascunho(e, a)
-        val registrado = Operacoes.registrarAposta(comRascunho, a.id, agora())
+        val registrado = Operacoes.registrarAposta(comRascunho, a.id, d(dia), agora())
         return registrado to registrado.apostas.first { it.id == a.id }
     }
 
     @Test
     fun mesDeJunhoDoTermo() {
         var e = inicial()
-        e = Operacoes.registrarAportes(e, d(1), pessoas.map { it.id to 1000L }, eventual = false, agora = agora())
+        assertTrue(Operacoes.aporteMensalPendente(e, d(1)))
+        // Aporte mensal (R$ 10,00 de Ajustes × 3, no dia 1º).
+        e = Operacoes.registrarAporteMensal(e, d(1), agora())
         assertEquals(4000L, Operacoes.saldo(e))
+        assertFalse(Operacoes.aporteMensalPendente(e, d(1)))
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarAporteMensal(e, d(2), agora()) }
+        val cAporte = e.comprovantes.single()
+        assertEquals("APORTE - 01/06/2026", cAporte.titulo)
+        assertTrue(cAporte.envioDispensado)
 
-        val (e1, a132) = aposta(e, 1, Modalidade.LOTOFACIL, 350, sorteio = 3); e = e1
-        assertEquals(132, a132.numero)
-        assertFalse(a132.eventual)
-        assertEquals(133, e.proximoJogo)
+        val (e1, a1) = aposta(e, 1, Modalidade.LOTOFACIL, 350, sorteio = 3, premio = 200_000_000); e = e1
+        assertEquals(1, a1.numero)
+        val cAposta = e.comprovantes.last()
+        assertEquals(ModelosDoTermo.TITULO_APOSTA, cAposta.titulo)
+        assertEquals(
+            "- APOSTA Nº1 010626 LF-3001 2M 030626 -\n\nSaldo Inicial:   R$ 40,00\nAposta.......: - R$  3,50\nSaldo Final..: = R$ 36,50",
+            cAposta.texto,
+        )
+        assertEquals(listOf("caixa-1.pdf"), cAposta.anexos.map { it.nome })
+        // Uma aposta registrada não muda mais.
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.salvarRascunho(e, a1.copy(registrada = false, valor = 1)) }
 
-        e = Operacoes.confirmarApuracao(e, a132.id, Apuracao("12/15", 1400, conferidaEm = agora()), d(4), agora())
+        e = Operacoes.confirmarApuracao(e, a1.id, Apuracao("12/15", 1400, conferidaEm = agora()), d(4), agora())
         // O prêmio entra na data do sorteio (03/06), como no extrato do termo.
         assertEquals(d(3), e.lancamentos.last().data)
+        assertEquals("APURAÇÃO Nº 1 - 04/06/26", e.comprovantes.last().titulo)
+        assertTrue(e.comprovantes.last().texto.contains("Acertos: 12/15 (Aposta Premiada!)"))
+        assertThrows(IllegalArgumentException::class.java) {
+            Operacoes.confirmarApuracao(e, a1.id, Apuracao("12/15", 1400, conferidaEm = 0), d(4), agora())
+        }
 
         e = aposta(e, 4, Modalidade.QUINA, 300).first
         e = aposta(e, 7, Modalidade.QUINA, 300).first
         e = aposta(e, 10, Modalidade.SUPER_SETE, 250).first
         e = aposta(e, 13, Modalidade.LOTOMANIA, 300).first
+        assertEquals(listOf(1, 2, 3, 4, 5), e.apostas.map { it.numero })
 
-        // Rateio em 14/06: faltam 16, 19, 22, 25 e 28 -> 5 × R$ 3,00.
-        val s = Operacoes.sugestaoProvisionado(e, d(14))
-        assertEquals(5, s.apostasRestantes)
-        assertEquals(1500L, s.provisionado)
+        // Rateio em 14/06: faltam 16, 19, 22, 25 e 28 -> 5 × R$ 3,00; Extra = 39,00 − 15,00.
+        val p = Operacoes.provisao(e, d(14))
+        assertEquals(5, p.apostasRestantes)
+        assertEquals(1500L, p.provisionado)
         assertEquals(3900L, Operacoes.saldo(e))
-        e = Operacoes.registrarRateio(e, d(14), s.provisionado, cota = 800, comprovantes = emptyList(), agora = agora())
-        assertEquals(2, e.proximoRateio)
+        assertEquals(2400L, Operacoes.extra(e, d(14)))
+        val pix = pessoas.map { anexo("pix-${it.apelido}.png") }
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarRateio(e, d(14), 2401, pix, agora()) }
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarRateio(e, d(14), 2400, pix.take(2), agora()) }
+        e = Operacoes.registrarRateio(e, d(14), 2400, pix, agora())
         assertEquals(1500L, Operacoes.saldo(e))
+        assertEquals(800L, e.rateios.single().cota)
+        assertEquals("RATEIO - 14/06/26", e.comprovantes.last().titulo)
+        // Sem extra, não há o que ratear.
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarRateio(e, d(14), 1, pix, agora()) }
 
         e = aposta(e, 16, Modalidade.LOTOMANIA, 300).first
         e = aposta(e, 19, Modalidade.QUINA, 300).first
@@ -81,58 +111,87 @@ class OperacoesTest {
         e = aposta(e, 28, Modalidade.TIMEMANIA, 350).first
         assertEquals(0L, Operacoes.saldo(e))
 
+        // O extrato só sai a partir do último dia do mês.
+        assertNotNull(Operacoes.impedimentoDoExtrato(e, junho, d(29)))
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarExtrato(e, junho, 2, d(29), agora()) }
+        assertNull(Operacoes.impedimentoDoExtrato(e, junho, d(30)))
+        assertEquals(listOf(junho), Operacoes.extratosPendentes(e, d(30)))
+        assertEquals(emptyList<YearMonth>(), Operacoes.extratosPendentes(e, d(29)))
+
         // Fim do mês: a caixinha mostra R$ 0,02 -> rendimento de 2 centavos.
         val c = Operacoes.conferirSaldo(e, junho, informado = 2)
         assertEquals(2L, c.rendimento)
         assertNull(c.alerta)
         e = Operacoes.registrarExtrato(e, junho, informado = 2, hoje = d(30), agora = agora())
-
+        val extrato = e.comprovantes.last()
+        assertEquals(ModelosDoTermo.TITULO_EXTRATO, extrato.titulo)
+        assertEquals(ModelosDoTermo.EXTRATO, extrato.texto)
         assertEquals(ModelosDoTermo.EXTRATO, Operacoes.textoExtrato(e, junho))
+        assertTrue(Operacoes.extratosPendentes(e, d(30)).isEmpty())
 
-        // Refazer o extrato do mesmo mês substitui o rendimento, sem duplicar.
-        e = Operacoes.registrarExtrato(e, junho, informado = 3, hoje = d(30), agora = agora())
-        assertEquals(3L, Operacoes.rendimentoDoMes(e, junho))
-        assertEquals(1, e.extratos.size)
+        // Um extrato por mês: não dá para refazer.
+        assertNotNull(Operacoes.impedimentoDoExtrato(e, junho, d(30)))
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarExtrato(e, junho, 3, d(30), agora()) }
+
+        // Corrente de autenticação íntegra; mudar um registro antigo quebra no lugar certo.
+        assertNull(Operacoes.primeiraAutenticacaoQuebrada(e))
+        val adulterado = e.copy(comprovantes = e.comprovantes.mapIndexed { i, x -> if (i == 3) x.copy(texto = x.texto + " ") else x })
+        assertEquals(3, Operacoes.primeiraAutenticacaoQuebrada(adulterado))
     }
 
     @Test
-    fun apostaEventual() {
-        var e = inicial()
-        // 17/10 não é dia programado.
-        assertTrue(Operacoes.ehEventual(e, LocalDate.of(2026, 10, 17)))
-        assertFalse(Operacoes.ehEventual(e, d(19)))
-        e = aposta(e, 19, Modalidade.QUINA, 300).first
-        // A segunda aposta no mesmo dia programado é eventual.
-        assertTrue(Operacoes.ehEventual(e, d(19)))
-        val (e2, segunda) = aposta(e, 19, Modalidade.MEGA_SENA, 600)
-        assertTrue(segunda.eventual)
-        assertTrue(Operacoes.textoAposta(e2, segunda).startsWith("- APOSTA EVENTUAL #133 "))
-    }
-
-    @Test
-    fun desfazerApostaDevolveSaldoENumero() {
-        var e = inicial()
-        val (e1, a) = aposta(e, 4, Modalidade.QUINA, 300); e = e1
-        assertEquals(700L, Operacoes.saldo(e))
-        e = Operacoes.desfazerAposta(e, a.id)
-        assertEquals(1000L, Operacoes.saldo(e))
-        assertEquals(132, e.proximoJogo)
-        assertFalse(e.apostas.first().registrada)
-    }
-
-    @Test
-    fun mensagemApostaUsaSaldoDeAntes() {
-        var e = inicial().copy(lancamentos = listOf(Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 4002)))
-        val rascunho = Aposta(
-            id = "a1", numero = 0, modalidade = Modalidade.LOTOFACIL, concurso = 3060, dataAposta = d(1),
-            dataSorteio = d(3), premioEstimado = 200_000_000, valor = 350, criadaEm = 1,
+    fun numeracaoRecomecaNoMes() {
+        var e = inicial().copy(lancamentos = listOf(Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 10_000)))
+        e = aposta(e, 28, Modalidade.QUINA, 300).first
+        e = aposta(e, 28, Modalidade.MEGA_SENA, 600).first
+        val julho = Aposta(
+            id = "j", numero = 0, modalidade = Modalidade.QUINA, concurso = 1, dataAposta = d(30),
+            valor = 300, criadaEm = agora(), comprovante = anexo("j.pdf"),
         )
-        e = Operacoes.salvarRascunho(e, rascunho)
-        // Prévia do rascunho já mostra o próximo número e o saldo atual.
-        assertEquals(ModelosDoTermo.APOSTA, Operacoes.textoAposta(e, rascunho))
-        e = Operacoes.registrarAposta(e, "a1", agora())
-        // Depois de registrada, a mensagem continua igual (saldo de antes da aposta).
-        assertEquals(ModelosDoTermo.APOSTA, Operacoes.textoAposta(e, e.apostas.first()))
+        // O rascunho criado em junho e registrado em 01/07 vira a Nº1 de julho, com a data do registro.
+        e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, julho), "j", LocalDate.of(2026, 7, 1), agora())
+        val j = e.apostas.first { it.id == "j" }
+        assertEquals(1, j.numero)
+        assertEquals(LocalDate.of(2026, 7, 1), j.dataAposta)
+        assertEquals(listOf(1, 2, 1), e.apostas.map { it.numero })
+        assertEquals("APOSTA Nº 1 -  01/07/2026", e.comprovantes.last().titulo)
+    }
+
+    @Test
+    fun apostaSemComprovanteNaoRegistra() {
+        val a = Aposta(id = "a", numero = 0, modalidade = Modalidade.QUINA, concurso = 1, dataAposta = d(1), valor = 300, criadaEm = 0)
+        val e = Operacoes.salvarRascunho(inicial(), a)
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarAposta(e, "a", d(1), 1) }
+    }
+
+    @Test
+    fun aporteDoMesDoCadastro() {
+        // Cadastro no meio do mês: o aporte daquele mês não é cobrado (já está no saldo inicial).
+        val e = inicial().copy(cadastradoEm = d(19))
+        assertFalse(Operacoes.aporteMensalPendente(e, d(19)))
+        assertTrue(Operacoes.aporteMensalPendente(e, LocalDate.of(2026, 7, 1)))
+        // Cadastro no dia 1º: cobra.
+        assertTrue(Operacoes.aporteMensalPendente(inicial().copy(cadastradoEm = d(1)), d(1)))
+    }
+
+    @Test
+    fun aporteAdicionalVaiAoGrupo() {
+        val e = Operacoes.registrarAporteAdicional(inicial(), d(15), 1500, agora())
+        val c = e.comprovantes.single()
+        assertFalse(c.envioDispensado)
+        assertEquals("APORTE - 15/06/2026", c.titulo)
+        assertEquals(1, Operacoes.comprovantesPendentesDeEnvio(e).size)
+        val enviado = Operacoes.registrarEnvio(e, c.id, agora())
+        assertTrue(Operacoes.comprovantesPendentesDeEnvio(enviado).isEmpty())
+    }
+
+    @Test
+    fun premioDeMesFechadoEntraHoje() {
+        var e = inicial().copy(lancamentos = listOf(Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 1000)))
+        val (e1, a) = aposta(e, 28, Modalidade.QUINA, 300, sorteio = 30); e = e1
+        e = Operacoes.registrarExtrato(e, junho, informado = 700, hoje = d(30), agora = agora())
+        e = Operacoes.confirmarApuracao(e, a.id, Apuracao("2/5", 425, conferidaEm = 0), LocalDate.of(2026, 7, 1), agora())
+        assertEquals(LocalDate.of(2026, 7, 1), e.lancamentos.last().data)
     }
 
     @Test
@@ -144,12 +203,47 @@ class OperacoesTest {
     }
 
     @Test
-    fun desfazerRateioDevolveNumero() {
+    fun extincao() {
+        var e = inicial().copy(lancamentos = listOf(Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 5)))
+        // R$ 0,05 ÷ 3 = 0,0166... -> 0,02 para cada um; o Administrador cobre R$ 0,01.
+        val div = Operacoes.divisaoFinal(e)
+        assertEquals(2L, div.cota)
+        assertEquals(6L, div.total)
+        assertEquals(1L, div.complemento)
+
+        val (e1, a) = aposta(e.copy(lancamentos = e.lancamentos + Lancamento("x", d(1), 1, TipoLancamento.APORTE, 300)), 4, Modalidade.QUINA, 300)
+        e = e1
+        assertTrue(Operacoes.impedimentosDaExtincao(e).any { it.contains("sem apuração") })
+        assertTrue(Operacoes.impedimentosDaExtincao(e).any { it.contains("não enviados") })
+        e = Operacoes.confirmarApuracao(e, a.id, Apuracao("0/5", 0, conferidaEm = 0), d(6), agora())
+        e.comprovantes.filter { !it.envioDispensado }.forEach { e = Operacoes.registrarEnvio(e, it.id, agora()) }
+        assertEquals(emptyList<String>(), Operacoes.impedimentosDaExtincao(e))
+
+        e = Operacoes.iniciarExtincao(e, agora())
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarExtincao(e, d(7), agora()) }
+        pessoas.forEach { e = Operacoes.anexarNaExtincao(e, it.id, anexo("final-${it.apelido}.png")) }
+        e = Operacoes.registrarExtincao(e, d(7), agora())
+        assertEquals(0L, Operacoes.saldo(e))
+        val c = e.comprovantes.last()
+        assertEquals(TipoComprovante.EXTINCAO, c.tipo)
+        assertEquals("EXTINÇÃO - 07/06/26", c.titulo)
+        assertEquals(3, c.anexos.size)
+        assertNotNull(e.extincao!!.registradaEm)
+        assertNull(Operacoes.primeiraAutenticacaoQuebrada(e))
+    }
+
+    @Test
+    fun selos() {
         var e = inicial()
-        e = Operacoes.registrarRateio(e, d(14), 0, 300, emptyList(), agora())
-        assertEquals(100L, Operacoes.saldo(e))
-        e = Operacoes.desfazerRateio(e, 1)
-        assertEquals(1000L, Operacoes.saldo(e))
-        assertEquals(1, e.proximoRateio)
+        val s1 = Selos.de(e, d(1))
+        assertTrue(s1.aportePendente)
+        assertEquals(1, s1.financeiro)
+        // No último dia, o extrato do mês também conta.
+        assertEquals(2, Selos.de(e, d(30)).financeiro)
+        e = Operacoes.registrarAporteMensal(e, d(1), agora())
+        val (e1, a) = aposta(e, 1, Modalidade.QUINA, 300); e = e1
+        assertEquals(0, Selos.de(e, d(2)).apostas)
+        e = Operacoes.guardarConferencia(e, a.id, Apuracao("1/5", 0, conferidaEm = 0))
+        assertEquals(1, Selos.de(e, d(2)).apostas)
     }
 }

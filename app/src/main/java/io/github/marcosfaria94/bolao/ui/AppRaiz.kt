@@ -13,9 +13,12 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Casino
-import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.ConfirmationNumber
+import androidx.compose.material.icons.outlined.Leaderboard
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -48,31 +51,38 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.data.Selos
+import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.notificacoes.Notificador
 import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.ui.ajustes.AjustesTela
 import io.github.marcosfaria94.bolao.ui.aporte.AporteTela
 import io.github.marcosfaria94.bolao.ui.aposta.ApostaTela
+import io.github.marcosfaria94.bolao.ui.aposta.ApostasTela
 import io.github.marcosfaria94.bolao.ui.aposta.NovaApostaTela
 import io.github.marcosfaria94.bolao.ui.apuracao.ApuracaoTela
-import io.github.marcosfaria94.bolao.ui.extrato.ExtratoTela
-import io.github.marcosfaria94.bolao.ui.rateio.RateioTela
 import io.github.marcosfaria94.bolao.ui.atualizacao.AtualizacaoViewModel
 import io.github.marcosfaria94.bolao.ui.atualizacao.DialogosAtualizacao
 import io.github.marcosfaria94.bolao.ui.cadastro.CadastroTela
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
+import io.github.marcosfaria94.bolao.ui.extincao.ExtincaoTela
+import io.github.marcosfaria94.bolao.ui.extrato.ExtratoTela
+import io.github.marcosfaria94.bolao.ui.financeiro.FinanceiroTela
+import io.github.marcosfaria94.bolao.ui.financeiro.SaldoTela
+import io.github.marcosfaria94.bolao.ui.ajustes.IntegridadeTela
 import io.github.marcosfaria94.bolao.ui.jogos.JogosTela
-import io.github.marcosfaria94.bolao.ui.painel.PainelTela
+import io.github.marcosfaria94.bolao.ui.jogos.ModalidadeTela
+import io.github.marcosfaria94.bolao.ui.rateio.RateioTela
 import io.github.marcosfaria94.bolao.ui.teste.DialogoSairDoTeste
 import io.github.marcosfaria94.bolao.ui.teste.FaixaModoTeste
+import java.time.LocalDate
 
-private data class Aba(val rota: String, val rotulo: String, val icone: ImageVector)
-
-private val ABAS = listOf(
-    Aba("painel", "Painel", Icons.Outlined.Home),
-    Aba("jogos", "Jogos", Icons.Outlined.Casino),
-    Aba("ajustes", "Ajustes", Icons.Outlined.Settings),
-)
+private enum class Aba(val rota: String, val rotulo: String, val icone: ImageVector) {
+    FINANCEIRO("financeiro", "Financeiro", Icons.Outlined.AccountBalanceWallet),
+    APOSTAS("apostas", "Apostas", Icons.Outlined.ConfirmationNumber),
+    JOGOS("jogos", "Jogos", Icons.Outlined.Leaderboard),
+    AJUSTES("ajustes", "Ajustes", Icons.Outlined.Settings),
+}
 
 @Composable
 fun AppRaiz() {
@@ -95,8 +105,10 @@ fun AppRaiz() {
         val e = estado
         when {
             e == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            // Extinção em andamento: só a tela da extinção, até o fim.
+            e.extincao != null -> ExtincaoTela(e)
             !e.cadastroConcluido -> CadastroTela()
-            // Ao entrar ou sair do modo de teste, a navegação recomeça do Painel.
+            // Ao entrar ou sair do modo de teste, a navegação recomeça do Financeiro.
             else -> key(teste) { Principal(e, atualizacao, teste) }
         }
         DialogosAtualizacao(atualizacao)
@@ -109,18 +121,26 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     val nav = rememberNavController()
     val ctx = LocalContext.current
     var sairDoTeste by remember { mutableStateOf(false) }
+    val hoje = LocalDate.now()
+    val selos = Selos.de(estado, hoje)
+
+    // Ao abrir: confere os sorteios e os índices na hora (sem esperar a próxima hora).
+    LaunchedEffect(Unit) {
+        Vigia.rodarAgora(ctx)
+        ctx.bolao.indices.atualizar()
+    }
 
     // Notificação tocada: abre a tela correspondente.
     val destino by ctx.bolao.destinoPendente.collectAsStateWithLifecycle()
     LaunchedEffect(destino) {
         destino?.let { d ->
             ctx.bolao.destinoPendente.value = null
-            if (d != "painel") runCatching { nav.navigate(d) { launchSingleTop = true } }
+            val rota = if (d == "painel") Aba.FINANCEIRO.rota else d
+            if (rota != Aba.FINANCEIRO.rota) runCatching { nav.navigate(rota) { launchSingleTop = true } }
         }
     }
 
     // Android 13+: pede a permissão de notificação uma vez, logo depois do cadastro.
-    // Com a permissão dada, os avisos pendentes já aparecem (sem esperar a próxima hora).
     val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) Vigia.rodarAgora(ctx)
     }
@@ -135,20 +155,25 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     }
 
     val entrada by nav.currentBackStackEntryAsState()
-    val rota = entrada?.destination?.route ?: "painel"
-    val ehAba = ABAS.any { it.rota == rota }
+    val rota = entrada?.destination?.route ?: Aba.FINANCEIRO.rota
+    val ehAba = Aba.entries.any { it.rota == rota }
     val titulo = when (rota) {
-        "painel" -> estado.nomeGrupo.ifBlank { "Bolão" }
-        "jogos" -> "Jogos"
-        "ajustes" -> "Ajustes"
+        Aba.FINANCEIRO.rota -> estado.nomeExibicao
+        Aba.APOSTAS.rota -> "Apostas"
+        Aba.JOGOS.rota -> "Jogos"
+        Aba.AJUSTES.rota -> "Ajustes"
         "aporte" -> "Aporte"
+        "rateio" -> "Rateio"
+        "extrato" -> "Extrato"
         "apostar" -> "Nova aposta"
         "aposta/{id}" -> "Aposta"
         "apuracao/{id}" -> "Apuração"
-        "rateio" -> "Rateio"
-        "extrato" -> "Extrato do mês"
+        "modalidade/{nome}" -> "Jogos"
+        "saldo" -> "Saldo"
+        "integridade" -> "Verificar integridade"
         else -> ""
     }
+    fun abrir(r: String) = nav.navigate(r) { launchSingleTop = true }
 
     Scaffold(
         topBar = {
@@ -169,7 +194,12 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         bottomBar = {
             if (ehAba) {
                 NavigationBar {
-                    ABAS.forEach { aba ->
+                    Aba.entries.forEach { aba ->
+                        val n = when (aba) {
+                            Aba.FINANCEIRO -> selos.financeiro
+                            Aba.APOSTAS -> selos.apostas
+                            else -> 0
+                        }
                         NavigationBarItem(
                             selected = rota == aba.rota,
                             onClick = {
@@ -179,7 +209,11 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                                     restoreState = true
                                 }
                             },
-                            icon = { Icon(aba.icone, contentDescription = null) },
+                            icon = {
+                                BadgedBox(badge = { if (n > 0) Badge { Text(n.toString()) } }) {
+                                    Icon(aba.icone, contentDescription = null)
+                                }
+                            },
                             label = { Text(aba.rotulo) },
                         )
                     }
@@ -190,11 +224,16 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         // Nas abas a barra de baixo já cuida da margem do sistema; nas outras telas, o conteúdo cuida.
         contentWindowInsets = if (ehAba) WindowInsets(0, 0, 0, 0) else WindowInsets.navigationBars,
     ) { padding ->
-        NavHost(nav, startDestination = "painel", modifier = Modifier.padding(padding)) {
-            composable("painel") { PainelTela(estado, abrir = { nav.navigate(it) }, teste = teste) }
-            composable("jogos") { JogosTela(estado) }
-            composable("ajustes") { AjustesTela(estado, atualizacao) }
-            composable("aporte") { AporteTela(estado, aoConcluir = { nav.popBackStack() }) }
+        NavHost(nav, startDestination = Aba.FINANCEIRO.rota, modifier = Modifier.padding(padding)) {
+            composable(Aba.FINANCEIRO.rota) { FinanceiroTela(estado, selos, abrir = ::abrir, teste = teste) }
+            composable(Aba.APOSTAS.rota) { ApostasTela(estado, abrir = ::abrir) }
+            composable(Aba.JOGOS.rota) { JogosTela(estado, abrirModalidade = { abrir("modalidade/${it.name}") }) }
+            composable(Aba.AJUSTES.rota) { AjustesTela(estado, atualizacao, abrir = ::abrir) }
+            composable("saldo") { SaldoTela(estado) }
+            composable("integridade") { IntegridadeTela(estado) }
+            composable("aporte") { AporteTela(estado) }
+            composable("rateio") { RateioTela(estado) }
+            composable("extrato") { ExtratoTela(estado) }
             composable("apostar") {
                 NovaApostaTela(estado, abrirAposta = { id ->
                     nav.navigate("aposta/$id") { popUpTo("apostar") { inclusive = true } }
@@ -204,13 +243,17 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                 ApostaTela(
                     estado,
                     id = e.arguments?.getString("id").orEmpty(),
-                    abrirApuracao = { nav.navigate("apuracao/$it") },
+                    abrirApuracao = { abrir("apuracao/$it") },
                     aoSair = { nav.popBackStack() },
                 )
             }
             composable("apuracao/{id}") { e -> ApuracaoTela(estado, e.arguments?.getString("id").orEmpty()) }
-            composable("rateio") { RateioTela(estado, aoConcluir = { nav.popBackStack() }) }
-            composable("extrato") { ExtratoTela(estado, aoConcluir = { nav.popBackStack() }) }
+            composable("modalidade/{nome}") { e ->
+                val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
+                if (m != null) {
+                    ModalidadeTela(estado, m, abrirAposta = { id -> nav.navigate("aposta/$id") })
+                }
+            }
         }
     }
 

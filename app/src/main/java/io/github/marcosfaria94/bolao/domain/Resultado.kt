@@ -1,8 +1,11 @@
 package io.github.marcosfaria94.bolao.domain
 
+import io.github.marcosfaria94.bolao.domain.indices.RegistroK
+import kotlinx.serialization.Serializable
 import java.time.LocalDate
 
 /** Uma faixa de premiação de um concurso, como a Caixa divulga. */
+@Serializable
 data class FaixaPremio(
     val faixa: Int,
     val descricao: String,
@@ -51,6 +54,8 @@ data class Concurso(
     /** Número do próximo concurso especial (final 0 ou 5 na Mega, etc.), quando a Caixa informa. */
     val numeroConcursoEspecial: Int? = null,
     val acumuladoEspecial: Long? = null,
+    /** Campos brutos da API usados nos índices k1 e k2. */
+    val registro: RegistroK? = null,
 ) {
     /** O sorteio já aconteceu e os números saíram. */
     val temResultado: Boolean

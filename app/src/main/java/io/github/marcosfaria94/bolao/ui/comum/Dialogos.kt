@@ -61,3 +61,29 @@ fun DialogoConfirmar(
         dismissButton = { TextButton(onClick = aoFechar) { Text("Cancelar") } },
     )
 }
+
+/** Arquivo salvo em Downloads/Bolao: abrir ou enviar. */
+@Composable
+fun DialogoArquivoPronto(titulo: String, texto: String, uri: android.net.Uri, aoFechar: () -> Unit, mime: String = "application/pdf") {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    AlertDialog(
+        onDismissRequest = aoFechar,
+        title = { Text(titulo) },
+        text = { Text(texto) },
+        confirmButton = {
+            TextButton(onClick = {
+                aoFechar()
+                Compartilhar.enviarArquivo(ctx, uri, mime, "Enviar")
+            }) { Text("Enviar") }
+        },
+        dismissButton = {
+            androidx.compose.foundation.layout.Row {
+                TextButton(onClick = aoFechar) { Text("Fechar") }
+                TextButton(onClick = {
+                    aoFechar()
+                    Compartilhar.abrir(ctx, uri, mime)
+                }) { Text("Abrir") }
+            }
+        },
+    )
+}

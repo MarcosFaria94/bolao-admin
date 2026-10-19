@@ -1,0 +1,707 @@
+{
+  "versao_parametros": "1.2",
+  "casos": [
+    {
+      "id": "ao_vivo_megasena",
+      "grupo": "ao vivo 18/10/2026",
+      "chave": "megasena",
+      "ultimo": {
+        "numero": 3071,
+        "numeroConcursoProximo": 3072,
+        "dataProximoConcurso": "20/10/2026",
+        "valorArrecadado": 150525762,
+        "valorEstimadoProximoConcurso": 185000000,
+        "valorAcumuladoProximoConcurso": 171152252.94,
+        "valorAcumuladoConcurso_0_5": 18277211.13,
+        "numeroConcursoFinal_0_5": 3075,
+        "valorAcumuladoConcursoEspecial": 101994941.78,
+        "acumulado": true,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": [
+          {"faixa": 1, "numeroDeGanhadores": 0},
+          {"faixa": 2, "numeroDeGanhadores": 102},
+          {"faixa": 3, "numeroDeGanhadores": 7381}
+        ]
+      },
+      "anterior": {
+        "numero": 3070, "valorArrecadado": 120502302, "valorEstimadoProximoConcurso": 170000000,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 3072,
+        "especial": false,
+        "acumulado_principal": 171152252.94,
+        "reserva": 0,
+        "N_anterior": 25087627.0,
+        "heranca_faixas": {},
+        "N_previsto": 18170949.2580508,
+        "sigma_log": 0.15504114368567085,
+        "k1": 0.6472949166944352,
+        "k2": 0.0,
+        "k1_por_faixa": {"1": 0.5226197437333288, "2": 0.053144700888622436, "3": 0.07153047207248392},
+        "k1_rel_lotofacil": 1.8071065606339378,
+        "exibicao": {"k1": "0,647", "k2": "0,000", "k1_rel_lotofacil": "1,807"}
+      }
+    },
+    {
+      "id": "ao_vivo_lotofacil",
+      "grupo": "ao vivo 18/10/2026",
+      "chave": "lotofacil",
+      "ultimo": {
+        "numero": 3807,
+        "numeroConcursoProximo": 3808,
+        "dataProximoConcurso": "19/10/2026",
+        "valorArrecadado": 20337170,
+        "valorEstimadoProximoConcurso": 2000000,
+        "valorAcumuladoProximoConcurso": 0,
+        "valorAcumuladoConcurso_0_5": 1918139.24,
+        "numeroConcursoFinal_0_5": 3810,
+        "valorAcumuladoConcursoEspecial": 12324605.61,
+        "acumulado": false,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": [
+          {"faixa": 1, "numeroDeGanhadores": 3},
+          {"faixa": 2, "numeroDeGanhadores": 341},
+          {"faixa": 3, "numeroDeGanhadores": 10878},
+          {"faixa": 4, "numeroDeGanhadores": 115002},
+          {"faixa": 5, "numeroDeGanhadores": 548026}
+        ]
+      },
+      "anterior": {
+        "numero": 3806, "valorArrecadado": 19727176, "valorEstimadoProximoConcurso": 2000000,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 3808,
+        "especial": false,
+        "acumulado_principal": 0.0,
+        "reserva": 0,
+        "N_anterior": 5810620.0,
+        "heranca_faixas": {},
+        "N_previsto": 6324631.094528892,
+        "sigma_log": 0.10018517776467087,
+        "k1": 0.3581941047612391,
+        "k2": 0.25665695860203874,
+        "k1_por_faixa": {
+          "1": 0.07740850563158783, "2": 0.024128640527612603, "3": 0.014455022699739351,
+          "4": 0.06681432714546189, "5": 0.17538760875683748
+        },
+        "k1_rel_lotofacil": 1.0,
+        "exibicao": {"k1": "0,358", "k2": "0,257", "k1_rel_lotofacil": "1,000"}
+      }
+    },
+    {
+      "id": "ao_vivo_quina",
+      "grupo": "ao vivo 18/10/2026",
+      "chave": "quina",
+      "ultimo": {
+        "numero": 7145,
+        "numeroConcursoProximo": 7146,
+        "dataProximoConcurso": "19/10/2026",
+        "valorArrecadado": 20281668,
+        "valorEstimadoProximoConcurso": 51000000,
+        "valorAcumuladoProximoConcurso": 48339796.67,
+        "valorAcumuladoConcurso_0_5": 932540.96,
+        "numeroConcursoFinal_0_5": 7155,
+        "valorAcumuladoConcursoEspecial": 44845254.49,
+        "acumulado": true,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": [
+          {"faixa": 1, "numeroDeGanhadores": 0},
+          {"faixa": 2, "numeroDeGanhadores": 62},
+          {"faixa": 3, "numeroDeGanhadores": 5777},
+          {"faixa": 4, "numeroDeGanhadores": 161604}
+        ]
+      },
+      "anterior": {
+        "numero": 7144, "valorArrecadado": 17925147, "valorEstimadoProximoConcurso": 50000000,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 7146,
+        "especial": false,
+        "acumulado_principal": 48339796.67,
+        "reserva": 0,
+        "N_anterior": 6760556.0,
+        "heranca_faixas": {},
+        "N_previsto": 6681109.034114956,
+        "sigma_log": 0.10048378814012146,
+        "k1": 0.7617595129160692,
+        "k2": 0.09114291882566719,
+        "k1_por_faixa": {
+          "1": 0.6166996751964862, "2": 0.05391691889391581, "3": 0.04644636221696297,
+          "4": 0.044696556608704224
+        },
+        "k1_rel_lotofacil": 2.126666806601505,
+        "exibicao": {"k1": "0,762", "k2": "0,091", "k1_rel_lotofacil": "2,127"}
+      }
+    },
+    {
+      "id": "ao_vivo_maismilionaria",
+      "grupo": "ao vivo 18/10/2026",
+      "chave": "maismilionaria",
+      "ultimo": {
+        "numero": 399,
+        "numeroConcursoProximo": 400,
+        "dataProximoConcurso": "21/10/2026",
+        "valorArrecadado": 9832326,
+        "valorEstimadoProximoConcurso": 107000000,
+        "valorAcumuladoProximoConcurso": 105402848.7,
+        "valorAcumuladoConcurso_0_5": 0,
+        "numeroConcursoFinal_0_5": 0,
+        "valorAcumuladoConcursoEspecial": 0,
+        "acumulado": true,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": []
+      },
+      "anterior": {
+        "numero": 398, "valorArrecadado": 8706846, "valorEstimadoProximoConcurso": 106000000,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 400,
+        "especial": false,
+        "acumulado_principal": 105402848.7,
+        "reserva": 0,
+        "N_anterior": 1638721.0,
+        "heranca_faixas": {},
+        "N_previsto": 1669496.1734352417,
+        "sigma_log": 0.11624647438677502,
+        "k1": 0.30363456840510955,
+        "k2": 0.13024869193231822,
+        "k1_por_faixa": {
+          "1": 0.0743125858606981, "2": 0.0018817063711376477, "3": 0.03206105649509443,
+          "4": 0.03013169335982484, "5": 0.01721581004683886, "6": 0.017783024339197453,
+          "7": 0.009260482896005562, "8": 0.03556025432066135, "9": 0.017085590943130263,
+          "10": 0.06834236377252105
+        },
+        "k1_rel_lotofacil": 0.8476816462613275,
+        "exibicao": {"k1": "0,304", "k2": "0,130", "k1_rel_lotofacil": "0,848"}
+      }
+    },
+    {
+      "id": "ao_vivo_lotomania",
+      "grupo": "ao vivo 18/10/2026",
+      "chave": "lotomania",
+      "ultimo": {
+        "numero": 2988,
+        "numeroConcursoProximo": 2989,
+        "dataProximoConcurso": "19/10/2026",
+        "valorArrecadado": 7064586,
+        "valorEstimadoProximoConcurso": 14000000,
+        "valorAcumuladoProximoConcurso": 12929367.23,
+        "valorAcumuladoConcurso_0_5": 0,
+        "numeroConcursoFinal_0_5": 0,
+        "valorAcumuladoConcursoEspecial": 0,
+        "acumulado": true,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": [
+          {"faixa": 1, "numeroDeGanhadores": 0},
+          {"faixa": 2, "numeroDeGanhadores": 11},
+          {"faixa": 3, "numeroDeGanhadores": 87},
+          {"faixa": 4, "numeroDeGanhadores": 781},
+          {"faixa": 5, "numeroDeGanhadores": 4720},
+          {"faixa": 6, "numeroDeGanhadores": 20777},
+          {"faixa": 7, "numeroDeGanhadores": 0}
+        ]
+      },
+      "anterior": {
+        "numero": 2987, "valorArrecadado": 8068611, "valorEstimadoProximoConcurso": 13000000,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 2989,
+        "especial": false,
+        "acumulado_principal": 12929367.23,
+        "reserva": 0,
+        "N_anterior": 2354862.0,
+        "heranca_faixas": {},
+        "N_previsto": 2444362.745191342,
+        "sigma_log": 0.09408062875004146,
+        "k1": 0.5781316491572216,
+        "k2": 0.0631726940917194,
+        "k1_por_faixa": {
+          "1": 0.36976182035185795, "2": 0.06030836919808938, "3": 0.04773683389783608,
+          "4": 0.03236639496197522, "5": 0.03203393096748335, "6": 0.03113876312423605,
+          "7": 0.004785536655743502
+        },
+        "k1_rel_lotofacil": 1.614017767105871,
+        "exibicao": {"k1": "0,578", "k2": "0,063", "k1_rel_lotofacil": "1,614"}
+      }
+    },
+    {
+      "id": "ao_vivo_timemania",
+      "grupo": "ao vivo 18/10/2026",
+      "chave": "timemania",
+      "ultimo": {
+        "numero": 2456,
+        "numeroConcursoProximo": 2457,
+        "dataProximoConcurso": "20/10/2026",
+        "valorArrecadado": 2757667.5,
+        "valorEstimadoProximoConcurso": 21300000,
+        "valorAcumuladoProximoConcurso": 20806954.59,
+        "valorAcumuladoConcurso_0_5": 170098.63,
+        "numeroConcursoFinal_0_5": 2460,
+        "valorAcumuladoConcursoEspecial": 0,
+        "acumulado": true,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": []
+      },
+      "anterior": {
+        "numero": 2455, "valorArrecadado": 2819698, "valorEstimadoProximoConcurso": 21000000,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 2457,
+        "especial": false,
+        "acumulado_principal": 20806954.59,
+        "reserva": 0,
+        "N_anterior": 787905.0,
+        "heranca_faixas": {},
+        "N_previsto": 887595.7769783603,
+        "sigma_log": 0.13970787647143515,
+        "k1": 0.4505626077579587,
+        "k2": 0.07584864471106978,
+        "k1_por_faixa": {
+          "1": 0.22578436863777468, "2": 0.061948348181707705, "3": 0.08698124622740647,
+          "4": 0.010855926578778013, "5": 0.0346355752751489, "6": 0.03035714285714286
+        },
+        "k1_rel_lotofacil": 1.2578727616365701,
+        "exibicao": {"k1": "0,451", "k2": "0,076", "k1_rel_lotofacil": "1,258"}
+      }
+    },
+    {
+      "id": "ao_vivo_duplasena",
+      "grupo": "ao vivo 18/10/2026",
+      "chave": "duplasena",
+      "ultimo": {
+        "numero": 3021,
+        "numeroConcursoProximo": 3022,
+        "dataProximoConcurso": "19/10/2026",
+        "valorArrecadado": 2767962,
+        "valorEstimadoProximoConcurso": 8500000,
+        "valorAcumuladoProximoConcurso": 8118341.46,
+        "valorAcumuladoConcurso_0_5": 0,
+        "numeroConcursoFinal_0_5": 0,
+        "valorAcumuladoConcursoEspecial": 7544422.77,
+        "acumulado": true,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": []
+      },
+      "anterior": {
+        "numero": 3020, "valorArrecadado": 3230412, "valorEstimadoProximoConcurso": 8300000,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 3022,
+        "especial": false,
+        "acumulado_principal": 8118341.46,
+        "reserva": 0,
+        "N_anterior": 922654.0,
+        "heranca_faixas": {},
+        "N_previsto": 1100194.0273897767,
+        "sigma_log": 0.14429979496014989,
+        "k1": 0.3476436567065959,
+        "k2": 0.03543331034583236,
+        "k1_por_faixa": {
+          "1": 0.1708020708676229, "2": 0.03473108275686404, "3": 0.036159806804695195,
+          "4": 0.017712028475568353, "5": 0.0022782778835522054, "6": 0.032044356474360804,
+          "7": 0.036194751573668395, "8": 0.01772128187026401
+        },
+        "k1_rel_lotofacil": 0.970545444734006,
+        "exibicao": {"k1": "0,348", "k2": "0,035", "k1_rel_lotofacil": "0,971"}
+      }
+    },
+    {
+      "id": "ao_vivo_diadesorte",
+      "grupo": "ao vivo 18/10/2026",
+      "chave": "diadesorte",
+      "ultimo": {
+        "numero": 1325,
+        "numeroConcursoProximo": 1326,
+        "dataProximoConcurso": "19/10/2026",
+        "valorArrecadado": 1175952.5,
+        "valorEstimadoProximoConcurso": 450000,
+        "valorAcumuladoProximoConcurso": 278844.15,
+        "valorAcumuladoConcurso_0_5": 0,
+        "numeroConcursoFinal_0_5": 0,
+        "valorAcumuladoConcursoEspecial": 0,
+        "acumulado": true,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": []
+      },
+      "anterior": {
+        "numero": 1324, "valorArrecadado": 872562.5, "valorEstimadoProximoConcurso": 270000,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 1326,
+        "especial": false,
+        "acumulado_principal": 278844.15,
+        "reserva": 0,
+        "N_anterior": 470381.0,
+        "heranca_faixas": {},
+        "N_previsto": 434212.4834949393,
+        "sigma_log": 0.12976151315002377,
+        "k1": 0.287492999180028,
+        "k2": 0.15925434718538167,
+        "k1_por_faixa": {
+          "1": 0.060209637225350957, "2": 0.06802901476929538, "3": 0.02204158466672371,
+          "4": 0.05387942918532462, "5": 0.08333333333333333
+        },
+        "k1_rel_lotofacil": 0.8026178972757293,
+        "exibicao": {"k1": "0,287", "k2": "0,159", "k1_rel_lotofacil": "0,803"}
+      }
+    },
+    {
+      "id": "ao_vivo_supersete",
+      "grupo": "ao vivo 18/10/2026",
+      "chave": "supersete",
+      "ultimo": {
+        "numero": 911,
+        "numeroConcursoProximo": 912,
+        "dataProximoConcurso": "19/10/2026",
+        "valorArrecadado": 1574265,
+        "valorEstimadoProximoConcurso": 11600000,
+        "valorAcumuladoProximoConcurso": 11306242.33,
+        "valorAcumuladoConcurso_0_5": 0,
+        "numeroConcursoFinal_0_5": 0,
+        "valorAcumuladoConcursoEspecial": 0,
+        "acumulado": true,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": []
+      },
+      "anterior": {
+        "numero": 910, "valorArrecadado": 1912527, "valorEstimadoProximoConcurso": 11300000,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 912,
+        "especial": false,
+        "acumulado_principal": 11306242.33,
+        "reserva": 0,
+        "N_anterior": 524755.0,
+        "heranca_faixas": {},
+        "N_previsto": 557239.5516714954,
+        "sigma_log": 0.14078947236704692,
+        "k1": 0.5886837919413158,
+        "k2": 0.10559358318199982,
+        "k1_por_faixa": {
+          "1": 0.37488847387622265, "2": 0.04648532321497604, "3": 0.06171641166811729,
+          "4": 0.059666583181999806, "5": 0.045927000000000016
+        },
+        "k1_rel_lotofacil": 1.6434770536877314,
+        "exibicao": {"k1": "0,589", "k2": "0,106", "k1_rel_lotofacil": "1,643"}
+      }
+    },
+    {
+      "id": "lotofacil_final_zero",
+      "grupo": "regras especiais (histórico)",
+      "descricao": "concurso de reserva final 0: faixa principal com 72% e reserva acumulada",
+      "chave": "lotofacil",
+      "ultimo": {
+        "numero": 3799,
+        "numeroConcursoProximo": 3800,
+        "dataProximoConcurso": "08/10/2026",
+        "valorArrecadado": 20090563.5,
+        "valorEstimadoProximoConcurso": 6000000.0,
+        "valorAcumuladoProximoConcurso": 2356809.44,
+        "valorAcumuladoConcurso_0_5": 2356809.44,
+        "numeroConcursoFinal_0_5": 3800,
+        "valorAcumuladoConcursoEspecial": 8810158.7,
+        "acumulado": false,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": [
+          {"faixa": 1, "numeroDeGanhadores": 2},
+          {"faixa": 2, "numeroDeGanhadores": 466},
+          {"faixa": 3, "numeroDeGanhadores": 12470},
+          {"faixa": 4, "numeroDeGanhadores": 130788},
+          {"faixa": 5, "numeroDeGanhadores": 596568}
+        ]
+      },
+      "anterior": {
+        "numero": 3798, "valorArrecadado": 32609892.0, "valorEstimadoProximoConcurso": 2000000.0,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 3800,
+        "especial": false,
+        "acumulado_principal": 2356809.44,
+        "reserva": 1,
+        "N_anterior": 5740161.0,
+        "heranca_faixas": {},
+        "N_previsto": 10052075.107583653,
+        "sigma_log": 0.10018517776467087,
+        "k1": 0.47285551206257204,
+        "k2": 0.25665695860203874,
+        "k1_por_faixa": {
+          "1": 0.1920810246913216, "2": 0.024117528769211787, "3": 0.014455022699739351,
+          "4": 0.06681432714546189, "5": 0.17538760875683748
+        },
+        "exibicao": {"k1": "0,473", "k2": "0,257"}
+      }
+    },
+    {
+      "id": "megasena_reserva_final_0",
+      "grupo": "regras especiais (histórico)",
+      "descricao": "próximo é o concurso de reserva (final 0) e o anterior acumulou",
+      "chave": "megasena",
+      "ultimo": {
+        "numero": 3069,
+        "numeroConcursoProximo": 3070,
+        "dataProximoConcurso": "14/10/2026",
+        "valorArrecadado": 98228184.0,
+        "valorEstimadoProximoConcurso": 150000000.0,
+        "valorAcumuladoProximoConcurso": 137920959.97,
+        "valorAcumuladoConcurso_0_5": 137920959.97,
+        "numeroConcursoFinal_0_5": 3070,
+        "valorAcumuladoConcursoEspecial": 93687118.5,
+        "acumulado": true,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": [
+          {"faixa": 1, "numeroDeGanhadores": 0},
+          {"faixa": 2, "numeroDeGanhadores": 150},
+          {"faixa": 3, "numeroDeGanhadores": 9096}
+        ]
+      },
+      "anterior": {
+        "numero": 3068, "valorArrecadado": 80608362.0, "valorEstimadoProximoConcurso": 112000000.0,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 3070,
+        "especial": false,
+        "acumulado_principal": 137920959.97,
+        "reserva": 1,
+        "N_anterior": 16371364.0,
+        "heranca_faixas": {},
+        "N_previsto": 18226118.165808722,
+        "sigma_log": 0.15504114368567085,
+        "k1": 0.5531595328289103,
+        "k2": 0.0,
+        "k1_por_faixa": {"1": 0.4284843551701038, "2": 0.05314471928487626, "3": 0.07153045837393028},
+        "exibicao": {"k1": "0,553", "k2": "0,000"}
+      }
+    },
+    {
+      "id": "lotomania_heranca_19",
+      "grupo": "regras especiais (histórico)",
+      "descricao": "19 acertos sem ganhador no último: o pote passa para os 19 do próximo",
+      "chave": "lotomania",
+      "ultimo": {
+        "numero": 2817,
+        "numeroConcursoProximo": 2818,
+        "dataProximoConcurso": "03/09/2025",
+        "valorArrecadado": 5168376.0,
+        "valorEstimadoProximoConcurso": 4000000.0,
+        "valorAcumuladoProximoConcurso": 3183897.62,
+        "valorAcumuladoConcurso_0_5": 0.0,
+        "numeroConcursoFinal_0_5": 0,
+        "valorAcumuladoConcursoEspecial": 0.0,
+        "acumulado": true,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": [
+          {"faixa": 1, "numeroDeGanhadores": 0},
+          {"faixa": 2, "numeroDeGanhadores": 0},
+          {"faixa": 3, "numeroDeGanhadores": 55},
+          {"faixa": 4, "numeroDeGanhadores": 524},
+          {"faixa": 5, "numeroDeGanhadores": 3210},
+          {"faixa": 6, "numeroDeGanhadores": 14130},
+          {"faixa": 7, "numeroDeGanhadores": 0}
+        ]
+      },
+      "anterior": {
+        "numero": 2816, "valorArrecadado": 4992276.0, "valorEstimadoProximoConcurso": 3200000.0,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 2818,
+        "especial": false,
+        "acumulado_principal": 3183897.62,
+        "reserva": 0,
+        "N_anterior": 1722792.0,
+        "heranca_faixas": {"2": 362117.096064},
+        "N_previsto": 1710294.178566356,
+        "sigma_log": 0.09408062875004146,
+        "k1": 0.369372381992621,
+        "k2": 0.06317269409171929,
+        "k1_por_faixa": {
+          "1": 0.10625722792130267, "2": 0.11640796908697, "3": 0.04772191672539705, "4": 0.03236639496182816,
+          "5": 0.03203393096748323, "6": 0.031138763124236062, "7": 0.0034461792054038955
+        },
+        "exibicao": {"k1": "0,369", "k2": "0,063"}
+      }
+    },
+    {
+      "id": "lotomania_zero_acertos",
+      "grupo": "regras especiais (histórico)",
+      "descricao": "houve ganhador nos 20, mas os 0 acertos sem ganhador foram para os 20",
+      "chave": "lotomania",
+      "ultimo": {
+        "numero": 2811,
+        "numeroConcursoProximo": 2812,
+        "dataProximoConcurso": "20/08/2025",
+        "valorArrecadado": 4732794.0,
+        "valorEstimadoProximoConcurso": 600000.0,
+        "valorAcumuladoProximoConcurso": 116059.49,
+        "valorAcumuladoConcurso_0_5": 0.0,
+        "numeroConcursoFinal_0_5": 0,
+        "valorAcumuladoConcursoEspecial": 0.0,
+        "acumulado": false,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": [
+          {"faixa": 1, "numeroDeGanhadores": 1},
+          {"faixa": 2, "numeroDeGanhadores": 4},
+          {"faixa": 3, "numeroDeGanhadores": 96},
+          {"faixa": 4, "numeroDeGanhadores": 920},
+          {"faixa": 5, "numeroDeGanhadores": 4550},
+          {"faixa": 6, "numeroDeGanhadores": 17486},
+          {"faixa": 7, "numeroDeGanhadores": 0}
+        ]
+      },
+      "anterior": {
+        "numero": 2810, "valorArrecadado": 4261950.0, "valorEstimadoProximoConcurso": 3400000.0,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 2812,
+        "especial": false,
+        "acumulado_principal": 116059.49,
+        "reserva": 0,
+        "N_anterior": 1577598.0,
+        "heranca_faixas": {},
+        "N_previsto": 1133322.14792134,
+        "sigma_log": 0.09408062875004146,
+        "k1": 0.21523284448976016,
+        "k2": 0.0631726940917196,
+        "k1_por_faixa": {
+          "1": 0.01639220619382572, "2": 0.05329853306017932, "3": 0.04766509309726613,
+          "4": 0.03236639496137608, "5": 0.03203393096748353, "6": 0.031138763124236076,
+          "7": 0.002337923085393286
+        },
+        "exibicao": {"k1": "0,215", "k2": "0,063"}
+      }
+    },
+    {
+      "id": "lotofacil_campo_repetido",
+      "grupo": "regras especiais (histórico)",
+      "descricao": "a API repete a reserva do final 0 no campo do próximo (final 5): acumulado = 0",
+      "chave": "lotofacil",
+      "ultimo": {
+        "numero": 3594,
+        "numeroConcursoProximo": 3595,
+        "dataProximoConcurso": "23/01/2026",
+        "valorArrecadado": 20792362.5,
+        "valorEstimadoProximoConcurso": 1800000.0,
+        "valorAcumuladoProximoConcurso": 1317759.17,
+        "valorAcumuladoConcurso_0_5": 1317759.17,
+        "numeroConcursoFinal_0_5": 3600,
+        "valorAcumuladoConcursoEspecial": 58079468.51,
+        "acumulado": false,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": [
+          {"faixa": 1, "numeroDeGanhadores": 1},
+          {"faixa": 2, "numeroDeGanhadores": 281},
+          {"faixa": 3, "numeroDeGanhadores": 8977},
+          {"faixa": 4, "numeroDeGanhadores": 95897},
+          {"faixa": 5, "numeroDeGanhadores": 510107}
+        ]
+      },
+      "anterior": {
+        "numero": 3593, "valorArrecadado": 20841698.5, "valorEstimadoProximoConcurso": 1800000.0,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 3595,
+        "especial": false,
+        "acumulado_principal": 0.0,
+        "reserva": 0,
+        "N_anterior": 5940675.0,
+        "heranca_faixas": {},
+        "N_previsto": 6176600.12471676,
+        "sigma_log": 0.10018517776467087,
+        "k1": 0.35725311185326913,
+        "k2": 0.25665695860203874,
+        "k1_por_faixa": {
+          "1": 0.07647793104757339, "2": 0.024118222203657058, "3": 0.014455022699739351,
+          "4": 0.06681432714546189, "5": 0.17538760875683748
+        },
+        "exibicao": {"k1": "0,357", "k2": "0,257"}
+      }
+    },
+    {
+      "id": "megasena_especial_virada",
+      "grupo": "regras especiais (histórico)",
+      "descricao": "próximo é a Mega da Virada: concurso especial, k1 e k2 não são calculados",
+      "chave": "megasena",
+      "ultimo": {
+        "numero": 2954,
+        "numeroConcursoProximo": 2955,
+        "dataProximoConcurso": "01/01/2026",
+        "valorArrecadado": 66385644.0,
+        "valorEstimadoProximoConcurso": 1000000000.0,
+        "valorAcumuladoProximoConcurso": 249261580.92,
+        "valorAcumuladoConcurso_0_5": 249261580.92,
+        "numeroConcursoFinal_0_5": 2955,
+        "valorAcumuladoConcursoEspecial": 249261580.92,
+        "acumulado": true,
+        "indicadorConcursoEspecial": 1,
+        "listaRateioPremio": [
+          {"faixa": 1, "numeroDeGanhadores": 0},
+          {"faixa": 2, "numeroDeGanhadores": 38},
+          {"faixa": 3, "numeroDeGanhadores": 4069}
+        ]
+      },
+      "anterior": {
+        "numero": 2953, "valorArrecadado": 51733032.0, "valorEstimadoProximoConcurso": 62000000.0,
+        "indicadorConcursoEspecial": 1
+      },
+      "esperado": {
+        "numero": 2955,
+        "especial": true,
+        "acumulado_principal": 249261580.92,
+        "reserva": 1,
+        "N_anterior": 11064274.0,
+        "heranca_faixas": {}
+      }
+    }
+  ],
+  "odds": [
+    {
+      "chave": "megasena", "p_qualquer_premio": 0.00043524410622752807, "um_em": 2297.5612666360616,
+      "exibicao": "1:2298"
+    },
+    {
+      "chave": "lotofacil", "p_qualquer_premio": 0.105889083322116, "um_em": 9.443844149240453,
+      "exibicao": "1:9,4"
+    },
+    {
+      "chave": "quina", "p_qualquer_premio": 0.0292585495783364, "um_em": 34.17804417551919,
+      "exibicao": "1:34,2"
+    },
+    {
+      "chave": "lotomania", "p_qualquer_premio": 0.011417578436070608, "um_em": 87.58424613408242,
+      "exibicao": "1:87,6"
+    },
+    {
+      "chave": "timemania", "p_qualquer_premio": 0.05046982711456394, "um_em": 19.813818615428403,
+      "exibicao": "1:19,8"
+    },
+    {
+      "chave": "duplasena", "p_qualquer_premio": 0.034848037147558464, "um_em": 28.69602083370318,
+      "exibicao": "1:28,7"
+    },
+    {
+      "chave": "diadesorte", "p_qualquer_premio": 0.11010746350012202, "um_em": 9.082036477925875,
+      "exibicao": "1:9,1"
+    },
+    {
+      "chave": "supersete", "p_qualquer_premio": 0.025691499999999978, "um_em": 38.92337932779327,
+      "exibicao": "1:38,9"
+    },
+    {
+      "chave": "maismilionaria", "p_qualquer_premio": 0.08779613232897232, "um_em": 11.390023381132526,
+      "exibicao": "1:11,4"
+    }
+  ]
+}

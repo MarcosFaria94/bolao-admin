@@ -13,7 +13,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -33,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,45 +40,51 @@ import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
-import io.github.marcosfaria94.bolao.domain.CalculoRateio
-import io.github.marcosfaria94.bolao.domain.Datas
+import io.github.marcosfaria94.bolao.data.TipoComprovante
+import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Mensagens
-import io.github.marcosfaria94.bolao.ui.comum.Anexo
+import io.github.marcosfaria94.bolao.imagem.Recibos
+import io.github.marcosfaria94.bolao.ui.comum.AVISO_DEFINITIVO
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
+import io.github.marcosfaria94.bolao.ui.comum.BotoesDeRegistro
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
-import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
+import io.github.marcosfaria94.bolao.ui.comum.Historico
 import io.github.marcosfaria94.bolao.ui.comum.LinhaAnexo
 import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
-import io.github.marcosfaria94.bolao.ui.comum.PreviaMensagem
-import io.github.marcosfaria94.bolao.ui.comum.TituloSecao
+import io.github.marcosfaria94.bolao.ui.comum.TextoDoWhatsapp
+import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.copiar
+import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
 import io.github.marcosfaria94.bolao.ui.teste.ModoTeste
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 @Composable
-fun RateioTela(estado: Estado, aoConcluir: () -> Unit) {
+fun RateioTela(estado: Estado) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
     val hoje = LocalDate.now()
-    val sugestao = remember(estado.lancamentos.size) { Operacoes.sugestaoProvisionado(estado, hoje) }
     val teste by repo.modoTeste.collectAsStateWithLifecycle()
-    val saldo = Operacoes.saldo(estado)
 
-    var provisionado by remember { mutableLongStateOf(sugestao.provisionado) }
+    val saldo = Operacoes.saldo(estado)
+    val provisao = Operacoes.provisao(estado, hoje)
+    val extra = Operacoes.extra(estado, hoje)
+    // Começa no Extra (e volta a ele quando o saldo muda, ex.: depois de registrar).
+    var pedido by remember(extra) { mutableLongStateOf(extra.coerceAtLeast(0)) }
     val comprovantes = remember { mutableStateMapOf<String, Arquivo>() }
     var paraQuem by remember { mutableStateOf<String?>(null) }
     var confirmar by remember { mutableStateOf(false) }
-    var enviando by remember { mutableStateOf(false) }
-    var desfazer by remember { mutableStateOf(false) }
+    var vendo by remember { mutableStateOf(false) }
+    var trabalhando by remember { mutableStateOf(false) }
 
-    val n = estado.pessoas.size.coerceAtLeast(1)
-    val calculo = CalculoRateio.calcular(saldo, provisionado, n)
+    val calculo = Operacoes.calcularRateio(estado, hoje, pedido)
+    val acima = pedido > extra
+    val faltam = estado.pessoas.count { comprovantes[it.id] == null }
 
     val escolher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val pessoa = paraQuem
@@ -101,30 +107,23 @@ fun RateioTela(estado: Estado, aoConcluir: () -> Unit) {
     ) {
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
             Column(Modifier.padding(12.dp)) {
-                Text("Rateio Nº${estado.proximoRateio}", style = MaterialTheme.typography.titleMedium)
                 LinhaValor("Saldo líquido", Dinheiro.rs(saldo))
-                LinhaValor(
-                    "Apostas que faltam no mês",
-                    "${sugestao.apostasRestantes} × ${Dinheiro.rs(sugestao.valorPorAposta)}",
-                )
-                LinhaValor("Aportes do mês (limite)", Dinheiro.rs(sugestao.aportesDoMes))
-                LinhaValor("Provisionado sugerido", Dinheiro.rs(sugestao.provisionado))
+                LinhaValor("Provisionado (${provisao.apostasRestantes} apostas no mês)", Dinheiro.rs(provisao.provisionado))
+                LinhaValor("Extra", (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)), destaque = true)
             }
         }
-        CampoDinheiro(
-            centavos = provisionado,
-            aoMudar = { provisionado = it },
-            rotulo = "Provisionado",
-            ajuda = "Valor guardado para as apostas que faltam no mês, nunca acima dos aportes do mês.",
-            modifier = Modifier.fillMaxWidth(),
-        )
 
-        if (calculo == null) {
-            Aviso(
-                "Sem rateio agora: o saldo líquido (${Dinheiro.rs(saldo)}) precisa ser maior que o provisionado (${Dinheiro.rs(provisionado)}).",
-                alerta = true,
-            )
+        if (extra <= 0) {
+            Aviso("Não há valor a ser rateado: o saldo líquido não passa do provisionado para as apostas do mês.", alerta = true)
         } else {
+            CampoDinheiro(
+                centavos = pedido,
+                aoMudar = { pedido = it },
+                rotulo = "Valor total a ser rateado",
+                erro = true,
+                ajuda = "Valor acima de ${Dinheiro.rs(extra)} não pode ser rateado.",
+                modifier = Modifier.fillMaxWidth(),
+            )
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -132,34 +131,49 @@ fun RateioTela(estado: Estado, aoConcluir: () -> Unit) {
                 ),
             ) {
                 Column(Modifier.padding(12.dp)) {
-                    LinhaValor("Saldo − Provisionado", Dinheiro.rs(calculo.disponivel))
-                    LinhaValor("Cota de cada integrante (÷ $n, para baixo)", Dinheiro.rs(calculo.cota), destaque = true)
+                    LinhaValor("Cota de cada integrante (÷ ${estado.pessoas.size}, para baixo)", Dinheiro.rs(calculo.cota), destaque = true)
                     LinhaValor("Total do rateio", Dinheiro.rs(calculo.total))
                     if (calculo.sobra > 0) LinhaValor("Sobra que fica no saldo", Dinheiro.rs(calculo.sobra))
-                    LinhaValor("Saldo final", Dinheiro.rs(calculo.saldoFinal))
+                    Text(
+                        "=> Saldo após: ${Dinheiro.rs(calculo.saldoFinal)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             }
+            if (acima) Aviso("Valor acima de ${Dinheiro.rs(extra)} não pode ser rateado.", alerta = true)
+        }
 
-            TituloSecao("Pix de cada integrante")
+        Historico(
+            titulo = "Histórico de rateios",
+            estado = estado,
+            filtro = { it.tipo == TipoLancamento.RATEIO },
+            comprovanteDe = { l ->
+                estado.comprovantes.firstOrNull { it.tipo == TipoComprovante.RATEIO && it.rateioNumero == l.rateioNumero }
+            },
+        )
+
+        if (extra > 0) {
             if (teste) {
                 TextButton(onClick = {
                     escopo.launch {
                         try {
-                            estado.pessoas.forEach { p -> comprovantes[p.id] = ModoTeste.pix(ctx, p, calculo.cota, estado.proximoRateio) }
+                            estado.pessoas.forEach { p -> comprovantes[p.id] = ModoTeste.pix(ctx, p, calculo.cota) }
                         } catch (t: Throwable) {
                             avisos.showSnackbar("Não foi possível criar os comprovantes de exemplo: ${t.message}")
                         }
                     }
                 }) { Text("Usar comprovantes de Pix de exemplo") }
             }
-            estado.pessoas.forEach { p ->
+            estado.pessoas.forEachIndexed { i, p ->
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("${p.apelido} · ${Dinheiro.rs(calculo.cota)}", style = MaterialTheme.typography.titleMedium)
+                                Text("Pix ${i + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${p.apelido} · ${Dinheiro.rs(calculo.cota)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    "Pix: ${p.chavePix}",
+                                    "Chave: ${p.chavePix}",
                                     style = MaterialTheme.typography.bodySmall,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -184,64 +198,52 @@ fun RateioTela(estado: Estado, aoConcluir: () -> Unit) {
                     }
                 }
             }
-
-            val texto = Mensagens.rateio(estado.proximoRateio, hoje, saldo, calculo.total)
-            PreviaMensagem(texto, rodape = "Os ${estado.pessoas.size} comprovantes do Pix vão juntos, como anexo.")
-            val faltam = estado.pessoas.count { comprovantes[it.id] == null }
+            TextoDoWhatsapp(Mensagens.tituloRateio(hoje), rodape = "A imagem do comprovante e os ${estado.pessoas.size} comprovantes do Pix vão juntos.")
             if (faltam > 0) Aviso("Falta anexar $faltam comprovante(s) do Pix.", alerta = true)
-            Button(
-                enabled = faltam == 0 && !enviando,
-                onClick = { confirmar = true },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Registrar e enviar no WhatsApp") }
-
-            if (confirmar) {
-                DialogoConfirmar(
-                    titulo = "Registrar o rateio Nº${estado.proximoRateio}?",
-                    texto = "Desconta ${Dinheiro.rs(calculo.total)} do saldo (${Dinheiro.rs(calculo.cota)} para cada um) e abre o WhatsApp com a mensagem e os comprovantes.",
-                    confirmar = "Registrar",
-                    aoConfirmar = {
-                        confirmar = false
-                        enviando = true
-                        escopo.launch {
-                            try {
-                                val lista = estado.pessoas.mapNotNull { comprovantes[it.id] }
-                                repo.atualizar {
-                                    Operacoes.registrarRateio(it, hoje, provisionado, calculo.cota, lista, System.currentTimeMillis())
-                                }
-                                Compartilhar.whatsapp(ctx, texto, lista.map { Anexo(repo.arquivo(it), it.mime) })
-                                aoConcluir()
-                            } catch (t: Throwable) {
-                                avisos.showSnackbar("Não foi possível registrar: ${t.message}")
-                            } finally {
-                                enviando = false
-                            }
-                        }
-                    },
-                    aoFechar = { confirmar = false },
-                )
-            }
-        }
-
-        estado.rateios.maxByOrNull { it.numero }?.let { ultimo ->
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            Text(
-                "Último rateio: Nº${ultimo.numero} em ${Datas.longa(ultimo.data)} · ${Dinheiro.rs(ultimo.cota)} para cada um",
-                style = MaterialTheme.typography.bodyMedium,
+            BotoesDeRegistro(
+                habilitado = !acima && calculo.cota > 0 && faltam == 0,
+                trabalhando = trabalhando,
+                aoVisualizar = { vendo = true },
+                aoRegistrar = { confirmar = true },
+                visualizarHabilitado = !acima && calculo.cota > 0,
             )
-            TextButton(onClick = { desfazer = true }) { Text("Desfazer o rateio Nº${ultimo.numero}", color = MaterialTheme.colorScheme.error) }
-            if (desfazer) {
-                DialogoConfirmar(
-                    titulo = "Desfazer o rateio Nº${ultimo.numero}?",
-                    texto = "Os ${Dinheiro.rs(ultimo.cota * estado.pessoas.size)} voltam ao saldo. Use só se o registro foi um engano.",
-                    confirmar = "Desfazer",
-                    aoConfirmar = {
-                        desfazer = false
-                        escopo.launch { repo.atualizar { Operacoes.desfazerRateio(it, ultimo.numero) } }
-                    },
-                    aoFechar = { desfazer = false },
-                )
-            }
         }
+    }
+
+    if (vendo) {
+        VisualizadorComprovante(
+            estado,
+            Mensagens.tituloRateio(hoje),
+            aoFechar = { vendo = false },
+            previa = Recibos.previa(estado, TipoComprovante.RATEIO, Operacoes.textoRateio(estado, hoje, calculo.total), estado.pessoas.size),
+            anexos = estado.pessoas.mapNotNull { comprovantes[it.id] },
+        )
+    }
+
+    if (confirmar) {
+        DialogoConfirmar(
+            titulo = "Registrar o rateio?",
+            texto = "Sai ${Dinheiro.rs(calculo.total)} do saldo (${Dinheiro.rs(calculo.cota)} para cada um). " +
+                "Em seguida o WhatsApp abre com o comprovante e os Pix.\n\n$AVISO_DEFINITIVO",
+            confirmar = "Confirmar",
+            aoConfirmar = {
+                confirmar = false
+                trabalhando = true
+                escopo.launch {
+                    try {
+                        val lista = estado.pessoas.mapNotNull { comprovantes[it.id] }
+                        val agora = System.currentTimeMillis()
+                        val valor = pedido
+                        registrarComprovante(ctx, { Operacoes.registrarRateio(it, hoje, valor, lista, agora) })
+                        comprovantes.clear()
+                    } catch (t: Throwable) {
+                        avisos.showSnackbar("Não foi possível registrar: ${t.message}")
+                    } finally {
+                        trabalhando = false
+                    }
+                }
+            },
+            aoFechar = { confirmar = false },
+        )
     }
 }

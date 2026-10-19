@@ -91,3 +91,7 @@ fun BolaoTema(conteudo: @Composable () -> Unit) {
 
 /** Cor de cada modalidade, para chips e volantes. */
 fun corModalidade(argb: Long): Color = Color(argb.toInt())
+
+/** Amarelo-ouro da aposta premiada. */
+@Composable
+fun corPremiada(): Color = if (isSystemInDarkTheme()) Color(0xFFFFC83D) else Color(0xFFB07800)

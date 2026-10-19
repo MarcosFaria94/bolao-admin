@@ -54,16 +54,20 @@ fun CampoData(
     rotulo: String,
     modifier: Modifier = Modifier,
     ajuda: String? = null,
+    /** Só a data (sem o dia da semana), para campos estreitos. */
+    curto: Boolean = false,
+    habilitado: Boolean = true,
 ) {
     var aberto by remember { mutableStateOf(false) }
     OutlinedTextField(
-        value = data?.let { "${Datas.diaSemana(it)}, ${Datas.longa(it)}" } ?: "",
+        value = data?.let { if (curto) Datas.longa(it) else "${Datas.diaSemana(it)}, ${Datas.longa(it)}" } ?: "",
+        enabled = habilitado,
         onValueChange = {},
         readOnly = true,
         label = { Text(rotulo) },
         supportingText = ajuda?.let { { Text(it) } },
         trailingIcon = {
-            IconButton(onClick = { aberto = true }) { Icon(Icons.Outlined.CalendarMonth, contentDescription = "Escolher data") }
+            IconButton(onClick = { aberto = true }, enabled = habilitado) { Icon(Icons.Outlined.CalendarMonth, contentDescription = "Escolher data") }
         },
         singleLine = true,
         modifier = modifier,
@@ -89,35 +93,29 @@ fun CampoData(
     }
 }
 
-/** Prévia da mensagem no formato do termo (monoespaçada), com botão de copiar. */
+/** O texto que vai no WhatsApp: só o título, como nos modelos do termo. */
 @Composable
-fun PreviaMensagem(texto: String, modifier: Modifier = Modifier, rodape: String? = null) {
+fun TextoDoWhatsapp(titulo: String, modifier: Modifier = Modifier, rodape: String? = null) {
     val ctx = LocalContext.current
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Mensagem para o grupo", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                IconButton(onClick = { copiar(ctx, "Mensagem", Compartilhar.textoParaCopiar(texto)) }) {
-                    Icon(Icons.Outlined.ContentCopy, contentDescription = "Copiar mensagem")
+        Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
+                Text("Texto no WhatsApp", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(titulo, style = EstiloMensagem, softWrap = false, modifier = Modifier.horizontalScroll(rememberScrollState()))
+                rodape?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             }
-            // Rola para o lado: as linhas do termo são largas e não podem quebrar.
-            Text(
-                texto,
-                style = EstiloMensagem,
-                softWrap = false,
-                modifier = Modifier.horizontalScroll(rememberScrollState()).padding(end = 8.dp),
-            )
-            rodape?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp, end = 8.dp),
-                )
+            IconButton(onClick = { copiar(ctx, "Mensagem", titulo) }) {
+                Icon(Icons.Outlined.ContentCopy, contentDescription = "Copiar texto")
             }
         }
     }

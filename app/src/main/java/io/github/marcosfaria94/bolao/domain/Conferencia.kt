@@ -98,7 +98,7 @@ object Conferencia {
             acertados = acertados,
             extraAcertado = extraAcertado,
             precisaConfirmarValor = semExtra || faixas.any { it.valor == 0L },
-            observacoes = if (semExtra) listOf("A Caixa não informou o Time do Coração/Mês de Sorte: use \"Corrigir o resultado\".") else emptyList(),
+            observacoes = if (semExtra) listOf("A Caixa não informou o Time do Coração/Mês de Sorte: informe o resultado à mão.") else emptyList(),
         )
     }
 
@@ -153,7 +153,7 @@ object Conferencia {
             acertados = acertados,
             trevosAcertados = trevos,
             precisaConfirmarValor = semTrevos || faixas.any { it.valor == 0L },
-            observacoes = if (semTrevos) listOf("A Caixa não informou os trevos: use \"Corrigir o resultado\".") else emptyList(),
+            observacoes = if (semTrevos) listOf("A Caixa não informou os trevos: informe o resultado à mão.") else emptyList(),
         )
     }
 

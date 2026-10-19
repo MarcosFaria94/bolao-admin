@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Trevo de quatro folhas, branco (o sistema pinta o ícone da notificação). -->
+<!-- Trevo do ícone do app, branco (o sistema pinta o ícone da notificação). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -8,11 +8,10 @@
     <path
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.6"
+        android:strokeWidth="1.38"
         android:strokeLineCap="round"
-        android:pathData="M12.6,13.2 Q14.6,17.2 18,18.8" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M5.5,9.5 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0 z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M11.5,9.5 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0 z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M5.5,14.5 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0 z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M11.5,14.5 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0 z" />
+        android:pathData="M10.49,9.97 C10.95,14.56 12.1,18.57 14.39,22.82" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M10.49,9.97 C10.49,8.34 9.68,4.29 11.71,2.26 C13.33,0.64 15.77,1.45 16.01,4.45 C19.01,4.69 19.82,7.13 18.2,8.75 C16.17,10.78 12.11,9.97 10.49,9.97 Z M10.49,9.97 C12.11,9.97 16.17,9.16 18.2,11.18 C19.82,12.81 19.01,15.24 16.01,15.48 C15.77,18.49 13.33,19.3 11.71,17.68 C9.68,15.65 10.49,11.59 10.49,9.97 Z M10.49,9.97 C10.49,11.59 11.3,15.65 9.27,17.68 C7.65,19.3 5.22,18.49 4.97,15.48 C1.97,15.24 1.16,12.81 2.78,11.18 C4.81,9.16 8.87,9.97 10.49,9.97 Z M10.49,9.97 C8.87,9.97 4.81,10.78 2.78,8.75 C1.16,7.13 1.97,4.69 4.97,4.45 C5.22,1.45 7.65,0.64 9.27,2.26 C11.3,4.29 10.49,8.34 10.49,9.97 Z" />
 </vector>

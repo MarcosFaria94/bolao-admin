@@ -6,6 +6,7 @@ import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Especiais
 import java.time.DayOfWeek
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.YearMonth
@@ -20,6 +21,30 @@ data class Lembrete(
     val destino: String,
 ) {
     enum class Canal { LEMBRETES, RESULTADOS }
+}
+
+/** Contagens dos selos vermelhos da barra de baixo. */
+data class Selos(
+    /** Aba Financeiro: aporte mensal pendente e extratos pendentes. */
+    val aportePendente: Boolean,
+    val extratosPendentes: List<YearMonth>,
+    /** Aba Apostas: apostas com resultado oficial esperando a apuração. */
+    val apuracoes: List<Aposta>,
+) {
+    val financeiro: Int get() = (if (aportePendente) 1 else 0) + extratosPendentes.size
+    val apostas: Int get() = apuracoes.size
+
+    companion object {
+        val NENHUM = Selos(false, emptyList(), emptyList())
+
+        fun de(e: Estado, hoje: LocalDate): Selos =
+            if (!e.cadastroConcluido || e.extincao != null) NENHUM
+            else Selos(
+                aportePendente = Operacoes.aporteMensalPendente(e, hoje),
+                extratosPendentes = Operacoes.extratosPendentes(e, hoje),
+                apuracoes = Operacoes.apuracoesDisponiveis(e),
+            )
+    }
 }
 
 /**
@@ -38,7 +63,7 @@ object Lembretes {
         avisados: Set<String>,
         fuso: ZoneId = ZoneId.systemDefault(),
     ): List<Lembrete> {
-        if (!e.cadastroConcluido) return emptyList()
+        if (!e.cadastroConcluido || e.extincao != null) return emptyList()
         val hoje = agora.toLocalDate()
         val mes = YearMonth.from(hoje)
         val lista = mutableListOf<Lembrete>()
@@ -46,20 +71,22 @@ object Lembretes {
             if (l.chave !in avisados) lista += l
         }
 
-        // 1. Aporte no dia 1º.
-        if (hoje.dayOfMonth == 1 && agora.hour >= HORA_APORTE && Operacoes.aportesDoMes(e, mes) == 0L) {
-            add(
-                Lembrete(
-                    "aporte-$mes", Lembrete.Canal.LEMBRETES,
-                    "Dia de aporte",
-                    "Confira os Pix de ${Dinheiro.rs(e.config.aporteMensal)} de cada integrante e envie a mensagem APORTE ao grupo.",
-                    "aporte",
-                ),
-            )
+        // 1. Aporte mensal (a partir do dia 1º, às 9h).
+        if (agora.hour >= HORA_APORTE || hoje.dayOfMonth > 1) {
+            if (Operacoes.aporteMensalPendente(e, hoje)) {
+                add(
+                    Lembrete(
+                        "aporte-$mes", Lembrete.Canal.LEMBRETES,
+                        "Dia de aporte",
+                        "Envie o lembrete ao grupo (${Dinheiro.rs(e.config.aporteMensal)} por integrante) e registre o aporte mensal.",
+                        "aporte",
+                    ),
+                )
+            }
         }
 
         // 2. Dia de jogo.
-        if (Calendario.ehDiaProgramado(hoje) && agora.hour >= HORA_JOGO && !Operacoes.apostaRegularFeitaEm(e, hoje)) {
+        if (Calendario.ehDiaProgramado(hoje) && agora.hour >= HORA_JOGO && !Operacoes.apostaFeitaEm(e, hoje)) {
             add(
                 Lembrete(
                     "jogo-$hoje", Lembrete.Canal.LEMBRETES,
@@ -98,30 +125,32 @@ object Lembretes {
             )
         }
 
-        // 5. Jogo sorteado (já conferido): avisa com o resultado.
-        e.apostas.filter { it.registrada && it.apuracao != null && it.apuracao.confirmadaEm == null }.forEach { a ->
+        // 5. Resultado oficial saiu: apurar e enviar o comprovante.
+        Operacoes.apuracoesDisponiveis(e).forEach { a ->
             val ap = a.apuracao!!
             val premio = if (ap.premio > 0) "prêmio de ${Dinheiro.rs(ap.premio)}" else "sem prêmio"
             add(
                 Lembrete(
                     "sorteio-${a.id}", Lembrete.Canal.RESULTADOS,
-                    "Jogo #${a.numero} sorteado: ${ap.acertos}",
-                    "${a.modalidade.nome} ${a.concurso}: $premio. Toque para conferir e enviar a apuração.",
+                    "Resultado da aposta Nº${a.numero}: ${ap.acertos}",
+                    "${a.modalidade.nome} ${a.concurso}: $premio. Toque para apurar o resultado e enviar o comprovante.",
                     "apuracao/${a.id}",
                 ),
             )
         }
 
-        // 6. Último dia do mês: extrato.
-        if (Calendario.ehUltimoDiaDoMes(hoje) && agora.hour >= HORA_EXTRATO && e.extratos.none { it.mes == mes.toString() }) {
-            add(
-                Lembrete(
-                    "extrato-$mes", Lembrete.Canal.LEMBRETES,
-                    "Último dia do mês: extrato",
-                    "Digite o saldo da caixinha do Nubank para fechar o EXTRATO de ${Datas.mesAno(mes)}.",
-                    "extrato",
-                ),
-            )
+        // 6. Extrato: no último dia do mês (18h) e depois, enquanto não for registrado.
+        Operacoes.extratosPendentes(e, hoje).forEach { m ->
+            if (m != mes || agora.hour >= HORA_EXTRATO) {
+                add(
+                    Lembrete(
+                        "extrato-$m", Lembrete.Canal.LEMBRETES,
+                        if (m == mes) "Último dia do mês: extrato" else "Extrato de ${Datas.mesAno(m)} pendente",
+                        "Registre e envie o extrato de ${Datas.mesAno(m)}: digite o saldo da caixinha do Nubank.",
+                        "extrato",
+                    ),
+                )
+            }
         }
         return lista
     }

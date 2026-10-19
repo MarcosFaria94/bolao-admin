@@ -53,6 +53,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -65,6 +66,8 @@ import io.github.marcosfaria94.bolao.data.Lancamento
 import io.github.marcosfaria94.bolao.data.Pessoa
 import io.github.marcosfaria94.bolao.data.Repositorio
 import io.github.marcosfaria94.bolao.data.TipoLancamento
+import io.github.marcosfaria94.bolao.domain.Cpf
+import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
@@ -75,11 +78,14 @@ import io.github.marcosfaria94.bolao.ui.teste.BotaoExperimentar
 import io.github.marcosfaria94.bolao.ui.teste.ModoTeste
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.YearMonth
 
 class FormPessoa {
     var nome by mutableStateOf("")
     var apelido by mutableStateOf("")
     var pix by mutableStateOf("")
+    /** Opcional: o app guarda só os 6 dígitos do meio, como no termo. */
+    var cpf by mutableStateOf("")
 }
 
 class CadastroViewModel(app: Application) : AndroidViewModel(app) {
@@ -89,10 +95,18 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
     val pessoas = mutableStateListOf(FormPessoa(), FormPessoa(), FormPessoa())
     var administrador by mutableIntStateOf(0)
     var nomeGrupo by mutableStateOf("")
+    var grupoWhatsapp by mutableStateOf("")
     var saldoInicial by mutableLongStateOf(0L)
-    var proximoJogo by mutableStateOf<Int?>(1)
-    var proximoRateio by mutableStateOf<Int?>(1)
+    /** Mês do primeiro aporte mensal (null = o padrão, ver [inicioAportes]). */
+    var inicioEscolhido by mutableStateOf<YearMonth?>(null)
     var aporteMensal by mutableLongStateOf(Config().aporteMensal)
+
+    /**
+     * Padrão: o aporte deste mês só é cobrado se o cadastro é feito no dia 1º e o bolão
+     * começa sem caixa; com saldo inicial, os aportes começam no mês seguinte.
+     */
+    fun inicioAportes(hoje: LocalDate): YearMonth = inicioEscolhido
+        ?: if (hoje.dayOfMonth == 1 && saldoInicial == 0L) YearMonth.from(hoje) else YearMonth.from(hoje).plusMonths(1)
     var termo by mutableStateOf<Arquivo?>(null)
     var salvando by mutableStateOf(false)
     var tentouAvancar by mutableStateOf(false)
@@ -106,18 +120,15 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
         }
         val apelidos = pessoas.map { it.apelido.trim().lowercase() }.filter { it.isNotEmpty() }
         if (apelidos.size != apelidos.distinct().size) add("Os nomes curtos precisam ser diferentes entre si.")
-    }
-
-    fun problemasNumeros(): List<String> = buildList {
-        if ((proximoJogo ?: 0) < 1) add("Informe o próximo número de jogo.")
-        if ((proximoRateio ?: 0) < 1) add("Informe o próximo número de rateio.")
+        pessoas.forEachIndexed { i, p ->
+            if (Cpf.mascarar(p.cpf) == null) add("O CPF do integrante ${i + 1} está incompleto (pode deixar em branco).")
+        }
     }
 
     fun problemasValores(): List<String> = if (aporteMensal <= 0) listOf("Informe o aporte mensal.") else emptyList()
 
     fun problemasDoPasso(): List<String> = when (passo) {
         1 -> problemasPessoas()
-        2 -> problemasNumeros()
         3 -> problemasValores()
         else -> emptyList()
     }
@@ -147,7 +158,7 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
 
     fun concluir(aoErro: (String) -> Unit) {
         if (salvando) return
-        val problemas = problemasPessoas() + problemasNumeros() + problemasValores()
+        val problemas = problemasPessoas() + problemasValores()
         if (problemas.isNotEmpty()) {
             aoErro(problemas.first())
             return
@@ -164,6 +175,7 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
                         apelido = f.apelido.trim(),
                         chavePix = f.pix.trim(),
                         administrador = i == administrador,
+                        cpf = Cpf.mascarar(f.cpf).orEmpty(),
                     )
                 }
                 val lancamentos = if (saldoInicial != 0L) {
@@ -183,11 +195,12 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
                 repo.atualizar {
                     it.copy(
                         cadastroConcluido = true,
+                        cadastradoEm = hoje,
+                        inicioAportes = inicioAportes(hoje).toString(),
                         nomeGrupo = nomeGrupo.trim(),
+                        grupoWhatsapp = grupoWhatsapp.trim(),
                         pessoas = lista,
                         config = it.config.copy(aporteMensal = aporteMensal),
-                        proximoJogo = proximoJogo ?: 1,
-                        proximoRateio = proximoRateio ?: 1,
                         lancamentos = it.lancamentos + lancamentos,
                         termo = termo ?: it.termo,
                     )
@@ -314,7 +327,7 @@ fun CadastroTela(vm: CadastroViewModel = viewModel()) {
     if (confirmarRestaurar) {
         DialogoConfirmar(
             titulo = "Restaurar backup",
-            texto = "Escolha o arquivo .zip de backup do Bolão Admin (por exemplo, em Downloads/Bolao).",
+            texto = "Escolha o arquivo .zip de backup do Bolão dos Amigos (por exemplo, em Downloads/Bolao).",
             confirmar = "Escolher arquivo",
             aoConfirmar = {
                 confirmarRestaurar = false
@@ -334,10 +347,10 @@ private fun PassoBoasVindas(
     aoExperimentar: () -> Unit,
 ) {
     Spacer(Modifier.height(24.dp))
-    Text("Bem-vindo ao Bolão Admin", style = MaterialTheme.typography.headlineMedium)
+    Text("Bem-vindo ao Bolão dos Amigos", style = MaterialTheme.typography.headlineMedium)
     Text(
         "Este cadastro é feito uma vez só. Os dados ficam apenas neste celular: " +
-            "integrantes, chaves Pix, saldo e numeração dos jogos.",
+            "integrantes, chaves Pix, saldo inicial e aporte mensal.",
         style = MaterialTheme.typography.bodyLarge,
     )
     Spacer(Modifier.height(8.dp))
@@ -396,6 +409,13 @@ private fun PassoIntegrantes(vm: CadastroViewModel) {
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
         modifier = Modifier.fillMaxWidth(),
     )
+    OutlinedTextField(
+        value = vm.grupoWhatsapp,
+        onValueChange = { vm.grupoWhatsapp = it.take(80) },
+        label = { Text("ID do grupo do WhatsApp (opcional, para o termo)") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
     vm.pessoas.forEachIndexed { i, p ->
         val marcarErro = vm.tentouAvancar
         Card(
@@ -440,6 +460,17 @@ private fun PassoIntegrantes(vm: CadastroViewModel) {
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                val cpf = Cpf.mascarar(p.cpf)
+                OutlinedTextField(
+                    value = p.cpf,
+                    onValueChange = { p.cpf = it.take(14) },
+                    label = { Text("CPF (opcional, para o termo)") },
+                    supportingText = { Text(if (cpf == null) "CPF incompleto" else if (cpf.isBlank()) "Fica guardado só ***.ddd.ddd-**" else "Fica guardado: $cpf") },
+                    isError = cpf == null,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
@@ -447,10 +478,11 @@ private fun PassoIntegrantes(vm: CadastroViewModel) {
 
 @Composable
 private fun PassoSaldo(vm: CadastroViewModel) {
-    Text("Saldo e numeração", style = MaterialTheme.typography.titleLarge)
+    val hoje = LocalDate.now()
+    val atual = YearMonth.from(hoje)
+    Text("Saldo inicial", style = MaterialTheme.typography.titleLarge)
     Text(
-        "Use o saldo de hoje da caixinha do bolão. Se o bolão já vinha funcionando, " +
-            "informe o próximo número de jogo e de rateio para continuar a sequência.",
+        "Quanto o bolão já tem na caixinha hoje? Se ele já começa com caixa, não precisa de aporte para começar.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -458,28 +490,32 @@ private fun PassoSaldo(vm: CadastroViewModel) {
         centavos = vm.saldoInicial,
         aoMudar = { vm.saldoInicial = it },
         rotulo = "Saldo inicial da caixinha",
-        ajuda = "Pode ficar R$ 0,00 se o bolão está começando agora.",
-        modifier = Modifier.fillMaxWidth(),
-    )
-    CampoInteiro(
-        valor = vm.proximoJogo,
-        aoMudar = { vm.proximoJogo = it },
-        rotulo = "Próximo número de jogo",
-        prefixo = "#",
-        ajuda = "O próximo jogo será o #${vm.proximoJogo ?: 1}.",
-        erro = vm.tentouAvancar && (vm.proximoJogo ?: 0) < 1,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    CampoInteiro(
-        valor = vm.proximoRateio,
-        aoMudar = { vm.proximoRateio = it },
-        rotulo = "Próximo número de rateio",
-        prefixo = "Nº",
-        ajuda = "O próximo rateio será o Nº${vm.proximoRateio ?: 1}.",
-        erro = vm.tentouAvancar && (vm.proximoRateio ?: 0) < 1,
+        ajuda = "Pode ficar R$ 0,00 se o bolão começa sem caixa.",
         imeAction = ImeAction.Done,
         modifier = Modifier.fillMaxWidth(),
     )
+    Spacer(Modifier.height(4.dp))
+    Text("O aporte mensal começa em", style = MaterialTheme.typography.titleMedium)
+    val inicio = vm.inicioAportes(hoje)
+    listOf(atual, atual.plusMonths(1)).forEach { m ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .selectable(selected = inicio == m, onClick = { vm.inicioEscolhido = m }, role = Role.RadioButton),
+        ) {
+            RadioButton(selected = inicio == m, onClick = null)
+            Column(Modifier.padding(start = 8.dp)) {
+                Text(Datas.mesAnoExtenso(m).replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    if (m == atual) "O aporte deste mês será cobrado (data fixa no dia 1º)."
+                    else "Este mês fica coberto pelo saldo inicial; o primeiro aporte é em ${Datas.longa(m.atDay(1))}.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -521,7 +557,7 @@ private fun PassoTermo(vm: CadastroViewModel, aoEscolher: () -> Unit) {
         )
     }
     Text("• Saldo inicial: ${Dinheiro.rs(vm.saldoInicial)}", style = MaterialTheme.typography.bodyMedium)
-    Text("• Próximo jogo: #${vm.proximoJogo ?: 1} · próximo rateio: Nº${vm.proximoRateio ?: 1}", style = MaterialTheme.typography.bodyMedium)
+    Text("• Primeiro aporte mensal: ${Datas.mesAno(vm.inicioAportes(LocalDate.now()))}", style = MaterialTheme.typography.bodyMedium)
     Text("• Aporte mensal: ${Dinheiro.rs(vm.aporteMensal)} por integrante", style = MaterialTheme.typography.bodyMedium)
     TextButton(onClick = { vm.passo = 1 }) { Text("Corrigir algo") }
 }

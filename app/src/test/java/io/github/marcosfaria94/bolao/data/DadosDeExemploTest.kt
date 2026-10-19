@@ -1,6 +1,5 @@
 package io.github.marcosfaria94.bolao.data
 
-import io.github.marcosfaria94.bolao.domain.CalculoRateio
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Volante
@@ -23,6 +22,18 @@ class DadosDeExemploTest {
         DadosDeExemplo.gerar(hoje, instante(hoje, hora), fuso, reais)
 
     @Test
+    fun impressoesDigitaisDosAnexosRefazemACorrente() {
+        val e = gerar(LocalDate.of(2026, 10, 17))
+        assertNull(Operacoes.primeiraAutenticacaoQuebrada(e))
+        val com = DadosDeExemplo.comImpressoesDigitais(e) { "H-" + it.nome }
+        assertNull(Operacoes.primeiraAutenticacaoQuebrada(com))
+        assertTrue(com.comprovantes.flatMap { it.anexos }.all { it.sha256 == "H-" + it.nome })
+        assertTrue(com.apostas.mapNotNull { it.comprovante }.all { it.sha256 != null })
+        assertEquals(e.comprovantes.map { it.texto }, com.comprovantes.map { it.texto })
+        assertFalse(e.comprovantes.map { it.autenticacao } == com.comprovantes.map { it.autenticacao })
+    }
+
+    @Test
     fun exemploDe17DeOutubro() {
         val hoje = LocalDate.of(2026, 10, 17)
         val e = gerar(hoje)
@@ -32,7 +43,7 @@ class DadosDeExemploTest {
 
         // 10 apostas em setembro e 6 em outubro (dias 1 a 16); a de hoje fica para quem testa.
         assertEquals(16, e.apostas.size)
-        assertEquals(DadosDeExemplo.PRIMEIRO_JOGO + 16, e.proximoJogo)
+        assertEquals((1..10).toList() + (1..6).toList(), e.apostas.map { it.numero })
         val pendentes = e.apostas.filter { it.apuracao == null }
         assertEquals(1, pendentes.size)
         assertEquals(LocalDate.of(2026, 10, 16), pendentes.single().dataAposta)
@@ -51,10 +62,22 @@ class DadosDeExemploTest {
         assertEquals(DadosDeExemplo.RENDIMENTO_ANTERIOR, Operacoes.rendimentoDoMes(e, setembro))
         assertEquals(EXTRATO_SETEMBRO, Operacoes.textoExtrato(e, setembro))
 
-        // Rateio hoje: faltam 19, 22, 25 e 28 (4 × R$ 3,00); cota = (18,05 − 12,00) ÷ 3 = 2,01.
-        val s = Operacoes.sugestaoProvisionado(e, hoje)
+        // Rateio hoje: faltam 19, 22, 25 e 28 (4 × R$ 3,00); Extra = 18,05 − 12,00; cota = 6,05 ÷ 3 = 2,01.
+        val s = Operacoes.provisao(e, hoje)
         assertEquals(1200L, s.provisionado)
-        assertEquals(201L, CalculoRateio.calcular(Operacoes.saldo(e), s.provisionado)!!.cota)
+        assertEquals(605L, Operacoes.extra(e, hoje))
+        assertEquals(201L, Operacoes.calcularRateio(e, hoje, Operacoes.extra(e, hoje)).cota)
+
+        // Comprovantes: 2 aportes (só registrados), 16 apostas, 15 apurações, 1 rateio e 1 extrato.
+        val porTipo = e.comprovantes.groupingBy { it.tipo }.eachCount()
+        assertEquals(mapOf(
+            TipoComprovante.APORTE to 2, TipoComprovante.APOSTA to 16, TipoComprovante.APURACAO to 15,
+            TipoComprovante.RATEIO to 1, TipoComprovante.EXTRATO to 1,
+        ), porTipo)
+        // Todos os que vão ao grupo já foram enviados; a corrente de autenticação está íntegra.
+        assertTrue(Operacoes.comprovantesPendentesDeEnvio(e).isEmpty())
+        assertNull(Operacoes.primeiraAutenticacaoQuebrada(e))
+        assertTrue(e.comprovantes.single { it.tipo == TipoComprovante.EXTRATO }.texto == EXTRATO_SETEMBRO)
 
         // A primeira aposta de outubro teve prêmio (11 acertos na Lotofácil).
         val premiadas = e.apostas.filter { (it.apuracao?.premio ?: 0) > 0 }
@@ -84,9 +107,13 @@ class DadosDeExemploTest {
             saldo += it.valor
             assertTrue("$msg: saldo negativo em ${it.data}", saldo >= 0)
         }
-        // Todas registradas, com comprovante e numeração em sequência.
+        // Todas registradas, com comprovante e numeração do mês em sequência.
         assertTrue(msg, e.apostas.all { it.registrada && it.comprovante != null })
-        assertEquals(msg, (DadosDeExemplo.PRIMEIRO_JOGO until e.proximoJogo).toList(), e.apostas.map { it.numero }.sorted())
+        e.apostas.groupBy { YearMonth.from(it.dataAposta) }.values.forEach { doMes ->
+            assertEquals(msg, (1..doMes.size).toList(), doMes.map { it.numero })
+        }
+        assertNull(msg, Operacoes.primeiraAutenticacaoQuebrada(e))
+        assertTrue(msg, Operacoes.comprovantesPendentesDeEnvio(e).isEmpty())
         // Só a última fica esperando a apuração, já sorteada.
         val pendente = e.apostas.single { it.apuracao == null }
         assertEquals(msg, e.apostas.maxOf { it.dataAposta }, pendente.dataAposta)
@@ -102,15 +129,17 @@ class DadosDeExemploTest {
         // Rateio do mês anterior e extrato do mês anterior.
         assertEquals(msg, 800L, e.rateios.single().cota)
         assertEquals(msg, listOf(YearMonth.from(hoje).minusMonths(1).toString()), e.extratos.map { it.mes })
-        // Anexos com nomes únicos.
+        // Anexos com nomes únicos: comprovante de cada aposta, imagem de cada apuração e os 3 Pix.
         val anexos = DadosDeExemplo.anexos(e).map { it.nome }
         assertEquals(msg, anexos.size, anexos.distinct().size)
-        assertEquals(msg, e.apostas.size + 3, anexos.size)
+        assertEquals(msg, e.apostas.size + (e.apostas.size - 1) + 3, anexos.size)
+        val imagens = e.comprovantes.map { it.imagem.nome }
+        assertEquals(msg, imagens.size, imagens.distinct().size)
         // As mensagens saem sem erro e as apostas registradas nunca passaram do saldo.
         e.apostas.forEach { a ->
             val antes = Operacoes.saldoAntesDe(e, a.id, TipoLancamento.APOSTA)
-            assertTrue("$msg: aposta #${a.numero} sem saldo", antes >= a.valor)
-            Operacoes.textoAposta(e, a)
+            assertTrue("$msg: aposta Nº${a.numero} sem saldo", antes >= a.valor)
+            Operacoes.textoAposta(e, a, hoje)
         }
         Operacoes.textoExtrato(e, YearMonth.from(hoje))
         Operacoes.textoExtrato(e, YearMonth.from(hoje).minusMonths(1))
@@ -151,7 +180,7 @@ class DadosDeExemploTest {
         )
         val e = DadosDeExemplo.gerar(LocalDate.of(2026, 10, 17), instante(LocalDate.of(2026, 10, 17)), fuso, pessoas = reais)
         assertEquals(reais, e.pessoas)
-        assertTrue(Operacoes.textoExtrato(e, YearMonth.of(2026, 9)).contains("APORTE (Ana)"))
+        assertEquals("ana@x", e.administrador!!.chavePix)
     }
 
     @Test
@@ -185,6 +214,6 @@ class DadosDeExemploTest {
     )
 
     private companion object {
-        const val EXTRATO_SETEMBRO = "- EXTRATO SET/2026 -\n\nRESUMO\nSaldo Líq. Anterior.:   R\$10,02\nRendimento Líquido..: + R\$ 0,03\nAportes.............: + R\$30,00\nPremiações..........: + R\$14,00\nApostas.............: - R\$30,00\nRateio..............: - R\$24,00\nSaldo Final           = R\$ 0,05\n\nMOVIMENTAÇÕES\n00  01/09/26 SALDO + RENDIMENTO...:   R\$10,05\n01           APORTE (Fulano)......: + R\$10,00\n02           APORTE (Beto)........: + R\$10,00\n03           APORTE (Beltrano)....: + R\$10,00\n04           APOSTA #121 LF ......: - R\$ 3,50\n05  02/09/26 PRÊMIO #121 LF ......: + R\$14,00\n06  04/09/26 APOSTA #122 QN ......: - R\$ 3,00\n07  07/09/26 APOSTA #123 DS ......: - R\$ 2,50\n08  10/09/26 APOSTA #124 LM ......: - R\$ 3,00\n09  13/09/26 APOSTA #125 SS ......: - R\$ 3,00\n10  14/09/26 RATEIO Nº1 (Fulano)..: - R\$ 8,00\n11           RATEIO Nº1 (Beto)....: - R\$ 8,00\n12           RATEIO Nº1 (Beltrano): - R\$ 8,00\n13  16/09/26 APOSTA #126 DP ......: - R\$ 3,00\n14  19/09/26 APOSTA #127 QN ......: - R\$ 3,00\n15  22/09/26 APOSTA #128 DS ......: - R\$ 2,50\n16  25/09/26 APOSTA #129 LM ......: - R\$ 3,00\n17  28/09/26 APOSTA #130 LF ......: - R\$ 3,50"
+        const val EXTRATO_SETEMBRO = "- EXTRATO SET/2026 -\n\nRESUMO\nSaldo Líq. Anterior.:   R\$10,02\nRendimento Líquido..: + R\$ 0,03\nAportes.............: + R\$30,00\nPremiações..........: + R\$14,00\nApostas.............: - R\$30,00\nRateio..............: - R\$24,00\nSaldo Final.........: = R\$ 0,05\n\nMOVIMENTAÇÕES\n00  01/09/26 SALDO LÍQUIDO.........:   R\$10,05\n01  01/09/26 APORTE ...............: + R\$30,00\n02  01/09/26 APOSTA Nº01 LF .......: - R\$ 3,50\n03  02/09/26 PRÊMIO Nº01 LF .......: + R\$14,00\n04  04/09/26 APOSTA Nº02 QN .......: - R\$ 3,00\n05  07/09/26 APOSTA Nº03 DS .......: - R\$ 2,50\n06  10/09/26 APOSTA Nº04 LM .......: - R\$ 3,00\n07  13/09/26 APOSTA Nº05 SS .......: - R\$ 3,00\n08  14/09/26 RATEIO ...............: - R\$24,00\n09  16/09/26 APOSTA Nº06 DP .......: - R\$ 3,00\n10  19/09/26 APOSTA Nº07 QN .......: - R\$ 3,00\n11  22/09/26 APOSTA Nº08 DS .......: - R\$ 2,50\n12  25/09/26 APOSTA Nº09 LM .......: - R\$ 3,00\n13  28/09/26 APOSTA Nº10 LF .......: - R\$ 3,50"
     }
 }

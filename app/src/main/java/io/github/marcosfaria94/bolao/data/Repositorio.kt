@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.security.DigestInputStream
+import java.security.MessageDigest
 import java.util.UUID
 
 /**
@@ -118,7 +120,11 @@ class Repositorio(private val context: Context) {
             return Estado()
         }
         return try {
-            json.decodeFromString(Estado.serializer(), bytes.decodeToString())
+            val lido = json.decodeFromString(Estado.serializer(), bytes.decodeToString())
+            if (e == Espaco.TESTE && lido.versao < Migracao.VERSAO) {
+                _aviso.value = "Os dados de exemplo são de uma versão antiga do app. Em Ajustes, toque em \"Recomeçar com um exemplo novo\"."
+            }
+            Migracao.migrar(lido, java.time.LocalDate.now())
         } catch (t: Throwable) {
             // Não sobrescreve: guarda uma cópia do arquivo ilegível e começa vazio.
             val copia = File(pastaDados(e), "estado-ilegivel-${System.currentTimeMillis()}.json")
@@ -165,7 +171,10 @@ class Repositorio(private val context: Context) {
 
     fun arquivo(a: Arquivo): File = File(pastaArquivos, a.nome)
 
-    /** Copia um arquivo escolhido pelo usuário para a pasta do app. */
+    /**
+     * Copia um arquivo escolhido pelo usuário para a pasta do app, sem mudar nada nele,
+     * e guarda a impressão digital (SHA-256) do conteúdo.
+     */
     suspend fun guardarArquivo(uri: Uri, prefixo: String): Arquivo = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
         val mime = resolver.getType(uri) ?: "application/octet-stream"
@@ -178,27 +187,91 @@ class Repositorio(private val context: Context) {
             ?: "bin"
         val nome = "$prefixo-${UUID.randomUUID().toString().take(8)}.$extensao"
         val destino = File(pastaArquivos, nome)
+        val digest = MessageDigest.getInstance("SHA-256")
         resolver.openInputStream(uri).use { entrada ->
             requireNotNull(entrada) { "Não foi possível abrir o arquivo escolhido." }
-            destino.outputStream().use { entrada.copyTo(it) }
+            DigestInputStream(entrada, digest).use { d -> destino.outputStream().use { d.copyTo(it) } }
         }
-        Arquivo(nome = nome, nomeOriginal = nomeOriginal, mime = mime, guardadoEm = System.currentTimeMillis())
+        Arquivo(
+            nome = nome, nomeOriginal = nomeOriginal, mime = mime, guardadoEm = System.currentTimeMillis(),
+            sha256 = hex(digest.digest()),
+        )
+    }
+
+    /** Guarda um anexo criado pelo próprio app (ex.: imagem dos acertos), com a impressão digital. */
+    suspend fun guardarGerado(prefixo: String, nomeOriginal: String, mime: String, escrever: (File) -> Unit): Arquivo =
+        withContext(Dispatchers.IO) {
+            val extensao = nomeOriginal.substringAfterLast('.', "bin")
+            val nome = "$prefixo-${UUID.randomUUID().toString().take(8)}.$extensao"
+            val destino = File(pastaArquivos, nome)
+            escrever(destino)
+            Arquivo(
+                nome = nome, nomeOriginal = nomeOriginal, mime = mime, guardadoEm = System.currentTimeMillis(),
+                sha256 = sha256(destino),
+            )
+        }
+
+    /** SHA-256 do arquivo guardado (null se ele não existir). */
+    fun sha256(a: Arquivo): String? = arquivo(a).takeIf { it.isFile }?.let { sha256(it) }
+
+    private fun sha256(f: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        f.inputStream().use { entrada ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = entrada.read(buf)
+                if (n < 0) break
+                digest.update(buf, 0, n)
+            }
+        }
+        return hex(digest.digest())
+    }
+
+    private fun hex(b: ByteArray): String = b.joinToString("") { "%02X".format(it.toInt() and 0xFF) }
+
+    /** Nomes de todos os arquivos que algum registro usa. */
+    private fun usados(e: Estado): Set<String> = buildSet {
+        e.termo?.let { add(it.nome) }
+        e.apostas.forEach { a -> a.comprovante?.let { add(it.nome) } }
+        e.rateios.forEach { r -> r.comprovantes.forEach { add(it.nome) } }
+        e.comprovantes.forEach { c ->
+            add(c.imagem.nome)
+            c.anexos.forEach { add(it.nome) }
+        }
+        e.extincao?.let { x ->
+            x.comprovantes.values.forEach { add(it.nome) }
+            x.auditoria?.let { add(it.nome) }
+        }
     }
 
     /** Apaga anexos que nenhum registro usa mais (só no espaço em uso). */
     suspend fun limparArquivosSoltos() {
         naFila {
             val e = _estado.value ?: lerDoDisco(espaco)
-            val usados = buildSet {
-                e.termo?.let { add(it.nome) }
-                e.apostas.forEach { a -> a.comprovante?.let { add(it.nome) } }
-                e.rateios.forEach { r -> r.comprovantes.forEach { add(it.nome) } }
-            }
-            // Anexos recentes podem ser de um rateio ainda em andamento: só apaga os antigos.
+            val usados = usados(e)
+            // Anexos recentes podem ser de um registro ainda em andamento: só apaga os antigos.
             val limite = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
             pastaDeArquivos(espaco).listFiles()
                 ?.filter { it.isFile && it.name !in usados && it.lastModified() < limite }
                 ?.forEach { it.delete() }
+        }
+    }
+
+    /**
+     * Fim da extinção: apaga todos os dados e anexos do bolão (o app volta ao cadastro).
+     * No modo de teste, apaga só os dados de exemplo e volta aos dados reais.
+     */
+    suspend fun apagarTudo() {
+        naFila {
+            if (espaco == Espaco.TESTE) {
+                mudarPara(Espaco.REAL, lerDoDisco(Espaco.REAL))
+                apagarTeste()
+            } else {
+                File(context.filesDir, "dados").deleteRecursively()
+                File(context.filesDir, "arquivos").deleteRecursively()
+                _estado.value = Estado()
+                _aviso.value = null
+            }
         }
     }
 
@@ -230,15 +303,17 @@ class Repositorio(private val context: Context) {
 
     /**
      * Liga o modo de teste com o [exemplo] (um teste anterior é apagado antes).
-     * [prepararAnexos] grava os anexos fictícios na pasta recebida, antes da troca.
+     * [prepararAnexos] grava os anexos fictícios na pasta recebida, antes da troca, e
+     * devolve o estado final (com as impressões digitais dos anexos).
      */
-    suspend fun entrarNoTeste(exemplo: Estado, prepararAnexos: (File) -> Unit) {
+    suspend fun entrarNoTeste(exemplo: Estado, prepararAnexos: (File, Estado) -> Estado) {
         require(exemplo.exemplo) { "Só dados de exemplo podem ir para o modo de teste." }
         naFila {
             apagarTeste()
-            prepararAnexos(pastaDeArquivos(Espaco.TESTE))
-            gravar(Espaco.TESTE, exemplo)
-            mudarPara(Espaco.TESTE, exemplo)
+            val final = prepararAnexos(pastaDeArquivos(Espaco.TESTE), exemplo)
+            require(final.exemplo) { "Só dados de exemplo podem ir para o modo de teste." }
+            gravar(Espaco.TESTE, final)
+            mudarPara(Espaco.TESTE, final)
         }
     }
 

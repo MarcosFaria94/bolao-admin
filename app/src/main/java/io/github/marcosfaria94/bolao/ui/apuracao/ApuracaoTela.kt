@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.apuracao
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -44,6 +44,7 @@ import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Apuracao
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
+import io.github.marcosfaria94.bolao.data.TipoComprovante
 import io.github.marcosfaria94.bolao.data.palpite
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Conferencia
@@ -55,21 +56,28 @@ import io.github.marcosfaria94.bolao.domain.MESES_DE_SORTE
 import io.github.marcosfaria94.bolao.domain.Mensagens
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Volante
+import io.github.marcosfaria94.bolao.imagem.ImagemConferencia
+import io.github.marcosfaria94.bolao.imagem.LayoutTermico
+import io.github.marcosfaria94.bolao.imagem.Recibos
 import io.github.marcosfaria94.bolao.net.CaixaApi
 import io.github.marcosfaria94.bolao.ui.aposta.CabecalhoAposta
 import io.github.marcosfaria94.bolao.ui.aposta.GradeColunas
 import io.github.marcosfaria94.bolao.ui.aposta.GradeLoteca
 import io.github.marcosfaria94.bolao.ui.aposta.GradeNumeros
 import io.github.marcosfaria94.bolao.ui.aposta.GradeTrevos
+import io.github.marcosfaria94.bolao.ui.aposta.LinhaInfo
 import io.github.marcosfaria94.bolao.ui.aposta.SituacaoNumero
 import io.github.marcosfaria94.bolao.ui.aposta.VolanteDaApuracao
-import io.github.marcosfaria94.bolao.ui.comum.Anexo
+import io.github.marcosfaria94.bolao.ui.comum.AVISO_DEFINITIVO
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
+import io.github.marcosfaria94.bolao.ui.comum.BotoesDeRegistro
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
-import io.github.marcosfaria94.bolao.ui.comum.PreviaMensagem
+import io.github.marcosfaria94.bolao.ui.comum.TextoDoWhatsapp
+import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
+import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -80,10 +88,6 @@ private sealed interface Busca {
     data class Pronto(val concurso: Concurso, val manual: Boolean) : Busca
     data class Falhou(val motivo: String) : Busca
 }
-
-/** Monta o registro da apuração a partir do resultado e da conferência. */
-private fun apuracaoDe(c: Concurso, r: Conferencia.Resultado, premio: Long, agora: Long) =
-    Operacoes.apuracaoDe(c, r, premio, agora)
 
 @Composable
 fun ApuracaoTela(estado: Estado, id: String) {
@@ -99,6 +103,40 @@ fun ApuracaoTela(estado: Estado, id: String) {
     }
 }
 
+/** "Contagem dos acertos", "Resultado" e "Acumulou", logo abaixo do cabeçalho. */
+@Composable
+private fun ResumoApuracao(acertos: String, premio: Long, acumulou: Boolean?) {
+    Column {
+        LinhaInfo("Contagem dos acertos", acertos)
+        LinhaInfo("Resultado", if (premio > 0) "Prêmio de ${Dinheiro.rs(premio)}" else "Sem prêmio", destaque = premio > 0)
+        LinhaInfo("Acumulou", when (acumulou) {
+            true -> "SIM"
+            false -> "NÃO"
+            null -> "—"
+        })
+    }
+}
+
+/** Tabela do rateio oficial da Caixa que vai no comprovante da apuração. */
+private fun rateioDe(a: Aposta, ap: Apuracao): LayoutTermico.RateioOficial? =
+    ap.rateioOficial.takeIf { it.isNotEmpty() }?.let { LayoutTermico.RateioOficial(a.concurso, it, ap.faixasPremiadas.toSet(), ap.acumulou) }
+
+@Composable
+private fun ImagemDosAcertos(a: Aposta, ap: Apuracao) {
+    val ctx = LocalContext.current
+    val imagem by produceState<Bitmap?>(null, a, ap) {
+        value = withContext(Dispatchers.Default) { runCatching { ImagemConferencia.gerar(ctx, a, ap) }.getOrNull() }
+    }
+    imagem?.let {
+        Image(
+            bitmap = it.asImageBitmap(),
+            contentDescription = "Imagem dos acertos",
+            contentScale = ContentScale.FillWidth,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
 @Composable
 private fun ApuracaoPendente(estado: Estado, a: Aposta) {
     val ctx = LocalContext.current
@@ -106,12 +144,14 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
     val m = a.modalidade
+    val hoje = LocalDate.now()
 
     var busca by remember { mutableStateOf<Busca>(Busca.Carregando) }
     var premio by remember { mutableLongStateOf(0L) }
     var premioEditado by remember { mutableStateOf(false) }
     var confirmar by remember { mutableStateOf(false) }
-    var enviando by remember { mutableStateOf(false) }
+    var vendo by remember { mutableStateOf(false) }
+    var trabalhando by remember { mutableStateOf(false) }
 
     suspend fun buscar() {
         busca = Busca.Carregando
@@ -130,12 +170,14 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
     val instante = remember(conferencia) { System.currentTimeMillis() }
     LaunchedEffect(conferencia) {
         if (conferencia != null && !premioEditado) premio = conferencia.premio
-        // Guarda a conferência (sem confirmar) para o Painel já mostrar o resultado.
+        // Guarda a conferência (sem confirmar): é ela que acende o aviso da aba Apostas.
         if (conferencia != null && pronto?.manual == false) {
-            val ap = apuracaoDe(pronto.concurso, conferencia, conferencia.premio, System.currentTimeMillis())
+            val ap = Operacoes.apuracaoDe(pronto.concurso, conferencia, conferencia.premio, System.currentTimeMillis())
             repo.enfileirar { Operacoes.guardarConferencia(it, a.id, ap) }
         }
     }
+    val ap = if (pronto != null && conferencia != null) Operacoes.apuracaoDe(pronto.concurso, conferencia, premio, instante) else null
+    val titulo = Mensagens.tituloApuracao(a.numero, hoje)
 
     Column(
         Modifier
@@ -145,7 +187,7 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        CabecalhoAposta(a, "#${a.numero} · ${m.nome} ${a.concurso}", "Apuração")
+        CabecalhoAposta(a, a.numero)
 
         when (val b = busca) {
             Busca.Carregando -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -162,7 +204,8 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
             is Busca.Pronto -> Unit
         }
 
-        if (pronto != null && conferencia != null) {
+        if (pronto != null && conferencia != null && ap != null) {
+            ResumoApuracao(conferencia.acertos, premio, ap.acumulou)
             if (pronto.manual) {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -176,13 +219,13 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                TextButton(onClick = { busca = Busca.Pronto(pronto.concurso, manual = true) }) { Text("Corrigir o resultado") }
+                if (conferencia.observacoes.isNotEmpty()) {
+                    TextButton(onClick = { busca = Busca.Pronto(pronto.concurso, manual = true) }) { Text("Informar o resultado à mão") }
+                }
             }
 
-            val ap = apuracaoDe(pronto.concurso, conferencia, premio, instante)
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Contagem de acertos: ${conferencia.acertos}", style = MaterialTheme.typography.titleMedium)
                     if (m.formato != Formato.FEDERAL) VolanteDaApuracao(a.copy(apuracao = ap))
                     conferencia.faixas.forEach { f ->
                         Text(
@@ -209,35 +252,55 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
                 Aviso("A Caixa não informou o valor desta faixa: digite o prêmio que aparece no app da Caixa.", alerta = true)
             }
 
-            val texto = Mensagens.apuracao(Operacoes.identificacao(estado, a), conferencia.acertos, Operacoes.saldoParaApuracao(estado, a), premio)
-            PreviaMensagem(texto, rodape = "A imagem abaixo vai junto, como anexo.")
-            PreviaImagem(a, ap)
+            ImagemDosAcertos(a, ap)
+            TextoDoWhatsapp(titulo, rodape = "A imagem do comprovante (com o rateio oficial) e a imagem dos acertos vão juntas.")
+            BotoesDeRegistro(
+                habilitado = true,
+                trabalhando = trabalhando,
+                aoVisualizar = { vendo = true },
+                aoRegistrar = { confirmar = true },
+                textoRegistrar = "Confirmar e enviar",
+            )
 
-            Button(
-                enabled = !enviando,
-                onClick = { confirmar = true },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Confirmar e enviar no WhatsApp") }
+            if (vendo) {
+                val acertos by produceState<Bitmap?>(null, ap) {
+                    value = withContext(Dispatchers.Default) { runCatching { ImagemConferencia.gerar(ctx, a, ap) }.getOrNull() }
+                }
+                VisualizadorComprovante(
+                    estado,
+                    titulo,
+                    aoFechar = { vendo = false },
+                    previa = Recibos.previa(
+                        estado, TipoComprovante.APURACAO,
+                        Operacoes.textoApuracao(estado, a, conferencia.acertos, premio, hoje), 1, rateioDe(a, ap),
+                    ),
+                    imagensExtras = listOfNotNull(acertos?.let { "Anexo: imagem dos acertos" to it }),
+                )
+            }
 
             if (confirmar) {
                 DialogoConfirmar(
-                    titulo = "Confirmar a apuração do jogo #${a.numero}?",
-                    texto = if (premio > 0) "Soma ${Dinheiro.rs(premio)} ao saldo e abre o WhatsApp com a mensagem e a imagem."
-                    else "Registra que não houve prêmio e abre o WhatsApp com a mensagem e a imagem.",
+                    titulo = "Confirmar a apuração da aposta Nº${a.numero}?",
+                    texto = (
+                        if (premio > 0) "Soma ${Dinheiro.rs(premio)} ao saldo. Em seguida o WhatsApp abre com o comprovante e a imagem dos acertos."
+                        else "Registra que não houve prêmio. Em seguida o WhatsApp abre com o comprovante e a imagem dos acertos."
+                        ) + "\n\n" + AVISO_DEFINITIVO,
                     confirmar = "Confirmar",
                     aoConfirmar = {
                         confirmar = false
-                        enviando = true
+                        trabalhando = true
                         escopo.launch {
                             try {
                                 val agora = System.currentTimeMillis()
-                                repo.atualizar { Operacoes.confirmarApuracao(it, a.id, ap, LocalDate.now(), agora) }
-                                val arq = withContext(Dispatchers.Default) { ImagemApuracao.salvar(ctx, a, ImagemApuracao.gerar(a, ap)) }
-                                Compartilhar.whatsapp(ctx, texto, listOf(Anexo(arq, "image/png")))
+                                val registro = ap
+                                val imagem = repo.guardarGerado("acertos", "acertos-${m.sigla}-${a.concurso}.png", "image/png") { f ->
+                                    ImagemConferencia.salvar(ctx, a, registro, f)
+                                }
+                                registrarComprovante(ctx, { Operacoes.confirmarApuracao(it, a.id, registro, hoje, agora, imagem) })
                             } catch (t: Throwable) {
                                 avisos.showSnackbar("Não foi possível confirmar: ${t.message}")
                             } finally {
-                                enviando = false
+                                trabalhando = false
                             }
                         }
                     },
@@ -251,12 +314,10 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
 @Composable
 private fun ApuracaoConfirmada(estado: Estado, a: Aposta) {
     val ctx = LocalContext.current
-    val repo = remember { ctx.bolao.repo }
     val escopo = rememberCoroutineScope()
-    val avisos = LocalAvisos.current
     val ap = a.apuracao ?: return
-    var desfazer by remember { mutableStateOf(false) }
-    val texto = Mensagens.apuracao(Operacoes.identificacao(estado, a), ap.acertos, Operacoes.saldoParaApuracao(estado, a), ap.premio)
+    val comprovante = Operacoes.comprovanteDaApuracao(estado, a)
+    var vendo by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -265,66 +326,29 @@ private fun ApuracaoConfirmada(estado: Estado, a: Aposta) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        CabecalhoAposta(
-            a,
-            "#${a.numero} · ${a.modalidade.nome} ${a.concurso}",
-            if (ap.premio > 0) "Apurado · prêmio ${Dinheiro.rs(ap.premio)}" else "Apurado · sem prêmio",
-        )
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Contagem de acertos: ${ap.acertos}", style = MaterialTheme.typography.titleMedium)
-                if (a.modalidade.formato != Formato.FEDERAL) VolanteDaApuracao(a)
+        CabecalhoAposta(a, a.numero)
+        ResumoApuracao(ap.acertos, ap.premio, ap.acumulou)
+        if (a.modalidade.formato != Formato.FEDERAL) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    VolanteDaApuracao(a)
+                }
             }
         }
-        PreviaMensagem(texto)
-        PreviaImagem(a, ap)
-        OutlinedButton(
-            onClick = {
-                escopo.launch {
-                    val arq = withContext(Dispatchers.Default) { ImagemApuracao.salvar(ctx, a, ImagemApuracao.gerar(a, ap)) }
-                    Compartilhar.whatsapp(ctx, texto, listOf(Anexo(arq, "image/png")))
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Enviar a mensagem de novo") }
-        TextButton(onClick = { desfazer = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("Desfazer a apuração", color = MaterialTheme.colorScheme.error)
+        ap.faixa?.let { Text("Faixa: $it", style = MaterialTheme.typography.bodyMedium) }
+        if (comprovante != null) {
+            TextoDoWhatsapp(comprovante.titulo)
+            OutlinedButton(onClick = { vendo = true }, modifier = Modifier.fillMaxWidth()) { Text("Visualizar comprovante") }
+            val enviado = estado.enviado(comprovante)
+            OutlinedButton(
+                onClick = { escopo.launch { Compartilhar.comprovante(ctx, estado, comprovante) } },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (enviado) "Enviar de novo" else "Enviar ao grupo") }
         }
     }
 
-    if (desfazer) {
-        DialogoConfirmar(
-            titulo = "Desfazer a apuração?",
-            texto = if (ap.premio > 0) "O prêmio de ${Dinheiro.rs(ap.premio)} sai do saldo e o jogo volta para \"sorteados\"."
-            else "O jogo volta para \"sorteados\", para apurar de novo.",
-            confirmar = "Desfazer",
-            aoConfirmar = {
-                desfazer = false
-                escopo.launch {
-                    try {
-                        repo.atualizar { Operacoes.desfazerApuracao(it, a.id) }
-                    } catch (t: Throwable) {
-                        avisos.showSnackbar(t.message ?: "Não foi possível desfazer.")
-                    }
-                }
-            },
-            aoFechar = { desfazer = false },
-        )
-    }
-}
-
-@Composable
-private fun PreviaImagem(a: Aposta, ap: Apuracao) {
-    val imagem by produceState<android.graphics.Bitmap?>(null, a, ap) {
-        value = withContext(Dispatchers.Default) { runCatching { ImagemApuracao.gerar(a, ap) }.getOrNull() }
-    }
-    imagem?.let {
-        Image(
-            bitmap = it.asImageBitmap(),
-            contentDescription = "Imagem da apuração",
-            contentScale = ContentScale.FillWidth,
-            modifier = Modifier.fillMaxWidth(),
-        )
+    if (vendo && comprovante != null) {
+        VisualizadorComprovante(estado, comprovante.titulo, aoFechar = { vendo = false }, comprovante = comprovante)
     }
 }
 

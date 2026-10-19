@@ -31,6 +31,12 @@ object Datas {
     /** 2026-06 -> "junho de 2026". */
     fun mesAnoExtenso(m: YearMonth): String = "${MESES_EXTENSO[m.monthValue - 1]} de ${m.year}"
 
+    /** 17/10/2026 10:32:15 (hora do celular). */
+    fun dataHora(instante: Long, fuso: java.time.ZoneId = java.time.ZoneId.systemDefault()): String {
+        val t = java.time.Instant.ofEpochMilli(instante).atZone(fuso).toLocalDateTime()
+        return longa(t.toLocalDate()) + " " + dois(t.hour) + ":" + dois(t.minute) + ":" + dois(t.second)
+    }
+
     /** "seg", "ter"... */
     fun diaSemana(d: LocalDate): String = DIAS_SEMANA[d.dayOfWeek.value - 1]
 

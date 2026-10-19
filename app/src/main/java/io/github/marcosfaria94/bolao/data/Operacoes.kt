@@ -1,9 +1,15 @@
 package io.github.marcosfaria94.bolao.data
 
+import io.github.marcosfaria94.bolao.domain.Autenticacao
 import io.github.marcosfaria94.bolao.domain.CalculoRateio
 import io.github.marcosfaria94.bolao.domain.Calendario
+import io.github.marcosfaria94.bolao.domain.Concurso
+import io.github.marcosfaria94.bolao.domain.Conferencia
+import io.github.marcosfaria94.bolao.domain.Datas
+import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Mensagens
 import io.github.marcosfaria94.bolao.domain.Palpite
+import io.github.marcosfaria94.bolao.domain.Volante
 import java.time.LocalDate
 import java.time.YearMonth
 import java.util.UUID
@@ -15,6 +21,9 @@ val Aposta.palpite: Palpite get() = Palpite(numeros, trevos, extra, palpitesLote
 /**
  * Todas as regras de contabilidade do bolão, como funções puras sobre o [Estado].
  * Cada operação devolve um novo Estado; quem chama é que grava (Repositorio.atualizar).
+ *
+ * O registro só cresce: nenhum lançamento, aposta registrada, apuração ou comprovante
+ * é alterado ou apagado depois de criado. Cada registro gera um [Comprovante] único.
  */
 object Operacoes {
 
@@ -22,20 +31,43 @@ object Operacoes {
 
     fun saldo(e: Estado): Long = e.lancamentos.sumOf { it.valor }
 
-    fun apostaRegularFeitaEm(e: Estado, data: LocalDate, excetoId: String? = null): Boolean =
-        e.apostas.any { it.registrada && !it.eventual && it.dataAposta == data && it.id != excetoId }
-
-    /** APOSTA EVENTUAL: fora dos dias programados, ou a segunda em diante no mesmo dia. */
-    fun ehEventual(e: Estado, data: LocalDate, excetoId: String? = null): Boolean =
-        !Calendario.ehDiaProgramado(data) || apostaRegularFeitaEm(e, data, excetoId)
-
-    /** APORTE EVENTUAL: fora do dia 1º. */
-    fun aporteEhEventual(data: LocalDate): Boolean = data.dayOfMonth != 1
+    fun apostaFeitaEm(e: Estado, data: LocalDate): Boolean = e.apostas.any { it.registrada && it.dataAposta == data }
 
     fun rascunhos(e: Estado): List<Aposta> = e.apostas.filter { !it.registrada }.sortedByDescending { it.criadaEm }
 
+    fun apostasDoMes(e: Estado, mes: YearMonth): List<Aposta> =
+        e.apostas.filter { it.registrada && YearMonth.from(it.dataAposta) == mes }
+
+    /** Número que a próxima aposta registrada em [hoje] vai receber (Nº1 = primeira do mês). */
+    fun proximoNumero(e: Estado, hoje: LocalDate): Int = apostasDoMes(e, YearMonth.from(hoje)).size + 1
+
+    /** Número da aposta: o registrado, ou o que um rascunho receberia se fosse registrado em [hoje]. */
+    fun numeroDe(e: Estado, a: Aposta, hoje: LocalDate): Int = if (a.registrada) a.numero else proximoNumero(e, hoje)
+
     fun aportesDoMes(e: Estado, mes: YearMonth): Long =
         e.lancamentos.filter { it.tipo == TipoLancamento.APORTE && YearMonth.from(it.data) == mes }.sumOf { it.valor }
+
+    fun aporteMensalRegistrado(e: Estado, mes: YearMonth): Boolean =
+        e.lancamentos.any { it.tipo == TipoLancamento.APORTE && !it.eventual && YearMonth.from(it.data) == mes }
+
+    /**
+     * O aporte mensal de [mes] é cobrado? A partir do mês escolhido no cadastro; sem essa
+     * escolha, no mês do cadastro só se ele foi feito no dia 1º.
+     */
+    fun aporteMensalDevido(e: Estado, mes: YearMonth): Boolean {
+        e.inicioAportes?.let { inicio -> runCatching { YearMonth.parse(inicio) }.getOrNull()?.let { return !mes.isBefore(it) } }
+        val cadastro = e.cadastradoEm ?: return true
+        val mesCadastro = YearMonth.from(cadastro)
+        return mes.isAfter(mesCadastro) || (mes == mesCadastro && cadastro.dayOfMonth == 1)
+    }
+
+    fun aporteMensalPendente(e: Estado, hoje: LocalDate): Boolean {
+        val mes = YearMonth.from(hoje)
+        return e.cadastroConcluido && aporteMensalDevido(e, mes) && !aporteMensalRegistrado(e, mes)
+    }
+
+    /** Aporte mensal do grupo (o valor de Ajustes × integrantes). */
+    fun valorAporteMensal(e: Estado): Long = e.config.aporteMensal * e.pessoas.size.coerceAtLeast(1)
 
     /** Saldo no fim do mês anterior a [mes]. O saldo inicial do cadastro conta como "anterior". */
     fun saldoAnterior(e: Estado, mes: YearMonth): Long = e.lancamentos.filter {
@@ -45,17 +77,21 @@ object Operacoes {
     fun rendimentoDoMes(e: Estado, mes: YearMonth): Long =
         e.lancamentos.filter { it.tipo == TipoLancamento.RENDIMENTO && YearMonth.from(it.data) == mes }.sumOf { it.valor }
 
+    private val TIPOS_DO_EXTRATO = setOf(
+        TipoLancamento.APORTE, TipoLancamento.APOSTA, TipoLancamento.PREMIO, TipoLancamento.RATEIO,
+        TipoLancamento.COMPLEMENTO, TipoLancamento.DIVISAO_FINAL,
+    )
+
+    fun ordenados(lista: List<Lancamento>): List<Lancamento> = lista.sortedWith(compareBy<Lancamento>({ it.data }, { it.criadoEm }))
+
     /** Movimentações do mês, na ordem em que aconteceram, no formato do EXTRATO. */
     fun movimentosDoMes(e: Estado, mes: YearMonth): List<Mensagens.Movimento> =
-        e.lancamentos
-            .filter { YearMonth.from(it.data) == mes }
-            .filter { it.tipo in setOf(TipoLancamento.APORTE, TipoLancamento.APOSTA, TipoLancamento.PREMIO, TipoLancamento.RATEIO) }
-            .sortedWith(compareBy<Lancamento>({ it.data }, { it.criadoEm }))
+        ordenados(e.lancamentos.filter { YearMonth.from(it.data) == mes && it.tipo in TIPOS_DO_EXTRATO })
             .map { l ->
-                val apelido = e.pessoa(l.pessoaId)?.apelido ?: "?"
                 val aposta = l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }
                 when (l.tipo) {
-                    TipoLancamento.APORTE -> Mensagens.Movimento(l.data, Mensagens.Categoria.APORTE, Mensagens.descricaoAporte(apelido), l.valor)
+                    TipoLancamento.APORTE -> Mensagens.Movimento(l.data, Mensagens.Categoria.APORTE, Mensagens.descricaoAporte(), l.valor)
+                    TipoLancamento.COMPLEMENTO -> Mensagens.Movimento(l.data, Mensagens.Categoria.APORTE, "COMPLEMENTO ADM. ", l.valor)
                     TipoLancamento.APOSTA -> Mensagens.Movimento(
                         l.data, Mensagens.Categoria.APOSTA,
                         aposta?.let { Mensagens.descricaoAposta(it.numero, it.modalidade) } ?: "APOSTA ", l.valor,
@@ -64,32 +100,39 @@ object Operacoes {
                         l.data, Mensagens.Categoria.PREMIO,
                         aposta?.let { Mensagens.descricaoPremio(it.numero, it.modalidade) } ?: "PRÊMIO ", l.valor,
                     )
-                    else -> Mensagens.Movimento(
-                        l.data, Mensagens.Categoria.RATEIO,
-                        Mensagens.descricaoRateio(l.rateioNumero ?: 0, apelido), l.valor,
-                    )
+                    TipoLancamento.DIVISAO_FINAL -> Mensagens.Movimento(l.data, Mensagens.Categoria.RATEIO, "DIVISÃO FINAL ", l.valor)
+                    else -> Mensagens.Movimento(l.data, Mensagens.Categoria.RATEIO, Mensagens.descricaoRateio(), l.valor)
                 }
             }
 
     fun textoExtrato(e: Estado, mes: YearMonth): String =
         Mensagens.extrato(mes, saldoAnterior(e, mes), rendimentoDoMes(e, mes), movimentosDoMes(e, mes))
 
-    /** Identificação da aposta (#132 010626 LF-3060 2M 030626). Rascunhos usam o próximo número. */
-    fun identificacao(e: Estado, a: Aposta): String = Mensagens.identificacao(
-        numeroJogo = if (a.registrada) a.numero else e.proximoJogo,
-        dataAposta = a.dataAposta,
+    /** Descrição curta de um lançamento, para as listas do app ("APOSTA Nº05 LM"). */
+    fun descricao(e: Estado, l: Lancamento): String {
+        val aposta = l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }
+        fun n(v: Int) = v.toString().padStart(2, '0')
+        return when (l.tipo) {
+            TipoLancamento.SALDO_INICIAL -> "SALDO INICIAL"
+            TipoLancamento.APORTE -> if (l.eventual) "APORTE ADICIONAL" else "APORTE"
+            TipoLancamento.APOSTA -> aposta?.let { "APOSTA Nº${n(it.numero)} ${it.modalidade.sigla}" } ?: "APOSTA"
+            TipoLancamento.PREMIO -> aposta?.let { "PRÊMIO Nº${n(it.numero)} ${it.modalidade.sigla}" } ?: "PRÊMIO"
+            TipoLancamento.RATEIO -> "RATEIO"
+            TipoLancamento.RENDIMENTO -> "RENDIMENTO"
+            TipoLancamento.COMPLEMENTO -> "COMPLEMENTO DO ADM."
+            TipoLancamento.DIVISAO_FINAL -> "DIVISÃO FINAL"
+        }
+    }
+
+    /** Identificação da aposta (Nº1 010626 LF-3060 2M 030626). */
+    fun identificacao(e: Estado, a: Aposta, hoje: LocalDate): String = Mensagens.identificacao(
+        numero = numeroDe(e, a, hoje),
+        dataAposta = if (a.registrada) a.dataAposta else hoje,
         modalidade = a.modalidade,
         concurso = a.concurso,
         premioEstimado = a.premioEstimado,
         dataSorteio = a.dataSorteio,
     )
-
-    /** Mensagem APOSTA. Para aposta já registrada, o saldo é o de antes dela. */
-    fun textoAposta(e: Estado, a: Aposta): String {
-        val saldoAntes = if (a.registrada) saldoAntesDe(e, a.id, TipoLancamento.APOSTA) else saldo(e)
-        val eventual = if (a.registrada) a.eventual else ehEventual(e, a.dataAposta, a.id)
-        return Mensagens.aposta(identificacao(e, a), eventual, saldoAntes, a.valor)
-    }
 
     /** Saldo logo antes do lançamento de [tipo] ligado à aposta [apostaId]. */
     fun saldoAntesDe(e: Estado, apostaId: String, tipo: TipoLancamento): Long {
@@ -97,173 +140,272 @@ object Operacoes {
         return e.lancamentos.filter { it.criadoEm < l.criadoEm }.sumOf { it.valor }
     }
 
-    // ---------- aporte ----------
+    // ---------- provisionado e extra ----------
 
-    /** Registra um aporte por integrante (o EXTRATO lista um por um). */
-    fun registrarAportes(
-        e: Estado,
-        data: LocalDate,
-        valores: List<Pair<String, Long>>,
-        eventual: Boolean,
-        agora: Long,
-    ): Estado {
-        val novos = valores.filter { it.second > 0 }.mapIndexed { i, (pessoaId, valor) ->
-            Lancamento(
-                id = novoId(), data = data, criadoEm = agora + i, tipo = TipoLancamento.APORTE,
-                valor = valor, pessoaId = pessoaId, eventual = eventual,
-            )
-        }
-        return e.copy(lancamentos = e.lancamentos + novos)
+    data class Provisao(
+        val apostasRestantes: Int,
+        val valorPorAposta: Long,
+        val aportesDoMes: Long,
+        /** Valor ainda necessário para as apostas que faltam no mês, nunca acima dos aportes do mês. */
+        val provisionado: Long,
+    )
+
+    fun provisao(e: Estado, hoje: LocalDate): Provisao {
+        val restantes = Calendario.apostasRestantesNoMes(hoje, apostaFeitaEm(e, hoje))
+        val porAposta = CalculoRateio.valorPorAposta(e.config.aporteMensal, e.pessoas.size.coerceAtLeast(1))
+        val aportes = aportesDoMes(e, YearMonth.from(hoje))
+        return Provisao(restantes, porAposta, aportes, CalculoRateio.provisionado(restantes, porAposta, aportes))
     }
 
-    fun excluirLancamento(e: Estado, id: String): Estado {
-        val l = e.lancamentos.firstOrNull { it.id == id } ?: return e
-        require(l.tipo == TipoLancamento.APORTE || l.tipo == TipoLancamento.SALDO_INICIAL) {
-            "Este lançamento é desfeito pela tela do jogo, rateio ou extrato."
+    /** Extra = Saldo Líquido − Provisionado (o que pode ser rateado). Pode ser negativo. */
+    fun extra(e: Estado, hoje: LocalDate): Long = saldo(e) - provisao(e, hoje).provisionado
+
+    // ---------- comprovantes ----------
+
+    fun nomeImagem(tipo: TipoComprovante, id: String): String = "recibo-${tipo.name.lowercase()}-${id.take(8)}.png"
+
+    /** Partes do registro que entram no código de autenticação. */
+    fun partesAutenticacao(c: Comprovante): List<String> =
+        listOf(c.tipo.name, c.titulo, c.texto, c.data.toString(), c.criadoEm.toString()) +
+            c.anexos.map { "${it.nome}:${it.sha256.orEmpty()}" }
+
+    private fun novoComprovante(
+        e: Estado,
+        tipo: TipoComprovante,
+        titulo: String,
+        texto: String,
+        data: LocalDate,
+        agora: Long,
+        anexos: List<Arquivo> = emptyList(),
+        envioDispensado: Boolean = false,
+        apostaId: String? = null,
+        rateioNumero: Int? = null,
+        mes: String? = null,
+    ): Comprovante {
+        val id = novoId()
+        val rascunho = Comprovante(
+            id = id, tipo = tipo, titulo = titulo, texto = texto, data = data, criadoEm = agora,
+            imagem = Arquivo(nomeImagem(tipo, id), nomeImagem(tipo, id), "image/png", agora),
+            anexos = anexos, autenticacao = "", envioDispensado = envioDispensado,
+            apostaId = apostaId, rateioNumero = rateioNumero, mes = mes,
+        )
+        return rascunho.copy(autenticacao = Autenticacao.calcular(e.comprovantes.lastOrNull()?.autenticacao, partesAutenticacao(rascunho)))
+    }
+
+    /** Índice do primeiro comprovante cuja autenticação não confere (null = corrente íntegra). */
+    fun primeiraAutenticacaoQuebrada(e: Estado): Int? {
+        var anterior: String? = null
+        e.comprovantes.forEachIndexed { i, c ->
+            if (Autenticacao.calcular(anterior, partesAutenticacao(c)) != c.autenticacao) return i
+            anterior = c.autenticacao
         }
-        return e.copy(lancamentos = e.lancamentos.filterNot { it.id == id })
+        return null
+    }
+
+    fun comprovantesPendentesDeEnvio(e: Estado): List<Comprovante> =
+        e.comprovantes.filter { !it.envioDispensado && !e.enviado(it) }
+
+    fun registrarEnvio(e: Estado, comprovanteId: String, agora: Long): Estado {
+        require(e.comprovantes.any { it.id == comprovanteId }) { "Comprovante não encontrado." }
+        return e.copy(envios = e.envios + Envio(comprovanteId, agora))
+    }
+
+    fun comprovanteDaAposta(e: Estado, a: Aposta): Comprovante? =
+        e.comprovantes.lastOrNull { it.tipo == TipoComprovante.APOSTA && it.apostaId == a.id }
+
+    fun comprovanteDaApuracao(e: Estado, a: Aposta): Comprovante? =
+        e.comprovantes.lastOrNull { it.tipo == TipoComprovante.APURACAO && it.apostaId == a.id }
+
+    // ---------- aporte ----------
+
+    /** Prévia do bloco APORTE (o saldo inicial é o de agora). */
+    fun textoAporte(e: Estado, data: LocalDate, valor: Long): String = Mensagens.aporte(data, saldo(e), valor)
+
+    /** Aporte mensal: valor de Ajustes, no dia 1º do mês, só registrado (sem mensagem). */
+    fun registrarAporteMensal(e: Estado, hoje: LocalDate, agora: Long): Estado {
+        val mes = YearMonth.from(hoje)
+        require(!aporteMensalRegistrado(e, mes)) { "O aporte mensal de ${Datas.mesAno(mes)} já foi registrado." }
+        return registrarAporte(e, mes.atDay(1), valorAporteMensal(e), eventual = false, agora = agora)
+    }
+
+    /** Aporte adicional (com a concordância dos 3, registrada no grupo): data e valor livres. */
+    fun registrarAporteAdicional(e: Estado, data: LocalDate, valor: Long, agora: Long): Estado =
+        registrarAporte(e, data, valor, eventual = true, agora = agora)
+
+    private fun registrarAporte(e: Estado, data: LocalDate, valor: Long, eventual: Boolean, agora: Long): Estado {
+        require(valor > 0) { "Informe o valor do aporte." }
+        require(!mesFechado(e, YearMonth.from(data))) { "O extrato de ${Datas.mesAno(YearMonth.from(data))} já foi fechado." }
+        val texto = Mensagens.aporte(data, saldo(e), valor)
+        val lanc = Lancamento(id = novoId(), data = data, criadoEm = agora, tipo = TipoLancamento.APORTE, valor = valor, eventual = eventual)
+        val c = novoComprovante(
+            e, TipoComprovante.APORTE, Mensagens.tituloAporte(data), texto, data, agora,
+            envioDispensado = !eventual,
+        )
+        return e.copy(lancamentos = e.lancamentos + lanc, comprovantes = e.comprovantes + c)
     }
 
     // ---------- aposta ----------
 
     fun salvarRascunho(e: Estado, a: Aposta): Estado {
         require(!a.registrada) { "A aposta já foi registrada." }
-        val existe = e.apostas.any { it.id == a.id }
-        return e.copy(apostas = if (existe) e.apostas.map { if (it.id == a.id) a else it } else e.apostas + a)
+        val atual = e.apostas.firstOrNull { it.id == a.id }
+        require(atual == null || !atual.registrada) { "A aposta já foi registrada." }
+        return e.copy(apostas = if (atual != null) e.apostas.map { if (it.id == a.id) a else it } else e.apostas + a)
     }
 
     fun excluirRascunho(e: Estado, id: String): Estado =
         e.copy(apostas = e.apostas.filterNot { it.id == id && !it.registrada })
 
-    /** Dá o número do jogo, marca como registrada e desconta do saldo. */
-    fun registrarAposta(e: Estado, id: String, agora: Long): Estado {
+    /** Bloco APOSTA. Para aposta já registrada, vale o comprovante (saldo de antes dela). */
+    fun textoAposta(e: Estado, a: Aposta, hoje: LocalDate): String =
+        comprovanteDaAposta(e, a)?.texto ?: run {
+            val saldoAntes = if (a.registrada) saldoAntesDe(e, a.id, TipoLancamento.APOSTA) else saldo(e)
+            Mensagens.aposta(identificacao(e, a, hoje), saldoAntes, a.valor)
+        }
+
+    fun tituloAposta(e: Estado, a: Aposta, hoje: LocalDate): String =
+        Mensagens.tituloAposta(numeroDe(e, a, hoje), if (a.registrada) a.dataAposta else hoje)
+
+    /** Dá o número do mês, marca como registrada, desconta do saldo e cria o comprovante. */
+    fun registrarAposta(e: Estado, id: String, hoje: LocalDate, agora: Long): Estado {
         val a = e.apostas.first { it.id == id }
         require(!a.registrada) { "A aposta já foi registrada." }
         require(a.valor > 0) { "Informe o valor da aposta." }
-        val eventual = ehEventual(e, a.dataAposta, id)
-        val numero = e.proximoJogo
-        val registrada = a.copy(numero = numero, eventual = eventual, registrada = true)
+        require(a.concurso > 0) { "Informe o número do concurso." }
+        val anexo = requireNotNull(a.comprovante) { "Anexe o comprovante da Caixa." }
+        val numero = proximoNumero(e, hoje)
+        val registrada = a.copy(numero = numero, dataAposta = hoje, eventual = false, registrada = true)
+        val texto = Mensagens.aposta(identificacao(e, registrada, hoje), saldo(e), a.valor)
         val lanc = Lancamento(
-            id = novoId(), data = a.dataAposta, criadoEm = agora, tipo = TipoLancamento.APOSTA,
-            valor = -a.valor, apostaId = id, eventual = eventual,
+            id = novoId(), data = hoje, criadoEm = agora, tipo = TipoLancamento.APOSTA, valor = -a.valor, apostaId = id,
+        )
+        val c = novoComprovante(
+            e, TipoComprovante.APOSTA, Mensagens.tituloAposta(numero, hoje), texto, hoje, agora,
+            anexos = listOf(anexo), apostaId = id,
         )
         return e.copy(
             apostas = e.apostas.map { if (it.id == id) registrada else it },
             lancamentos = e.lancamentos + lanc,
-            proximoJogo = numero + 1,
-        )
-    }
-
-    /** Desfaz o registro (devolve o valor ao saldo). O número só volta se for o último usado. */
-    fun desfazerAposta(e: Estado, id: String): Estado {
-        val a = e.apostas.first { it.id == id }
-        require(a.registrada) { "A aposta não está registrada." }
-        require(a.apuracao?.confirmadaEm == null) { "Desfaça a apuração antes." }
-        val proximo = if (a.numero == e.proximoJogo - 1) a.numero else e.proximoJogo
-        return e.copy(
-            apostas = e.apostas.map { if (it.id == id) it.copy(registrada = false, numero = 0, apuracao = null) else it },
-            lancamentos = e.lancamentos.filterNot { it.apostaId == id && it.tipo == TipoLancamento.APOSTA },
-            proximoJogo = proximo,
+            comprovantes = e.comprovantes + c,
         )
     }
 
     // ---------- apuração ----------
 
     /** Registro da apuração a partir do resultado da Caixa e da conferência. */
-    fun apuracaoDe(c: io.github.marcosfaria94.bolao.domain.Concurso, r: io.github.marcosfaria94.bolao.domain.Conferencia.Resultado, premio: Long, agora: Long) = Apuracao(
+    fun apuracaoDe(c: Concurso, r: Conferencia.Resultado, premio: Long, agora: Long) = Apuracao(
         acertos = r.acertos,
         premio = premio,
         dezenasSorteadas = c.dezenas,
         segundoSorteio = c.segundoSorteio,
         trevosSorteados = c.trevos,
         extraSorteado = c.timeOuMes,
-        resultadosLoteca = (0 until io.github.marcosfaria94.bolao.domain.Volante.JOGOS_LOTECA).map { c.jogosLoteca.getOrNull(it)?.resultado.orEmpty() },
+        resultadosLoteca = (0 until Volante.JOGOS_LOTECA).map { c.jogosLoteca.getOrNull(it)?.resultado.orEmpty() },
         premiosFederal = c.bilhetesFederal,
         faixa = r.faixas.joinToString(" + ") { it.descricao }.ifBlank { null },
+        faixasPremiadas = r.faixas.map { it.faixa },
+        rateioOficial = c.faixas,
+        acumulou = if (c.temResultado) c.acumulado else null,
         conferidaEm = agora,
     )
 
-    /** Guarda a conferência automática (ainda sem confirmar). */
+    /** Guarda a conferência automática (ainda sem confirmar): só um aviso, não é registro. */
     fun guardarConferencia(e: Estado, id: String, apuracao: Apuracao): Estado =
-        e.copy(apostas = e.apostas.map { if (it.id == id && it.apuracao?.confirmadaEm == null) it.copy(apuracao = apuracao) else it })
+        e.copy(apostas = e.apostas.map { if (it.id == id && it.registrada && it.apuracao?.confirmadaEm == null) it.copy(apuracao = apuracao) else it })
 
-    /** Confirma a apuração e soma o prêmio ao saldo (lançado na data do sorteio). */
-    fun confirmarApuracao(e: Estado, id: String, apuracao: Apuracao, hoje: LocalDate, agora: Long): Estado {
+    fun mesFechado(e: Estado, mes: YearMonth): Boolean = e.extratos.any { it.mes == mes.toString() }
+
+    /** O prêmio entra na data do sorteio; se aquele mês já foi fechado no extrato, entra hoje. */
+    fun dataDoPremio(e: Estado, a: Aposta, hoje: LocalDate): LocalDate {
+        val s = a.dataSorteio ?: return hoje
+        return if (s.isAfter(hoje) || mesFechado(e, YearMonth.from(s))) hoje else s
+    }
+
+    /** Prévia do bloco APURAÇÃO (o saldo inicial é o de agora, antes do prêmio). Depois de registrada, vale o comprovante. */
+    fun textoApuracao(e: Estado, a: Aposta, acertos: String, premio: Long, hoje: LocalDate): String =
+        comprovanteDaApuracao(e, a)?.texto
+            ?: Mensagens.apuracao(identificacao(e, a, hoje), acertos, premio > 0, saldo(e), premio)
+
+    /** Confirma a apuração: soma o prêmio ao saldo e cria o comprovante (com a imagem dos acertos). */
+    fun confirmarApuracao(e: Estado, id: String, apuracao: Apuracao, hoje: LocalDate, agora: Long, imagem: Arquivo? = null): Estado {
         val a = e.apostas.first { it.id == id }
         require(a.registrada) { "Registre a aposta antes de apurar." }
         require(a.apuracao?.confirmadaEm == null) { "Esta aposta já foi apurada." }
+        require(apuracao.premio >= 0) { "Prêmio inválido." }
         val confirmada = apuracao.copy(confirmadaEm = agora)
+        val texto = Mensagens.apuracao(identificacao(e, a, hoje), apuracao.acertos, apuracao.premio > 0, saldo(e), apuracao.premio)
         val premio = if (apuracao.premio > 0) {
             listOf(
                 Lancamento(
-                    id = novoId(), data = a.dataSorteio ?: hoje, criadoEm = agora,
+                    id = novoId(), data = dataDoPremio(e, a, hoje), criadoEm = agora,
                     tipo = TipoLancamento.PREMIO, valor = apuracao.premio, apostaId = id,
                 ),
             )
         } else {
             emptyList()
         }
+        val c = novoComprovante(
+            e, TipoComprovante.APURACAO, Mensagens.tituloApuracao(a.numero, hoje), texto, hoje, agora,
+            anexos = listOfNotNull(imagem), apostaId = id,
+        )
         return e.copy(
             apostas = e.apostas.map { if (it.id == id) it.copy(apuracao = confirmada) else it },
             lancamentos = e.lancamentos + premio,
+            comprovantes = e.comprovantes + c,
         )
     }
 
-    fun desfazerApuracao(e: Estado, id: String): Estado = e.copy(
-        apostas = e.apostas.map { if (it.id == id) it.copy(apuracao = it.apuracao?.copy(confirmadaEm = null)) else it },
-        lancamentos = e.lancamentos.filterNot { it.apostaId == id && it.tipo == TipoLancamento.PREMIO },
-    )
-
-    /** Saldo para a mensagem APURAÇÃO: o de antes do prêmio, se já confirmada. */
-    fun saldoParaApuracao(e: Estado, a: Aposta): Long =
-        if (a.apuracao?.confirmadaEm != null) saldoAntesDe(e, a.id, TipoLancamento.PREMIO) else saldo(e)
+    fun apuracoesDisponiveis(e: Estado): List<Aposta> =
+        e.apostas.filter { it.registrada && it.apuracao != null && it.apuracao.confirmadaEm == null }
 
     // ---------- rateio ----------
 
-    data class SugestaoRateio(
-        val apostasRestantes: Int,
-        val valorPorAposta: Long,
-        val aportesDoMes: Long,
-        val provisionado: Long,
+    data class CalculoDoRateio(
+        val extra: Long,
+        val pedido: Long,
+        val cota: Long,
+        /** Soma das cotas (o que sai do saldo). */
+        val total: Long,
+        /** Centavos que sobram do arredondamento para baixo e ficam no saldo. */
+        val sobra: Long,
+        val saldoFinal: Long,
     )
 
-    fun sugestaoProvisionado(e: Estado, hoje: LocalDate): SugestaoRateio {
-        val restantes = Calendario.apostasRestantesNoMes(hoje, apostaRegularFeitaEm(e, hoje))
-        val porAposta = CalculoRateio.valorPorAposta(e.config.aporteMensal, e.pessoas.size.coerceAtLeast(1))
-        val aportes = aportesDoMes(e, YearMonth.from(hoje))
-        return SugestaoRateio(restantes, porAposta, aportes, CalculoRateio.provisionado(restantes, porAposta, aportes))
+    /** Rateio de [pedido] (no máximo o Extra): cota = pedido ÷ integrantes, arredondada para baixo. */
+    fun calcularRateio(e: Estado, hoje: LocalDate, pedido: Long): CalculoDoRateio {
+        val n = e.pessoas.size.coerceAtLeast(1)
+        val cota = pedido.coerceAtLeast(0) / n
+        val total = cota * n
+        return CalculoDoRateio(extra(e, hoje), pedido, cota, total, pedido - total, saldo(e) - total)
     }
 
-    fun registrarRateio(
-        e: Estado,
-        data: LocalDate,
-        provisionado: Long,
-        cota: Long,
-        comprovantes: List<Arquivo>,
-        agora: Long,
-    ): Estado {
-        require(cota > 0) { "Não há valor para ratear." }
-        require(cota * e.pessoas.size <= saldo(e)) { "O rateio passa do saldo." }
+    fun textoRateio(e: Estado, hoje: LocalDate, total: Long): String = Mensagens.rateio(hoje, saldo(e), total)
+
+    fun registrarRateio(e: Estado, hoje: LocalDate, pedido: Long, comprovantes: List<Arquivo>, agora: Long): Estado {
+        val extra = extra(e, hoje)
+        require(extra > 0) { "Não há valor a ser rateado." }
+        require(pedido <= extra) { "Valor acima de ${Dinheiro.rs(extra)} não pode ser rateado." }
+        val calc = calcularRateio(e, hoje, pedido)
+        require(calc.cota > 0) { "O valor é pequeno demais para dividir entre ${e.pessoas.size}." }
+        require(comprovantes.size == e.pessoas.size) { "Anexe os comprovantes dos ${e.pessoas.size} Pix." }
         val numero = e.proximoRateio
-        val rateio = Rateio(numero, data, saldo(e), provisionado, cota, comprovantes, agora)
-        val lancs = e.pessoas.mapIndexed { i, p ->
-            Lancamento(
-                id = novoId(), data = data, criadoEm = agora + i, tipo = TipoLancamento.RATEIO,
-                valor = -cota, pessoaId = p.id, rateioNumero = numero,
-            )
-        }
+        val saldoAntes = saldo(e)
+        val rateio = Rateio(numero, hoje, saldoAntes, provisao(e, hoje).provisionado, calc.cota, comprovantes, agora)
+        val lanc = Lancamento(
+            id = novoId(), data = hoje, criadoEm = agora, tipo = TipoLancamento.RATEIO,
+            valor = -calc.total, rateioNumero = numero,
+        )
+        val c = novoComprovante(
+            e, TipoComprovante.RATEIO, Mensagens.tituloRateio(hoje), Mensagens.rateio(hoje, saldoAntes, calc.total), hoje, agora,
+            anexos = comprovantes, rateioNumero = numero,
+        )
         return e.copy(
             rateios = e.rateios + rateio,
-            lancamentos = e.lancamentos + lancs,
+            lancamentos = e.lancamentos + lanc,
+            comprovantes = e.comprovantes + c,
             proximoRateio = numero + 1,
         )
     }
-
-    fun desfazerRateio(e: Estado, numero: Int): Estado = e.copy(
-        rateios = e.rateios.filterNot { it.numero == numero },
-        lancamentos = e.lancamentos.filterNot { it.tipo == TipoLancamento.RATEIO && it.rateioNumero == numero },
-        proximoRateio = if (numero == e.proximoRateio - 1) numero else e.proximoRateio,
-    )
 
     // ---------- extrato ----------
 
@@ -284,38 +426,143 @@ object Operacoes {
         val rendimento = informado - calculado
         val limite = maxOf(100L, calculado * 2 / 100)
         val alerta = when {
-            rendimento < 0 -> "O saldo informado é ${io.github.marcosfaria94.bolao.domain.Dinheiro.rs(-rendimento)} menor " +
+            rendimento < 0 -> "O saldo informado é ${Dinheiro.rs(-rendimento)} menor " +
                 "que o calculado. Confira se falta registrar alguma aposta ou rateio."
-            rendimento > limite -> "Um rendimento de ${io.github.marcosfaria94.bolao.domain.Dinheiro.rs(rendimento)} " +
+            rendimento > limite -> "Um rendimento de ${Dinheiro.rs(rendimento)} " +
                 "é alto para um mês. Confira se falta registrar algum aporte ou prêmio."
             else -> null
         }
         return Conferido(calculado, informado, rendimento, alerta)
     }
 
-    /** Lança o rendimento do mês (substitui um extrato anterior do mesmo mês). */
-    fun registrarExtrato(e: Estado, mes: YearMonth, informado: Long, hoje: LocalDate, agora: Long): Estado {
+    /** null = pode registrar; senão, o motivo. */
+    fun impedimentoDoExtrato(e: Estado, mes: YearMonth, hoje: LocalDate): String? = when {
+        mesFechado(e, mes) -> "O extrato de ${Datas.mesAno(mes)} já foi registrado."
+        hoje.isBefore(mes.atEndOfMonth()) -> "O extrato só pode ser registrado a partir do último dia do mês (${Datas.longa(mes.atEndOfMonth())})."
+        else -> null
+    }
+
+    private fun comRendimento(e: Estado, mes: YearMonth, informado: Long, hoje: LocalDate, agora: Long): Pair<Estado, Conferido> {
         val c = conferirSaldo(e, mes, informado)
         val data = if (YearMonth.from(hoje) == mes) hoje else mes.atEndOfMonth()
-        val semAnterior = e.lancamentos.filterNot { it.tipo == TipoLancamento.RENDIMENTO && YearMonth.from(it.data) == mes }
         val rendimento = if (c.rendimento != 0L) {
             listOf(
                 Lancamento(
                     id = novoId(), data = data, criadoEm = agora, tipo = TipoLancamento.RENDIMENTO,
-                    valor = c.rendimento, obs = "Rendimento de ${mes}",
+                    valor = c.rendimento, obs = "Rendimento de $mes",
                 ),
             )
         } else {
             emptyList()
         }
-        return e.copy(
-            lancamentos = semAnterior + rendimento,
-            extratos = e.extratos.filterNot { it.mes == mes.toString() } + Extrato(mes.toString(), informado, c.rendimento, agora),
+        return e.copy(lancamentos = e.lancamentos + rendimento) to c
+    }
+
+    /** Como o bloco EXTRATO vai ficar com o saldo [informado]. */
+    fun previaExtrato(e: Estado, mes: YearMonth, informado: Long, hoje: LocalDate): String =
+        textoExtrato(comRendimento(e, mes, informado, hoje, Long.MAX_VALUE).first, mes)
+
+    /** Lança o rendimento do mês, fecha o mês e cria o comprovante. Um extrato por mês, sem refazer. */
+    fun registrarExtrato(e: Estado, mes: YearMonth, informado: Long, hoje: LocalDate, agora: Long): Estado {
+        impedimentoDoExtrato(e, mes, hoje)?.let { throw IllegalArgumentException(it) }
+        val (novo, c) = comRendimento(e, mes, informado, hoje, agora)
+        val texto = textoExtrato(novo, mes)
+        val comprovante = novoComprovante(
+            e, TipoComprovante.EXTRATO, Mensagens.tituloExtrato(hoje), texto, hoje, agora, mes = mes.toString(),
+        )
+        return novo.copy(
+            extratos = e.extratos + Extrato(mes.toString(), informado, c.rendimento, agora),
+            comprovantes = e.comprovantes + comprovante,
         )
     }
 
-    fun desfazerExtrato(e: Estado, mes: YearMonth): Estado = e.copy(
-        lancamentos = e.lancamentos.filterNot { it.tipo == TipoLancamento.RENDIMENTO && YearMonth.from(it.data) == mes },
-        extratos = e.extratos.filterNot { it.mes == mes.toString() },
+    /** Meses sem extrato: os já terminados e o atual a partir do último dia. */
+    fun extratosPendentes(e: Estado, hoje: LocalDate): List<YearMonth> {
+        if (!e.cadastroConcluido) return emptyList()
+        val inicio = listOfNotNull(e.cadastradoEm, e.lancamentos.minOfOrNull { it.data }).minOrNull() ?: return emptyList()
+        val atual = YearMonth.from(hoje)
+        var m = YearMonth.from(inicio)
+        val lista = mutableListOf<YearMonth>()
+        while (!m.isAfter(atual)) {
+            val terminou = m.isBefore(atual) || Calendario.ehUltimoDiaDoMes(hoje)
+            if (terminou && !mesFechado(e, m)) lista += m
+            m = m.plusMonths(1)
+        }
+        return lista
+    }
+
+    // ---------- extinção (Parte 5) ----------
+
+    data class DivisaoFinal(
+        val saldo: Long,
+        /** Saldo ÷ integrantes, arredondado para cima na segunda casa decimal. */
+        val cota: Long,
+        val total: Long,
+        /** Diferença do arredondamento, coberta pelo Administrador. */
+        val complemento: Long,
     )
+
+    fun divisaoFinal(e: Estado): DivisaoFinal {
+        val s = saldo(e)
+        val n = e.pessoas.size.coerceAtLeast(1)
+        val cota = if (s <= 0) 0 else (s + n - 1) / n
+        return DivisaoFinal(s, cota, cota * n, cota * n - s)
+    }
+
+    /** O que ainda impede a extinção (vazio = pode extinguir). */
+    fun impedimentosDaExtincao(e: Estado): List<String> = buildList {
+        val naoApuradas = e.apostas.count { it.registrada && it.apuracao?.confirmadaEm == null }
+        if (naoApuradas > 0) add("$naoApuradas aposta(s) ainda sem apuração.")
+        val rascunhos = rascunhos(e).size
+        if (rascunhos > 0) add("$rascunhos aposta(s) em andamento: registre ou descarte.")
+        val naoEnviados = comprovantesPendentesDeEnvio(e).size
+        if (naoEnviados > 0) add("$naoEnviados comprovante(s) ainda não enviados ao grupo.")
+        if (saldo(e) <= 0) add("Não há saldo remanescente para dividir.")
+    }
+
+    fun iniciarExtincao(e: Estado, agora: Long): Estado {
+        require(e.extincao == null) { "A extinção já começou." }
+        impedimentosDaExtincao(e).firstOrNull()?.let { throw IllegalArgumentException(it) }
+        return e.copy(extincao = Extincao(iniciadaEm = agora))
+    }
+
+    fun anexarNaExtincao(e: Estado, pessoaId: String, arquivo: Arquivo): Estado {
+        val x = requireNotNull(e.extincao) { "A extinção não começou." }
+        require(x.registradaEm == null) { "A divisão final já foi registrada." }
+        return e.copy(extincao = x.copy(comprovantes = x.comprovantes + (pessoaId to arquivo)))
+    }
+
+    fun textoExtincao(e: Estado, hoje: LocalDate): String {
+        val d = divisaoFinal(e)
+        return Mensagens.extincao(hoje, d.saldo, d.complemento, d.total)
+    }
+
+    /** Registra a divisão final: complemento do Administrador, saída das cotas e o comprovante. */
+    fun registrarExtincao(e: Estado, hoje: LocalDate, agora: Long): Estado {
+        val x = requireNotNull(e.extincao) { "A extinção não começou." }
+        require(x.registradaEm == null) { "A divisão final já foi registrada." }
+        val anexos = e.pessoas.map { p -> requireNotNull(x.comprovantes[p.id]) { "Falta o comprovante do Pix de ${p.apelido}." } }
+        val d = divisaoFinal(e)
+        require(d.saldo > 0) { "Não há saldo para dividir." }
+        val lancs = buildList {
+            if (d.complemento > 0) {
+                add(
+                    Lancamento(
+                        id = novoId(), data = hoje, criadoEm = agora, tipo = TipoLancamento.COMPLEMENTO,
+                        valor = d.complemento, pessoaId = e.administrador?.id, obs = "Arredondamento coberto pelo Administrador",
+                    ),
+                )
+            }
+            add(Lancamento(id = novoId(), data = hoje, criadoEm = agora + 1, tipo = TipoLancamento.DIVISAO_FINAL, valor = -d.total))
+        }
+        val c = novoComprovante(
+            e, TipoComprovante.EXTINCAO, Mensagens.tituloExtincao(hoje), textoExtincao(e, hoje), hoje, agora,
+            anexos = anexos, envioDispensado = true,
+        )
+        return e.copy(
+            lancamentos = e.lancamentos + lancs,
+            comprovantes = e.comprovantes + c,
+            extincao = x.copy(registradaEm = agora),
+        )
+    }
 }
