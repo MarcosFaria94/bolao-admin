@@ -2,8 +2,10 @@ package io.github.marcosfaria94.bolao.ui.aporte
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -38,7 +40,6 @@ import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.Historico
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
-import io.github.marcosfaria94.bolao.ui.comum.TextoDoWhatsapp
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
 import kotlinx.coroutines.launch
@@ -51,7 +52,7 @@ import java.time.YearMonth
  * Depois disso, a tela registra aportes adicionais (data e valor livres) e os envia ao grupo.
  */
 @Composable
-fun AporteTela(estado: Estado) {
+fun AporteTela(estado: Estado, abrir: (String) -> Unit) {
     val ctx = LocalContext.current
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
@@ -66,7 +67,7 @@ fun AporteTela(estado: Estado) {
 
     val dataAporte = if (mensal) YearMonth.from(hoje).atDay(1) else data
     val valorAporte = if (mensal) Operacoes.valorAporteMensal(estado) else valor
-    val texto = Operacoes.textoAporte(estado, dataAporte, valorAporte)
+    val texto = Operacoes.textoAporte(estado, dataAporte, valorAporte, adicional = !mensal)
     val mesFechado = Operacoes.mesFechado(estado, YearMonth.from(dataAporte))
     val problema = when {
         mensal -> null
@@ -86,11 +87,11 @@ fun AporteTela(estado: Estado) {
     ) {
         if (mensal) {
             Text(
-                "Aporte mensal de ${Datas.mesAno(YearMonth.from(hoje))}",
+                "Aporte mensal · ${Datas.mesAnoTitulo(YearMonth.from(hoje))}",
                 style = MaterialTheme.typography.titleMedium,
             )
             OutlinedTextField(
-                value = "${Datas.diaSemana(dataAporte)}, ${Datas.longa(dataAporte)}",
+                value = Datas.longa(dataAporte),
                 onValueChange = {},
                 readOnly = true,
                 enabled = false,
@@ -112,36 +113,6 @@ fun AporteTela(estado: Estado) {
                 "Envie o lembrete ao grupo. Quando os Pix caírem na caixinha, registre o aporte: " +
                     "o aporte mensal é só registrado, sem mensagem para o grupo.",
             )
-        } else {
-            Text("Aporte adicional", style = MaterialTheme.typography.titleMedium)
-            CampoData(
-                data = data,
-                aoMudar = { data = it },
-                rotulo = "Data do aporte",
-                modifier = Modifier.fillMaxWidth(),
-            )
-            CampoDinheiro(
-                centavos = valor,
-                aoMudar = { valor = it },
-                rotulo = "Valor total do aporte",
-                erro = valor <= 0,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Aviso("Aporte adicional só com a concordância dos 3 integrantes, registrada no grupo (Parte 2 do termo).")
-            problema?.let { Aviso(it, alerta = true) }
-            TextoDoWhatsapp(Mensagens.tituloAporte(data), rodape = "A imagem do comprovante vai junto.")
-        }
-
-        Historico(
-            titulo = "Histórico de aportes",
-            estado = estado,
-            filtro = { it.tipo == TipoLancamento.APORTE },
-            comprovanteDe = { l ->
-                estado.comprovantes.firstOrNull { it.tipo == TipoComprovante.APORTE && it.criadoEm == l.criadoEm }
-            },
-        )
-
-        if (mensal) {
             BotoesDeRegistro(
                 habilitado = true,
                 trabalhando = trabalhando,
@@ -154,6 +125,21 @@ fun AporteTela(estado: Estado) {
                 aoRegistrar = { confirmar = true },
             )
         } else {
+            Text("Aporte adicional", style = MaterialTheme.typography.titleMedium)
+            CampoData(
+                data = data,
+                aoMudar = { data = it },
+                rotulo = "Data do aporte",
+                modifier = Modifier.fillMaxWidth(),
+            )
+            CampoDinheiro(
+                centavos = valor,
+                aoMudar = { valor = it },
+                rotulo = "Valor total do aporte",
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Aviso("Aporte adicional só com a concordância dos 3 integrantes, registrada no grupo (Parte 2 do termo).")
+            problema?.takeIf { valor > 0 }?.let { Aviso(it, alerta = true) }
             BotoesDeRegistro(
                 habilitado = problema == null,
                 trabalhando = trabalhando,
@@ -162,6 +148,14 @@ fun AporteTela(estado: Estado) {
                 visualizarHabilitado = valor > 0,
             )
         }
+
+        Spacer(Modifier.height(8.dp))
+        Historico(
+            titulo = "Histórico de aportes",
+            estado = estado,
+            filtro = { it.tipo == TipoLancamento.APORTE },
+            abrir = abrir,
+        )
     }
 
     if (vendo) {

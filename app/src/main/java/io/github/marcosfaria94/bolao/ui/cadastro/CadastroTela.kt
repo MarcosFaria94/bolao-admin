@@ -66,7 +66,6 @@ import io.github.marcosfaria94.bolao.data.Lancamento
 import io.github.marcosfaria94.bolao.data.Pessoa
 import io.github.marcosfaria94.bolao.data.Repositorio
 import io.github.marcosfaria94.bolao.data.TipoLancamento
-import io.github.marcosfaria94.bolao.domain.Cpf
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
@@ -84,8 +83,6 @@ class FormPessoa {
     var nome by mutableStateOf("")
     var apelido by mutableStateOf("")
     var pix by mutableStateOf("")
-    /** Opcional: o app guarda só os 6 dígitos do meio, como no termo. */
-    var cpf by mutableStateOf("")
 }
 
 class CadastroViewModel(app: Application) : AndroidViewModel(app) {
@@ -95,7 +92,6 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
     val pessoas = mutableStateListOf(FormPessoa(), FormPessoa(), FormPessoa())
     var administrador by mutableIntStateOf(0)
     var nomeGrupo by mutableStateOf("")
-    var grupoWhatsapp by mutableStateOf("")
     var saldoInicial by mutableLongStateOf(0L)
     /** Mês do primeiro aporte mensal (null = o padrão, ver [inicioAportes]). */
     var inicioEscolhido by mutableStateOf<YearMonth?>(null)
@@ -107,7 +103,9 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun inicioAportes(hoje: LocalDate): YearMonth = inicioEscolhido
         ?: if (hoje.dayOfMonth == 1 && saldoInicial == 0L) YearMonth.from(hoje) else YearMonth.from(hoje).plusMonths(1)
+    /** Termo assinado e termo sem assinaturas (anexos opcionais, também em Ajustes). */
     var termo by mutableStateOf<Arquivo?>(null)
+    var termoSemAssinatura by mutableStateOf<Arquivo?>(null)
     var salvando by mutableStateOf(false)
     var tentouAvancar by mutableStateOf(false)
 
@@ -120,9 +118,6 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
         }
         val apelidos = pessoas.map { it.apelido.trim().lowercase() }.filter { it.isNotEmpty() }
         if (apelidos.size != apelidos.distinct().size) add("Os nomes curtos precisam ser diferentes entre si.")
-        pessoas.forEachIndexed { i, p ->
-            if (Cpf.mascarar(p.cpf) == null) add("O CPF do integrante ${i + 1} está incompleto (pode deixar em branco).")
-        }
     }
 
     fun problemasValores(): List<String> = if (aporteMensal <= 0) listOf("Informe o aporte mensal.") else emptyList()
@@ -146,12 +141,13 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
         tentouAvancar = false
     }
 
-    fun guardarTermo(uri: android.net.Uri, aoErro: (String) -> Unit) {
+    fun guardarTermo(uri: android.net.Uri, assinado: Boolean, aoErro: (String) -> Unit) {
         viewModelScope.launch {
             try {
-                termo = repo.guardarArquivo(uri, "termo")
+                val arq = repo.guardarArquivo(uri, if (assinado) "termo-assinado" else "termo-sem-assinatura")
+                if (assinado) termo = arq else termoSemAssinatura = arq
             } catch (t: Throwable) {
-                aoErro("Não foi possível guardar o PDF: ${t.message}")
+                aoErro("Não foi possível guardar o arquivo: ${t.message}")
             }
         }
     }
@@ -175,7 +171,6 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
                         apelido = f.apelido.trim(),
                         chavePix = f.pix.trim(),
                         administrador = i == administrador,
-                        cpf = Cpf.mascarar(f.cpf).orEmpty(),
                     )
                 }
                 val lancamentos = if (saldoInicial != 0L) {
@@ -198,11 +193,11 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
                         cadastradoEm = hoje,
                         inicioAportes = inicioAportes(hoje).toString(),
                         nomeGrupo = nomeGrupo.trim(),
-                        grupoWhatsapp = grupoWhatsapp.trim(),
                         pessoas = lista,
                         config = it.config.copy(aporteMensal = aporteMensal),
                         lancamentos = it.lancamentos + lancamentos,
                         termo = termo ?: it.termo,
+                        termoSemAssinatura = termoSemAssinatura ?: it.termoSemAssinatura,
                     )
                 }
             } catch (t: Throwable) {
@@ -241,8 +236,11 @@ fun CadastroTela(vm: CadastroViewModel = viewModel()) {
             }
         }
     }
-    val escolherTermo = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) vm.guardarTermo(uri, avisar)
+    val escolherTermoAssinado = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.guardarTermo(uri, assinado = true, aoErro = avisar)
+    }
+    val escolherTermoSemAssinatura = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.guardarTermo(uri, assinado = false, aoErro = avisar)
     }
 
     Scaffold(
@@ -293,7 +291,11 @@ fun CadastroTela(vm: CadastroViewModel = viewModel()) {
                     1 -> PassoIntegrantes(vm)
                     2 -> PassoSaldo(vm)
                     3 -> PassoValores(vm)
-                    else -> PassoTermo(vm, aoEscolher = { escolherTermo.launch(arrayOf("application/pdf")) })
+                    else -> PassoTermo(
+                        vm,
+                        aoEscolherSemAssinatura = { escolherTermoSemAssinatura.launch(arrayOf("application/pdf", "image/*")) },
+                        aoEscolherAssinado = { escolherTermoAssinado.launch(arrayOf("application/pdf", "image/*")) },
+                    )
                 }
                 if (vm.tentouAvancar) {
                     vm.problemasDoPasso().firstOrNull()?.let { Aviso(it, alerta = true) }
@@ -409,13 +411,6 @@ private fun PassoIntegrantes(vm: CadastroViewModel) {
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
         modifier = Modifier.fillMaxWidth(),
     )
-    OutlinedTextField(
-        value = vm.grupoWhatsapp,
-        onValueChange = { vm.grupoWhatsapp = it.take(80) },
-        label = { Text("ID do grupo do WhatsApp (opcional, para o termo)") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-    )
     vm.pessoas.forEachIndexed { i, p ->
         val marcarErro = vm.tentouAvancar
         Card(
@@ -460,17 +455,6 @@ private fun PassoIntegrantes(vm: CadastroViewModel) {
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                val cpf = Cpf.mascarar(p.cpf)
-                OutlinedTextField(
-                    value = p.cpf,
-                    onValueChange = { p.cpf = it.take(14) },
-                    label = { Text("CPF (opcional, para o termo)") },
-                    supportingText = { Text(if (cpf == null) "CPF incompleto" else if (cpf.isBlank()) "Fica guardado só ***.ddd.ddd-**" else "Fica guardado: $cpf") },
-                    isError = cpf == null,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
         }
     }
@@ -506,7 +490,7 @@ private fun PassoSaldo(vm: CadastroViewModel) {
         ) {
             RadioButton(selected = inicio == m, onClick = null)
             Column(Modifier.padding(start = 8.dp)) {
-                Text(Datas.mesAnoExtenso(m).replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodyLarge)
+                Text(Datas.mesAnoTitulo(m), style = MaterialTheme.typography.bodyLarge)
                 Text(
                     if (m == atual) "O aporte deste mês será cobrado (data fixa no dia 1º)."
                     else "Este mês fica coberto pelo saldo inicial; o primeiro aporte é em ${Datas.longa(m.atDay(1))}.",
@@ -536,17 +520,22 @@ private fun PassoValores(vm: CadastroViewModel) {
 }
 
 @Composable
-private fun PassoTermo(vm: CadastroViewModel, aoEscolher: () -> Unit) {
-    Text("Termo assinado", style = MaterialTheme.typography.titleLarge)
+private fun PassoTermo(vm: CadastroViewModel, aoEscolherSemAssinatura: () -> Unit, aoEscolherAssinado: () -> Unit) {
+    Text("Termo", style = MaterialTheme.typography.titleLarge)
     Text(
-        "Guarde o PDF do termo com as 3 assinaturas. Se ainda não estiver assinado, pule e guarde depois em Ajustes.",
+        "Anexe o termo sem assinaturas e o termo assinado pelos 3. Se ainda não tiver, pule e anexe depois em Ajustes.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    OutlinedButton(onClick = aoEscolher, modifier = Modifier.fillMaxWidth()) {
+    OutlinedButton(onClick = aoEscolherSemAssinatura, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Outlined.PictureAsPdf, contentDescription = null)
         Spacer(Modifier.width(8.dp))
-        Text(vm.termo?.let { "Trocar: ${it.nomeOriginal}" } ?: "Escolher o PDF")
+        Text(vm.termoSemAssinatura?.let { "Sem assinaturas: ${it.nomeOriginal}" } ?: "Anexar o termo sem assinaturas")
+    }
+    OutlinedButton(onClick = aoEscolherAssinado, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Outlined.PictureAsPdf, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text(vm.termo?.let { "Assinado: ${it.nomeOriginal}" } ?: "Anexar o termo assinado")
     }
     Spacer(Modifier.height(8.dp))
     Text("Confira", style = MaterialTheme.typography.titleMedium)

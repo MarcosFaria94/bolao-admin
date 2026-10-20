@@ -27,12 +27,19 @@ object Volante {
 
     fun universo(m: Modalidade): IntRange = m.menor..m.maior
 
+    /** Mês de Sorte ou Time do Coração sorteado, como os números. */
+    private fun extraAleatorio(m: Modalidade, r: Random): String? = when (m.extra) {
+        Extra.MES_DE_SORTE -> MESES_DE_SORTE.random(r)
+        Extra.TIME_DO_CORACAO -> TIMES_DO_CORACAO.random(r)
+        Extra.NENHUM -> null
+    }
+
     /** Um palpite completo, sorteado. */
     fun sortear(m: Modalidade, r: Random = aleatorio): Palpite = when (m.formato) {
         Formato.NUMEROS -> Palpite(
             numeros = universo(m).shuffled(r).take(m.qtdAposta).sorted(),
             trevos = if (m.trevos > 0) TREVOS.shuffled(r).take(m.trevos).sorted() else emptyList(),
-            extra = if (m.extra == Extra.MES_DE_SORTE) MESES_DE_SORTE.random(r) else null,
+            extra = extraAleatorio(m, r),
         )
         Formato.COLUNAS -> Palpite(numeros = List(COLUNAS_SUPER_SETE) { r.nextInt(0, 10) })
         Formato.LOTECA -> Palpite(loteca = List(JOGOS_LOTECA) { OPCOES_LOTECA.random(r) })
@@ -49,7 +56,7 @@ object Volante {
             atual.copy(
                 numeros = (atual.numeros.take(m.qtdAposta) + novos).sorted(),
                 trevos = (atual.trevos.take(m.trevos) + novosTrevos).sorted(),
-                extra = atual.extra ?: if (m.extra == Extra.MES_DE_SORTE) MESES_DE_SORTE.random(r) else null,
+                extra = atual.extra?.takeIf { it.isNotBlank() } ?: extraAleatorio(m, r),
             )
         }
         Formato.COLUNAS -> {

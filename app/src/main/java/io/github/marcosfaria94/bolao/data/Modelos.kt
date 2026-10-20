@@ -96,6 +96,11 @@ data class Apuracao(
     val rateioOficial: List<FaixaPremio> = emptyList(),
     /** O prêmio principal acumulou? null = a Caixa não informou. */
     val acumulou: Boolean? = null,
+    /**
+     * A conferência não basta para registrar sozinha: falta o valor de uma faixa premiada,
+     * o Time do Coração/Mês de Sorte, um placar... O Administrador confere e confirma.
+     */
+    val precisaConfirmar: Boolean = false,
     val conferidaEm: Long,
     val confirmadaEm: Long? = null,
 )
@@ -220,8 +225,10 @@ data class Estado(
     val comprovantes: List<Comprovante> = emptyList(),
     val envios: List<Envio> = emptyList(),
     val extincao: Extincao? = null,
-    /** PDF do termo assinado. */
+    /** Termo assinado pelos 3 (anexado pelo Administrador). */
     val termo: Arquivo? = null,
+    /** Termo sem assinaturas (anexado pelo Administrador). */
+    val termoSemAssinatura: Arquivo? = null,
     /** Dados fictícios do modo de teste (nunca entram nos dados reais). */
     val exemplo: Boolean = false,
     /**

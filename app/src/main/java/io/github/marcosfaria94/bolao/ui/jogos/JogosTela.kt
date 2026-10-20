@@ -7,14 +7,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -56,6 +58,7 @@ import io.github.marcosfaria94.bolao.ui.aposta.abrirOuCriarAposta
 import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
+import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import kotlinx.coroutines.launch
 
@@ -95,8 +98,8 @@ fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit) {
                     )
                 }
             }
-            itemsIndexed(indices.ordenados(itens), key = { _, i -> i.modalidade.name }) { i, item ->
-                CartaoIndice(i + 1, item, estado, aoTocar = { abrirModalidade(item.modalidade) })
+            items(indices.ordenados(itens), key = { it.modalidade.name }) { item ->
+                CartaoIndice(item, estado, aoTocar = { abrirModalidade(item.modalidade) })
             }
         }
     }
@@ -159,58 +162,59 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrirAposta: (String) -> Unit)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(m.nome, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = cor)
+        // Nome (sem a cor da modalidade no texto: o selo leva a cor) e a chance do prêmio principal.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                val odds = item?.odds
-                if (odds != null) {
-                    Text(IndiceK.exibirOdds(odds), style = MaterialTheme.typography.titleLarge)
-                    Text("chance de ganhar algum prêmio", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    Probabilidades.faixas(m).firstOrNull()?.let {
-                        Text(Probabilidades.texto(it.umEm), style = MaterialTheme.typography.titleLarge)
-                        Text("chance do prêmio principal", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+            SeloModalidade(m, tamanho = 56)
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(m.nome, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+                Probabilidades.faixas(m).firstOrNull()?.let {
+                    Text(Probabilidades.texto(it.umEm), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Button(onClick = {
-                escopo.launch {
-                    try {
-                        abrirAposta(abrirOuCriarAposta(ctx, estado, m))
-                    } catch (t: Throwable) {
-                        avisos.showSnackbar("Não foi possível começar a aposta: ${t.message}")
-                    }
-                }
-            }) { Text("APOSTAR") }
         }
 
-        // Próximo concurso e índices.
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(16.dp)) {
+        // Próximo concurso, com o botão de apostar de frente.
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("Próximo concurso", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (u == null) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
                         if (atualizando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         Text(
                             if (atualizando) "  Consultando a Caixa..." else "Sem dados da Caixa agora.",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyLarge,
                         )
                     }
                 } else {
-                    Text("Próximo concurso ${item?.proximoNumero ?: ""}", style = MaterialTheme.typography.titleMedium)
-                    u.proximaData?.let { Text("${Datas.diaSemana(it).replaceFirstChar { c -> c.uppercase() }}, ${Datas.longa(it)}") }
-                    u.premioEstimadoProximo?.takeIf { it > 0 }?.let {
-                        Text(Dinheiro.porExtenso(it), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    }
-                    if (item != null && (item.k != null || item.especial)) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            if (item.especial) "Concurso especial: sem k1 e k2"
-                            else "k1 = ${textoIndice(item.k1)}    k2 = ${textoIndice(item.k2)}",
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    }
+                    Text(
+                        u.premioEstimadoProximo?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) } ?: "Prêmio a confirmar",
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        listOfNotNull(item?.proximoNumero?.toString(), u.proximaData?.let { Datas.longa(it) }).joinToString(" · "),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Normal,
+                    )
                 }
             }
+            Spacer(Modifier.width(12.dp))
+            Button(
+                onClick = {
+                    escopo.launch {
+                        try {
+                            abrirAposta(abrirOuCriarAposta(ctx, estado, m))
+                        } catch (t: Throwable) {
+                            avisos.showSnackbar("Não foi possível começar a aposta: ${t.message}")
+                        }
+                    }
+                },
+                contentPadding = PaddingValues(horizontal = 26.dp, vertical = 20.dp),
+            ) { Text("APOSTAR", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+        }
+        if (item != null && (item.k != null || item.especial || item.odds != null)) {
+            Text(linhaIndices(item), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         // Último resultado.

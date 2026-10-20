@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,7 +50,7 @@ fun ResumoSaldo(estado: Estado, hoje: LocalDate) {
     val provisionado = Operacoes.provisao(estado, hoje).provisionado
     val extra = saldo - provisionado
     Column {
-        Text("Saldo Líquido · ${Datas.longa(hoje)}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Saldo líquido · ${Datas.longa(hoje)}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(Dinheiro.rs(saldo), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
         Text("Provisionado: ${Dinheiro.rs(provisionado)}", style = MaterialTheme.typography.bodyMedium)
         Text("Extra: " + (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)), style = MaterialTheme.typography.bodyMedium)
@@ -91,7 +90,7 @@ fun NovaApostaTela(estado: Estado, abrirAposta: (String) -> Unit) {
             item { TituloSecao("Em andamento") }
             items(rascunhos, key = { it.id }) { r ->
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                     modifier = Modifier.fillMaxWidth().clickable { abrirAposta(r.id) },
                 ) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -103,8 +102,9 @@ fun NovaApostaTela(estado: Estado, abrirAposta: (String) -> Unit) {
                                 style = MaterialTheme.typography.titleSmall,
                             )
                             Text(
-                                if (r.comprovante == null) "Falta anexar o comprovante" else "Pronta para registrar",
-                                style = MaterialTheme.typography.bodySmall,
+                                if (r.comprovante == null) "Sem o comprovante da Caixa" else "Pronta para registrar",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         Text("Continuar", style = MaterialTheme.typography.labelLarge)
@@ -127,8 +127,8 @@ fun NovaApostaTela(estado: Estado, abrirAposta: (String) -> Unit) {
                 )
             }
         }
-        itemsIndexed(indices.ordenados(itens), key = { _, i -> i.modalidade.name }) { i, item ->
-            CartaoIndice(i + 1, item, estado, aoTocar = { abrir(item.modalidade) })
+        items(indices.ordenados(itens), key = { it.modalidade.name }) { item ->
+            CartaoIndice(item, estado, aoTocar = { abrir(item.modalidade) })
         }
         item { Spacer(Modifier.height(8.dp)) }
     }

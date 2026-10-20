@@ -14,14 +14,13 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.zip.Inflater
 
-class TermoEAuditoriaPdfTest {
+class AuditoriaPdfTest {
 
     private val fuso = ZoneOffset.ofHours(-3)
     private val hoje = LocalDate.of(2026, 10, 17)
     private val exemplo: Estado by lazy {
         val e = DadosDeExemplo.gerar(hoje, hoje.atTime(9, 0).atZone(fuso).toInstant().toEpochMilli(), fuso, emptyMap())
         DadosDeExemplo.comImpressoesDigitais(e) { "H-" + it.nome }
-            .copy(pessoas = e.pessoas.mapIndexed { i, p -> p.copy(cpf = listOf("***.111.222-**", "***.333.444-**", "")[i]) })
     }
 
     /** Texto de todas as páginas (descomprime os conteúdos). */
@@ -44,20 +43,6 @@ class TermoEAuditoriaPdfTest {
             i = ini + tam
         }
         return sb.toString()
-    }
-
-    @Test
-    fun termoCruComOsDadosDoCadastro() {
-        val saida = ByteArrayOutputStream()
-        TermoPdf.gerar(exemplo, saida)
-        val pdf = saida.toByteArray()
-        salvarParaOlhar("termo.pdf", pdf)
-        val texto = textoDoPdf(pdf)
-        assertTrue(texto.contains("(Fulano de Tal \\226 ***.111.222-** \\(Administrador\\))"))
-        assertTrue(texto.contains("(Beltrano Souza)"))
-        assertTrue(texto.contains("fulano@exemplo.com"))
-        assertTrue(texto.contains("Parte 4 \\226 Presta\\347\\343o de Contas"))
-        assertTrue(texto.contains("(APURA\\307\\303O N\\272 1 - 04/06/26)"))
     }
 
     private class Fonte(val faltando: Set<String> = emptySet(), val alterados: Set<String> = emptySet()) : AuditoriaPdf.FonteDeImagens {

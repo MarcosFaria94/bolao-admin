@@ -57,7 +57,7 @@ import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
-import io.github.marcosfaria94.bolao.ui.comum.TextoDoWhatsapp
+import io.github.marcosfaria94.bolao.ui.comum.SeletorMes
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
 import kotlinx.coroutines.launch
@@ -79,14 +79,13 @@ private fun mesesDisponiveis(e: Estado, hoje: LocalDate): List<YearMonth> {
 }
 
 @Composable
-fun ExtratoTela(estado: Estado) {
+fun ExtratoTela(estado: Estado, mesInicial: YearMonth? = null) {
     val ctx = LocalContext.current
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
     val hoje = LocalDate.now()
 
-    var mes by remember { mutableStateOf(YearMonth.from(hoje)) }
-    var escolhendoMes by remember { mutableStateOf(false) }
+    var mes by remember { mutableStateOf(mesInicial ?: YearMonth.from(hoje)) }
     var informado by remember { mutableLongStateOf(Operacoes.saldo(estado)) }
     var confirmar by remember { mutableStateOf(false) }
     var vendo by remember { mutableStateOf(false) }
@@ -96,7 +95,6 @@ fun ExtratoTela(estado: Estado) {
     val comprovante = estado.comprovantes.lastOrNull { it.tipo == TipoComprovante.EXTRATO && it.mes == mes.toString() }
     val impedimento = Operacoes.impedimentoDoExtrato(estado, mes, hoje)
     val conferido = Operacoes.conferirSaldo(estado, mes, informado)
-    val pendentes = Operacoes.extratosPendentes(estado, hoje).filter { it != mes }
 
     Column(
         Modifier
@@ -109,27 +107,12 @@ fun ExtratoTela(estado: Estado) {
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 // Mês/ano (abre no mês atual).
-                Box {
-                    OutlinedButton(onClick = { escolhendoMes = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text(Datas.mesAnoExtenso(mes).replaceFirstChar { it.uppercase() }, modifier = Modifier.weight(1f))
-                        Icon(Icons.Outlined.ArrowDropDown, contentDescription = "Escolher o mês")
-                    }
-                    DropdownMenu(expanded = escolhendoMes, onDismissRequest = { escolhendoMes = false }) {
-                        mesesDisponiveis(estado, hoje).forEach { m ->
-                            val feito = estado.extratos.any { it.mes == m.toString() }
-                            DropdownMenuItem(
-                                text = { Text(Datas.mesAnoExtenso(m).replaceFirstChar { it.uppercase() } + if (feito) " · registrado" else "") },
-                                onClick = {
-                                    mes = m
-                                    escolhendoMes = false
-                                },
-                            )
-                        }
-                    }
-                }
-                if (pendentes.isNotEmpty() && existente == null) {
-                    Aviso("Também falta o extrato de ${pendentes.joinToString { Datas.mesAno(it) }}.", alerta = true)
-                }
+                SeletorMes(
+                    meses = mesesDisponiveis(estado, hoje),
+                    escolhido = mes,
+                    aoEscolher = { mes = it },
+                    detalhe = { m -> if (estado.extratos.any { it.mes == m.toString() }) "registrado" else null },
+                )
 
                 if (existente != null) {
                     val quando = Instant.ofEpochMilli(existente.criadoEm).atZone(ZoneId.systemDefault()).toLocalDate()
@@ -168,14 +151,13 @@ fun ExtratoTela(estado: Estado) {
                         destaque = true,
                     )
                     conferido.alerta?.let { Aviso("Possível inconsistência: $it", alerta = true) }
-                    impedimento?.let { Aviso(it, alerta = true) }
-                    TextoDoWhatsapp(Mensagens.tituloExtrato(hoje), rodape = "A imagem do comprovante (prestação de contas) vai junto.")
                     BotoesDeRegistro(
                         habilitado = impedimento == null,
                         trabalhando = trabalhando,
                         aoVisualizar = { vendo = true },
                         aoRegistrar = { confirmar = true },
                     )
+                    impedimento?.let { Aviso(it, alerta = true) }
                 }
             }
         }
@@ -236,15 +218,15 @@ private fun Auditoria(estado: Estado) {
 
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Auditoria", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            Text("Auditoria", style = MaterialTheme.typography.titleMedium)
             Text(
                 "PDF com todos os comprovantes (aporte, aposta, apuração, rateio e extrato) e os anexos originais, em ordem cronológica.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CampoData(data = de, aoMudar = { de = it }, rotulo = "De", curto = true, modifier = Modifier.weight(1f))
-                CampoData(data = ate, aoMudar = { ate = it }, rotulo = "Até", curto = true, modifier = Modifier.weight(1f))
+                CampoData(data = de, aoMudar = { de = it }, rotulo = "De", modifier = Modifier.weight(1f))
+                CampoData(data = ate, aoMudar = { ate = it }, rotulo = "Até", modifier = Modifier.weight(1f))
             }
             if (gerando) LinearProgressIndicator(progress = { progresso }, modifier = Modifier.fillMaxWidth())
             Button(

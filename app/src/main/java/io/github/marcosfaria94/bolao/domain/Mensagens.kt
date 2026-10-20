@@ -18,6 +18,9 @@ object Mensagens {
         return textos.map { it.padStart(largura) }
     }
 
+    /** Colunas do comprovante, para quebrar as linhas longas (números da Lotomania...). */
+    const val COLUNAS = 48
+
     // ---------- títulos (o texto enviado no WhatsApp) ----------
 
     /** "APORTE - 01/06/2026". */
@@ -38,83 +41,140 @@ object Mensagens {
     /** Divisão final do saldo, na extinção do bolão (Parte 5). */
     fun tituloExtincao(data: LocalDate): String = "EXTINÇÃO - ${Datas.curta(data)}"
 
-    // ---------- blocos ----------
+    // ---------- partes dos blocos ----------
 
     /**
-     * Identificação da aposta, ex.: "Nº1 010626 LF-3060 2M 030626".
-     * Prêmio e data do sorteio ficam de fora se não forem conhecidos.
+     * "CONTABILIDADE DO GRUPO" do termo: saldo atual, a operação e o saldo final,
+     * com o rótulo completado com pontos até 11 colunas ("APORTES....", "APOSTA.....").
      */
-    fun identificacao(
+    private fun contabilidade(rotulo: String, sinal: Char, saldoAtual: Long, valor: Long, saldoFinal: Long): String {
+        val (a, b, c) = alinhar(saldoAtual, valor, saldoFinal)
+        return "SALDO ATUAL:   R$ $a\n" +
+            rotulo.padEnd(11, '.') + ": $sinal R$ $b\n" +
+            "SALDO FINAL: = R$ $c"
+    }
+
+    /** "Nº1/JUN": número da aposta no mês e o mês da aposta. */
+    fun numeroNoMes(numero: Int, dataAposta: LocalDate): String = "Nº$numero/${Datas.mesCurto(dataAposta)}"
+
+    /** "2 MILHÕES", "1,7 MILHÃO", "450 MIL" (prêmio principal do bloco da aposta). */
+    fun premioPrincipal(centavos: Long?): String = when {
+        centavos == null || centavos <= 0 -> "A CONFIRMAR"
+        centavos < 100_000 -> Dinheiro.rs(centavos)
+        else -> Dinheiro.porExtenso(centavos, comRs = false).uppercase()
+    }
+
+    /**
+     * "RÓTULO: itens" quebrando em várias linhas de até [COLUNAS] colunas, com as linhas
+     * seguintes alinhadas embaixo do primeiro item (os 50 números da Lotomania, por exemplo).
+     */
+    fun linhaQuebrada(rotulo: String, itens: List<String>): String {
+        val inicio = "$rotulo: "
+        val recuo = " ".repeat(inicio.length)
+        val linhas = mutableListOf<StringBuilder>()
+        var atual = StringBuilder(inicio)
+        var vazia = true
+        for (item in itens) {
+            if (!vazia && atual.length + 1 + item.length > COLUNAS) {
+                linhas += atual
+                atual = StringBuilder(recuo)
+                vazia = true
+            }
+            if (!vazia) atual.append(' ')
+            atual.append(item)
+            vazia = false
+        }
+        linhas += atual
+        return linhas.joinToString("\n") { it.toString().trimEnd() }
+    }
+
+    /** O que foi apostado, no formato de cada modalidade (linhas "NÚMEROS: ..." do bloco). */
+    data class Jogo(
+        val numeros: List<Int> = emptyList(),
+        val trevos: List<Int> = emptyList(),
+        /** Time do Coração ou Mês de Sorte. */
+        val extra: String? = null,
+        val palpitesLoteca: List<String> = emptyList(),
+        val bilheteFederal: String? = null,
+        val fracoesFederal: Int? = null,
+    )
+
+    fun linhasDoJogo(m: Modalidade, j: Jogo): String = when (m.formato) {
+        Formato.NUMEROS -> buildList {
+            add(linhaQuebrada("NÚMEROS", j.numeros.sorted().map { m.rotulo(it) }.ifEmpty { listOf("...") }))
+            if (m.trevos > 0) add(linhaQuebrada("TREVOS", j.trevos.sorted().map { it.toString() }.ifEmpty { listOf("...") }))
+            when (m.extra) {
+                Extra.TIME_DO_CORACAO -> add("TIME DO CORAÇÃO: ${j.extra?.uppercase() ?: "..."}")
+                Extra.MES_DE_SORTE -> add("MÊS DE SORTE: ${j.extra?.uppercase() ?: "..."}")
+                Extra.NENHUM -> Unit
+            }
+        }.joinToString("\n")
+        // Super Sete: um número por coluna, da 1ª à 7ª.
+        Formato.COLUNAS -> linhaQuebrada("NÚMEROS", j.numeros.map { if (it in 0..9) it.toString() else "-" }.ifEmpty { listOf("...") })
+        Formato.LOTECA -> linhaQuebrada("PALPITES", j.palpitesLoteca.map { it.ifBlank { "-" } }.ifEmpty { listOf("...") })
+        Formato.FEDERAL -> "BILHETE: ${j.bilheteFederal?.ifBlank { null } ?: "..."}\n" +
+            "FRAÇÕES: ${j.fracoesFederal ?: 10} DE 10"
+    }
+
+    // ---------- blocos ----------
+
+    /** 1. Registro de aporte. [adicional] = aporte fora do mensal (com a concordância dos 3). */
+    fun aporte(data: LocalDate, saldoAtual: Long, aportes: Long, adicional: Boolean = false): String =
+        "TIPO DE APORTE: ${if (adicional) "ADICIONAL" else "OBRIGATÓRIO"}\n" +
+            "DATA: ${Datas.longa(data)}\n" +
+            "\n" +
+            "CONTABILIDADE DO GRUPO\n" +
+            contabilidade("APORTES", '+', saldoAtual, aportes, saldoAtual + aportes)
+
+    /** 2. Registro do Jogo (dias programados ou eventuais). */
+    fun aposta(
         numero: Int,
         dataAposta: LocalDate,
         modalidade: Modalidade,
         concurso: Int,
         premioEstimado: Long?,
         dataSorteio: LocalDate?,
-    ): String = listOfNotNull(
-        "Nº$numero",
-        Datas.compacta(dataAposta),
-        "${modalidade.sigla}-$concurso",
-        premioEstimado?.takeIf { it > 0 }?.let { Dinheiro.abreviar(it) },
-        dataSorteio?.let { Datas.compacta(it) },
-    ).joinToString(" ")
-
-    /** 1. Registro de aporte. */
-    fun aporte(data: LocalDate, saldoInicial: Long, aportes: Long): String {
-        val (a, b, c) = alinhar(saldoInicial, aportes, saldoInicial + aportes)
-        return "- APORTE ${Datas.compacta(data)} -\n" +
+        jogo: Jogo,
+        saldoAtual: Long,
+        valor: Long,
+    ): String =
+        "APOSTA: ${numeroNoMes(numero, dataAposta)}\n" +
+            "DATA: ${Datas.longa(dataAposta)}\n" +
+            "MODALIDADE: ${modalidade.nome.uppercase()}\n" +
+            "CONCURSO: ${concurso.takeIf { it > 0 } ?: "A CONFIRMAR"}\n" +
+            "PRÊMIO PRINCIPAL: ${premioPrincipal(premioEstimado)}\n" +
+            "SORTEIO: ${dataSorteio?.let { Datas.longa(it) } ?: "A CONFIRMAR"}\n" +
+            linhasDoJogo(modalidade, jogo) + "\n" +
             "\n" +
-            "Saldo Inicial:   R$ $a\n" +
-            "Aportes......: + R$ $b\n" +
-            "Saldo Final..: = R$ $c"
-    }
+            "CONTABILIDADE DO GRUPO\n" +
+            contabilidade("APOSTA", '-', saldoAtual, valor, saldoAtual - valor)
 
-    /** 2. Registro do Jogo. */
-    fun aposta(identificacao: String, saldoInicial: Long, valor: Long): String {
-        val (a, b, c) = alinhar(saldoInicial, valor, saldoInicial - valor)
-        return "- APOSTA $identificacao -\n" +
+    /** 3. Apuração (dia seguinte ao sorteio): identifica a aposta e soma o prêmio. */
+    fun apuracao(numero: Int, dataAposta: LocalDate, saldoAtual: Long, premio: Long): String =
+        "APOSTA: ${numeroNoMes(numero, dataAposta)}\n" +
+            "DATA: ${Datas.longa(dataAposta)}\n" +
             "\n" +
-            "Saldo Inicial:   R$ $a\n" +
-            "Aposta.......: - R$ $b\n" +
-            "Saldo Final..: = R$ $c"
-    }
-
-    /** "(Aposta Premiada!)", como no termo, ou "(Aposta não premiada)". */
-    fun situacaoApuracao(premiada: Boolean): String = if (premiada) "(Aposta Premiada!)" else "(Aposta não premiada)"
-
-    /** 3. Apuração (dia seguinte ao sorteio). */
-    fun apuracao(identificacao: String, acertos: String, premiada: Boolean, saldoInicial: Long, premio: Long): String {
-        val (a, b, c) = alinhar(saldoInicial, premio, saldoInicial + premio)
-        return "- APURAÇÃO $identificacao -\n" +
-            "\n" +
-            "Acertos: $acertos ${situacaoApuracao(premiada)}\n" +
-            "Saldo Inicial:   R$ $a\n" +
-            "Prêmio.......: + R$ $b\n" +
-            "Saldo Final..: = R$ $c"
-    }
+            "CONTABILIDADE DO GRUPO\n" +
+            contabilidade("PRÊMIO", '+', saldoAtual, premio, saldoAtual + premio)
 
     /** 4. Rateio. [total] = soma das 3 cotas. */
-    fun rateio(data: LocalDate, saldoLiquido: Long, total: Long): String {
-        val (a, b, c) = alinhar(saldoLiquido, total, saldoLiquido - total)
-        return "- RATEIO ${Datas.compacta(data)} -\n" +
+    fun rateio(data: LocalDate, saldoAtual: Long, total: Long): String =
+        "- RATEIO ${Datas.compacta(data)} -\n" +
             "\n" +
-            "Saldo Líquido:   R$ $a\n" +
-            "Rateio.......: - R$ $b\n" +
-            "Saldo Final    = R$ $c"
-    }
+            contabilidade("RATEIO", '-', saldoAtual, total, saldoAtual - total)
 
     /**
      * Divisão final do saldo na extinção (Parte 5): cada um recebe o saldo ÷ 3 arredondado
      * para cima, e a diferença é coberta pelo Administrador.
      */
-    fun extincao(data: LocalDate, saldoLiquido: Long, complemento: Long, divisao: Long): String {
-        val (a, b, c, d) = alinhar(saldoLiquido, complemento, divisao, saldoLiquido + complemento - divisao)
+    fun extincao(data: LocalDate, saldoAtual: Long, complemento: Long, divisao: Long): String {
+        val (a, b, c, d) = alinhar(saldoAtual, complemento, divisao, saldoAtual + complemento - divisao)
         return "- EXTINÇÃO ${Datas.compacta(data)} -\n" +
             "\n" +
-            "Saldo Líquido:   R$ $a\n" +
-            "Complemento..: + R$ $b\n" +
-            "Divisão......: - R$ $c\n" +
-            "Saldo Final..: = R$ $d"
+            "SALDO ATUAL:   R$ $a\n" +
+            "COMPLEMENTO: + R$ $b\n" +
+            "DIVISÃO....: - R$ $c\n" +
+            "SALDO FINAL: = R$ $d"
     }
 
     /** Título do documento de saldo (não é registro): "SALDO - 19/10/26". */
@@ -128,9 +188,9 @@ object Mensagens {
         val (a, b, c) = alinhar(saldoLiquido, provisionado, saldoLiquido - provisionado)
         return "- SALDO ${Datas.compacta(data)} -\n" +
             "\n" +
-            "Saldo Líquido:   R$ $a\n" +
-            "Provisionado.: - R$ $b\n" +
-            "Extra........: = R$ $c"
+            "SALDO LÍQUIDO:   R$ $a\n" +
+            "PROVISIONADO.: - R$ $b\n" +
+            "EXTRA........: = R$ $c"
     }
 
     // ---------- 5. Prestação de Contas (extrato) ----------
@@ -186,13 +246,13 @@ object Mensagens {
         )
         fun linhaResumo(rotulo: String, sinal: Char, valor: String) = rotulo.padEnd(20, '.') + ": " + sinal + " R$" + valor
         val resumo = listOf(
-            linhaResumo("Saldo Líq. Anterior", ' ', valoresResumo[0]),
-            linhaResumo("Rendimento Líquido", if (r.rendimento < 0) '-' else '+', valoresResumo[1]),
-            linhaResumo("Aportes", '+', valoresResumo[2]),
-            linhaResumo("Premiações", '+', valoresResumo[3]),
-            linhaResumo("Apostas", '-', valoresResumo[4]),
-            linhaResumo("Rateio", '-', valoresResumo[5]),
-            linhaResumo("Saldo Final", '=', valoresResumo[6]),
+            linhaResumo("SALDO LÍQ. ANTERIOR", ' ', valoresResumo[0]),
+            linhaResumo("RENDIMENTO LÍQUIDO", if (r.rendimento < 0) '-' else '+', valoresResumo[1]),
+            linhaResumo("APORTES", '+', valoresResumo[2]),
+            linhaResumo("PREMIAÇÕES", '+', valoresResumo[3]),
+            linhaResumo("APOSTAS", '-', valoresResumo[4]),
+            linhaResumo("RATEIO", '-', valoresResumo[5]),
+            linhaResumo("SALDO FINAL", '=', valoresResumo[6]),
         )
 
         // MOVIMENTAÇÕES: a linha 00 traz o saldo líquido (anterior + rendimento) no 1º dia do mês.

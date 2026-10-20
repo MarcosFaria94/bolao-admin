@@ -30,7 +30,7 @@ object LayoutTermico {
         LOGO,
         /** Meia linha em branco. */
         ESPACO,
-        /** Letra menor (2/3), para o aviso do rodapé: cabem 1,5 vez mais colunas. */
+        /** Letra um pouco menor (9/10), para o aviso do rodapé. */
         PEQUENO,
     }
 
@@ -44,8 +44,8 @@ object LayoutTermico {
         "Documento informativo, gerado na hora: não é um comprovante registrado e não fica guardado no app. " +
             "O código acima é o do último comprovante registrado."
 
-    /** Colunas da letra pequena num papel de [colunas] colunas normais. */
-    fun colunasPequenas(colunas: Int): Int = colunas * 3 / 2
+    /** Colunas da letra do aviso num papel de [colunas] colunas normais. */
+    fun colunasPequenas(colunas: Int): Int = colunas * 10 / 9
 
     /** Quebra [texto] em linhas de até [largura] caracteres, sem cortar palavras. */
     fun quebrar(texto: String, largura: Int): List<String> {
@@ -150,12 +150,13 @@ object LayoutTermico {
             addAll(extras)
             add(Linha("=".repeat(largura)))
             descricaoAnexos(tipo, quantidadeAnexos)?.let { add(Linha(it)) }
+            // REGISTRO e AUTENTICAÇÃO sempre no fim, uma linha cada.
             if (previa || registradoEm == null || autenticacao.isNullOrBlank()) {
+                add(Linha("REGISTRO: AINDA NÃO REGISTRADO"))
                 add(Linha("AUTENTICAÇÃO: APÓS O REGISTRO"))
             } else {
                 add(Linha("REGISTRO: ${Datas.dataHora(registradoEm)}"))
-                add(Linha("AUTENTICAÇÃO:"))
-                add(Linha(Autenticacao.formatar(autenticacao)))
+                add(Linha("AUTENTICAÇÃO: ${Autenticacao.formatar(autenticacao)}"))
                 add(Linha(estilo = Estilo.ESPACO))
                 addAll(pequenas(AVISO_INTEGRIDADE, largura))
             }
@@ -182,10 +183,7 @@ object LayoutTermico {
             addAll(bloco)
             add(Linha("=".repeat(largura)))
             add(Linha("POSIÇÃO EM: ${Datas.dataHora(geradoEm)}"))
-            if (!ultimaAutenticacao.isNullOrBlank()) {
-                add(Linha("ÚLTIMO REGISTRO:"))
-                add(Linha(Autenticacao.formatar(ultimaAutenticacao)))
-            }
+            if (!ultimaAutenticacao.isNullOrBlank()) add(Linha("ÚLTIMO REGISTRO: ${Autenticacao.formatar(ultimaAutenticacao)}"))
             add(Linha(estilo = Estilo.ESPACO))
             addAll(pequenas(AVISO_SALDO, largura))
         }

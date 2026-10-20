@@ -232,6 +232,7 @@ class Repositorio(private val context: Context) {
     /** Nomes de todos os arquivos que algum registro usa. */
     private fun usados(e: Estado): Set<String> = buildSet {
         e.termo?.let { add(it.nome) }
+        e.termoSemAssinatura?.let { add(it.nome) }
         e.apostas.forEach { a -> a.comprovante?.let { add(it.nome) } }
         e.rateios.forEach { r -> r.comprovantes.forEach { add(it.nome) } }
         e.comprovantes.forEach { c ->

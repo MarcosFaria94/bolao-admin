@@ -29,48 +29,43 @@ const val CASAS_INDICE = 3
 
 fun textoIndice(v: Double?): String = v?.let { IndiceK.exibir(it, CASAS_INDICE) } ?: "—"
 
+/** "k1 = 0,762  k2 = 0,091  odds = 1:34" (odds sempre inteiras). */
+fun linhaIndices(item: Indices.Item): String {
+    val odds = item.odds?.let { "  odds = ${IndiceK.exibirOddsInteiras(it)}" }.orEmpty()
+    return if (item.especial) "Concurso especial: sem k1 e k2$odds"
+    else "k1 = ${textoIndice(item.k1)}  k2 = ${textoIndice(item.k2)}$odds"
+}
+
 /**
  * Uma modalidade na lista ordenada pelo k1 (Jogos e Nova aposta):
- * "Mega-Sena · 3072 · R$ 6,00   #1", o prêmio estimado e os índices k1 e k2.
+ * "Quina · 7146 · Preço: R$ 3,00", o prêmio estimado e "k1 = ...  k2 = ...  odds = 1:34".
  */
 @Composable
-fun CartaoIndice(posicao: Int, item: Indices.Item, estado: Estado, aoTocar: () -> Unit) {
+fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit) {
     val m = item.modalidade
     val u = item.ultimo
-    val preco = if (m.precoVariavel) "preço variável" else Dinheiro.rs(estado.config.preco(m))
+    val preco = "Preço: " + if (m.precoVariavel) "variável" else Dinheiro.rs(estado.config.preco(m))
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         modifier = Modifier.fillMaxWidth().clickable(onClick = aoTocar),
     ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             SeloModalidade(m, tamanho = 52)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        listOfNotNull(m.nome, item.proximoNumero?.toString(), preco).joinToString(" · "),
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text("#$posicao", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    listOfNotNull(m.nome, item.proximoNumero?.toString(), preco).joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     u?.premioEstimadoProximo?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) } ?: "Prêmio a confirmar",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                 )
-                Row {
-                    when {
-                        item.especial -> Text("Concurso especial: sem k1 e k2", style = MaterialTheme.typography.labelMedium)
-                        item.k1 != null -> {
-                            Text("k1 = ${textoIndice(item.k1)}", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                            Text("k2 = ${textoIndice(item.k2)}", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                        }
-                        else -> Text("k1 = —    k2 = —", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                Text(linhaIndices(item), style = MaterialTheme.typography.labelLarge)
             }
         }
     }

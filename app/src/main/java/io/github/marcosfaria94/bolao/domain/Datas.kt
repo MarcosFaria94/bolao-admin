@@ -9,8 +9,6 @@ object Datas {
         "janeiro", "fevereiro", "março", "abril", "maio", "junho",
         "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
     )
-    private val DIAS_SEMANA = listOf("seg", "ter", "qua", "qui", "sex", "sáb", "dom")
-
     private fun dois(n: Int) = n.toString().padStart(2, '0')
 
     /** 2026-06-01 -> "010626" (como no termo). */
@@ -25,20 +23,23 @@ object Datas {
     /** 2026-06-01 -> "01/06". */
     fun diaMes(d: LocalDate): String = "${dois(d.dayOfMonth)}/${dois(d.monthValue)}"
 
+    /** 2026-06-01 -> "JUN". */
+    fun mesCurto(d: LocalDate): String = MESES[d.monthValue - 1]
+
     /** 2026-06 -> "JUN/2026". */
     fun mesAno(m: YearMonth): String = "${MESES[m.monthValue - 1]}/${m.year}"
 
     /** 2026-06 -> "junho de 2026". */
     fun mesAnoExtenso(m: YearMonth): String = "${MESES_EXTENSO[m.monthValue - 1]} de ${m.year}"
 
+    /** 2026-06 -> "Junho de 2026" (seletor de mês das telas). */
+    fun mesAnoTitulo(m: YearMonth): String = mesAnoExtenso(m).replaceFirstChar { it.uppercase() }
+
     /** 17/10/2026 10:32:15 (hora do celular). */
     fun dataHora(instante: Long, fuso: java.time.ZoneId = java.time.ZoneId.systemDefault()): String {
         val t = java.time.Instant.ofEpochMilli(instante).atZone(fuso).toLocalDateTime()
         return longa(t.toLocalDate()) + " " + dois(t.hour) + ":" + dois(t.minute) + ":" + dois(t.second)
     }
-
-    /** "seg", "ter"... */
-    fun diaSemana(d: LocalDate): String = DIAS_SEMANA[d.dayOfWeek.value - 1]
 
     /** "dd/MM/yyyy" -> LocalDate (formato da API da Caixa). */
     fun lerBr(texto: String?): LocalDate? {

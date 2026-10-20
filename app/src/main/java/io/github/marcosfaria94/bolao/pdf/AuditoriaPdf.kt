@@ -119,12 +119,12 @@ object AuditoriaPdf {
         doc.tabela(
             listOf(listOf("Data", "Comprovante", "Autenticação", "Envio")) + doPeriodo.map { (_, c) ->
                 listOf(
-                    Datas.curta(c.data),
+                    Datas.longa(c.data),
                     c.titulo,
                     Autenticacao.formatar(c.autenticacao).take(14),
                     when {
                         c.envioDispensado -> "não se aplica"
-                        enviados[c.id] != null -> Datas.curta(java.time.Instant.ofEpochMilli(enviados.getValue(c.id).first().em).atZone(java.time.ZoneId.systemDefault()).toLocalDate())
+                        enviados[c.id] != null -> Datas.longa(java.time.Instant.ofEpochMilli(enviados.getValue(c.id).first().em).atZone(java.time.ZoneId.systemDefault()).toLocalDate())
                         else -> "não enviado"
                     },
                 )
@@ -177,7 +177,7 @@ object AuditoriaPdf {
         doc.tabela(
             listOf(listOf("Data", "Lançamento", "Valor", "Saldo")) + lancs.map { l ->
                 saldo += l.valor
-                listOf(Datas.curta(l.data), Operacoes.descricao(e, l), (if (l.valor < 0) "- " else "+ ") + Dinheiro.rs(kotlin.math.abs(l.valor)), Dinheiro.rs(saldo))
+                listOf(Datas.longa(l.data), Operacoes.descricao(e, l), (if (l.valor < 0) "- " else "+ ") + Dinheiro.rs(kotlin.math.abs(l.valor)), Dinheiro.rs(saldo))
             },
             listOf(1f, 3.2f, 1.5f, 1.5f),
             alinharDireita = setOf(2, 3),

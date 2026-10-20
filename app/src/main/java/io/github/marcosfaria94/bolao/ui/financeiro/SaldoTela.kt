@@ -39,7 +39,6 @@ import io.github.marcosfaria94.bolao.imagem.RenderTermico
 import io.github.marcosfaria94.bolao.ui.comum.Anexo
 import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
-import io.github.marcosfaria94.bolao.ui.comum.TextoDoWhatsapp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -100,7 +99,6 @@ fun SaldoTela(estado: Estado) {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        TextoDoWhatsapp(titulo, rodape = "A imagem do saldo vai junto.")
         Button(
             enabled = !enviando,
             onClick = {

@@ -22,13 +22,7 @@ class LayoutTermicoTest {
         java.io.File(pasta, "$nome.json").writeText(json)
     }
 
-    private val bloco = """
-        Nº1 010626 LF-3060 2M 030626
-        Acertos: 11 (Aposta Premiada!)
-        Saldo Inicial  = R$ 15,00
-        Prêmio         = R$ 7,00
-        Saldo Final    = R$ 22,00
-    """.trimIndent()
+    private val bloco = io.github.marcosfaria94.bolao.domain.Mensagens.apuracao(1, LocalDate.of(2026, 6, 1), 1500, 700)
 
     private val faixas = listOf(
         FaixaPremio(1, "15 acertos", 0, 0),
@@ -55,7 +49,7 @@ class LayoutTermicoTest {
         assertEquals(LayoutTermico.Linha("COMPROVANTE DE APURAÇÃO", Estilo.CENTRO), linhas[2])
         assertEquals("=".repeat(48), linhas[3].texto)
         salvar("recibo-apuracao", linhas)
-        assertEquals(bloco.split("\n"), linhas.subList(4, 9).map { it.texto })
+        assertEquals(bloco.split("\n"), linhas.subList(4, 11).map { it.texto })
         val textos = linhas.map { it.texto }
         assertTrue(textos.contains("RATEIO OFICIAL - CONCURSO 3060"))
         assertTrue(textos.contains("ACUMULOU: SIM"))
@@ -66,12 +60,12 @@ class LayoutTermicoTest {
         // Faixa sem ganhador mostra "-" no prêmio.
         assertTrue(textos.single { it.startsWith("15 acertos") }.endsWith("-"))
         assertTrue(textos.contains("ANEXO: IMAGEM DOS ACERTOS"))
-        val fim = textos.indexOf("0123-4567-89AB-CDEF-0123-4567")
-        assertEquals("REGISTRO: 04/06/2026 10:32:15", textos[fim - 2])
-        assertEquals("AUTENTICAÇÃO:", textos[fim - 1])
-        // Rodapé: aviso de integridade em letra pequena (até 72 colunas).
+        // REGISTRO e AUTENTICAÇÃO no fim, uma linha cada.
+        val fim = textos.indexOf("AUTENTICAÇÃO: 0123-4567-89AB-CDEF-0123-4567")
+        assertEquals("REGISTRO: 04/06/2026 10:32:15", textos[fim - 1])
+        // Rodapé: aviso de integridade em letra um pouco menor (até 53 colunas).
         val aviso = linhas.drop(fim + 2)
-        assertTrue(aviso.isNotEmpty() && aviso.all { it.estilo == Estilo.PEQUENO && it.texto.length <= 72 })
+        assertTrue(aviso.isNotEmpty() && aviso.all { it.estilo == Estilo.PEQUENO && it.texto.length <= 53 })
         assertEquals(LayoutTermico.AVISO_INTEGRIDADE, aviso.joinToString(" ") { it.texto })
         // Todas as linhas cabem nas 48 colunas da bobina.
         assertEquals(48, LayoutTermico.colunas(linhas))
@@ -83,6 +77,7 @@ class LayoutTermicoTest {
         assertEquals(LayoutTermico.Linha("TESTE · DADOS DE EXEMPLO", Estilo.FAIXA), linhas[0])
         assertEquals(LayoutTermico.Linha("PRÉVIA · AINDA NÃO REGISTRADO", Estilo.FAIXA), linhas[1])
         assertEquals(Estilo.ESPACO, linhas[2].estilo)
+        assertEquals("REGISTRO: AINDA NÃO REGISTRADO", linhas[linhas.size - 2].texto)
         assertEquals("AUTENTICAÇÃO: APÓS O REGISTRO", linhas.last().texto)
         assertFalse(linhas.any { it.texto.startsWith("ANEXO") })
     }
@@ -101,7 +96,7 @@ class LayoutTermicoTest {
     fun documentoDeSaldoNaoTemRegistro() {
         val texto = io.github.marcosfaria94.bolao.domain.Mensagens.saldo(LocalDate.of(2026, 10, 19), 1403, 1200)
         assertEquals(
-            "- SALDO 191026 -\n\nSaldo Líquido:   R$ 14,03\nProvisionado.: - R$ 12,00\nExtra........: = R$  2,03",
+            "- SALDO 191026 -\n\nSALDO LÍQUIDO:   R$ 14,03\nPROVISIONADO.: - R$ 12,00\nEXTRA........: = R$  2,03",
             texto,
         )
         val agora = LocalDate.of(2026, 10, 19).atTime(11, 45, 10).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
@@ -110,7 +105,7 @@ class LayoutTermicoTest {
         val textos = linhas.map { it.texto }
         assertTrue(textos.contains("CONSULTA DE SALDO"))
         assertTrue(textos.contains("POSIÇÃO EM: 19/10/2026 11:45:10"))
-        assertTrue(textos.contains("ABCD-EF01-2345-6789-ABCD-EF01"))
+        assertTrue(textos.contains("ÚLTIMO REGISTRO: ABCD-EF01-2345-6789-ABCD-EF01"))
         assertFalse(textos.any { it.startsWith("AUTENTICAÇÃO") })
         assertEquals(LayoutTermico.AVISO_SALDO, linhas.filter { it.estilo == Estilo.PEQUENO }.joinToString(" ") { it.texto })
     }
@@ -119,7 +114,7 @@ class LayoutTermicoTest {
     fun quebraSemCortarPalavras() {
         assertEquals(listOf("um dois", "três"), LayoutTermico.quebrar("um dois três", 8))
         assertEquals(listOf("palavragrande", "a"), LayoutTermico.quebrar("palavragrande a", 5))
-        assertEquals(72, LayoutTermico.colunasPequenas(48))
+        assertEquals(53, LayoutTermico.colunasPequenas(48))
     }
 
     @Test

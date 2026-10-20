@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.bolao
@@ -67,7 +68,7 @@ import io.github.marcosfaria94.bolao.ui.aposta.GradeNumeros
 import io.github.marcosfaria94.bolao.ui.aposta.GradeTrevos
 import io.github.marcosfaria94.bolao.ui.aposta.LinhaInfo
 import io.github.marcosfaria94.bolao.ui.aposta.SituacaoNumero
-import io.github.marcosfaria94.bolao.ui.aposta.VolanteDaApuracao
+import io.github.marcosfaria94.bolao.ui.aposta.ImagemDaAposta
 import io.github.marcosfaria94.bolao.ui.comum.AVISO_DEFINITIVO
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
 import io.github.marcosfaria94.bolao.ui.comum.BotoesDeRegistro
@@ -75,9 +76,9 @@ import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
-import io.github.marcosfaria94.bolao.ui.comum.TextoDoWhatsapp
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
+import io.github.marcosfaria94.bolao.ui.tema.corPremiada
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -90,7 +91,7 @@ private sealed interface Busca {
 }
 
 @Composable
-fun ApuracaoTela(estado: Estado, id: String) {
+fun ApuracaoTela(estado: Estado, id: String, abrir: (String) -> Unit) {
     val a = estado.apostas.firstOrNull { it.id == id }
     if (a == null || !a.registrada) {
         Box(Modifier.fillMaxSize().padding(24.dp)) { Text("Esta aposta não está registrada.") }
@@ -120,22 +121,6 @@ private fun ResumoApuracao(acertos: String, premio: Long, acumulou: Boolean?) {
 /** Tabela do rateio oficial da Caixa que vai no comprovante da apuração. */
 private fun rateioDe(a: Aposta, ap: Apuracao): LayoutTermico.RateioOficial? =
     ap.rateioOficial.takeIf { it.isNotEmpty() }?.let { LayoutTermico.RateioOficial(a.concurso, it, ap.faixasPremiadas.toSet(), ap.acumulou) }
-
-@Composable
-private fun ImagemDosAcertos(a: Aposta, ap: Apuracao) {
-    val ctx = LocalContext.current
-    val imagem by produceState<Bitmap?>(null, a, ap) {
-        value = withContext(Dispatchers.Default) { runCatching { ImagemConferencia.gerar(ctx, a, ap) }.getOrNull() }
-    }
-    imagem?.let {
-        Image(
-            bitmap = it.asImageBitmap(),
-            contentDescription = "Imagem dos acertos",
-            contentScale = ContentScale.FillWidth,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
 
 @Composable
 private fun ApuracaoPendente(estado: Estado, a: Aposta) {
@@ -224,17 +209,18 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
                 }
             }
 
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (m.formato != Formato.FEDERAL) VolanteDaApuracao(a.copy(apuracao = ap))
+            ImagemDaAposta(a, ap)
+            if (conferencia.faixas.isNotEmpty() || conferencia.observacoes.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     conferencia.faixas.forEach { f ->
                         Text(
                             "Faixa premiada: ${f.descricao}" + if (f.valor > 0) " · ${Dinheiro.rs(f.valor)}" else "",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = corPremiada(),
                         )
                     }
-                    conferencia.observacoes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    conferencia.observacoes.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 }
             }
 
@@ -252,8 +238,6 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
                 Aviso("A Caixa não informou o valor desta faixa: digite o prêmio que aparece no app da Caixa.", alerta = true)
             }
 
-            ImagemDosAcertos(a, ap)
-            TextoDoWhatsapp(titulo, rodape = "A imagem do comprovante (com o rateio oficial) e a imagem dos acertos vão juntas.")
             BotoesDeRegistro(
                 habilitado = true,
                 trabalhando = trabalhando,
@@ -272,7 +256,7 @@ private fun ApuracaoPendente(estado: Estado, a: Aposta) {
                     aoFechar = { vendo = false },
                     previa = Recibos.previa(
                         estado, TipoComprovante.APURACAO,
-                        Operacoes.textoApuracao(estado, a, conferencia.acertos, premio, hoje), 1, rateioDe(a, ap),
+                        Operacoes.textoApuracao(estado, a, premio), 1, rateioDe(a, ap),
                     ),
                     imagensExtras = listOfNotNull(acertos?.let { "Anexo: imagem dos acertos" to it }),
                 )
@@ -328,16 +312,9 @@ private fun ApuracaoConfirmada(estado: Estado, a: Aposta) {
     ) {
         CabecalhoAposta(a, a.numero)
         ResumoApuracao(ap.acertos, ap.premio, ap.acumulou)
-        if (a.modalidade.formato != Formato.FEDERAL) {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    VolanteDaApuracao(a)
-                }
-            }
-        }
-        ap.faixa?.let { Text("Faixa: $it", style = MaterialTheme.typography.bodyMedium) }
+        ImagemDaAposta(a, ap)
+        ap.faixa?.let { Text("Faixa: $it", style = MaterialTheme.typography.bodyLarge) }
         if (comprovante != null) {
-            TextoDoWhatsapp(comprovante.titulo)
             OutlinedButton(onClick = { vendo = true }, modifier = Modifier.fillMaxWidth()) { Text("Visualizar comprovante") }
             val enviado = estado.enviado(comprovante)
             OutlinedButton(

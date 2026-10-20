@@ -213,22 +213,3 @@ fun GradeLoteca(
         }
     }
 }
-
-/** Legenda das cores na apuração. */
-@Composable
-fun LegendaApuracao(m: Modalidade, modifier: Modifier = Modifier) {
-    val cor = corModalidade(m.cor)
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
-        listOf(
-            SituacaoNumero.ACERTO to "acerto",
-            SituacaoNumero.ERRO to "apostado",
-            SituacaoNumero.SORTEADO to "sorteado",
-        ).forEach { (s, t) ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Celula("", s, cor, CircleShape, Modifier.width(16.dp).height(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text(t, style = MaterialTheme.typography.labelSmall)
-            }
-        }
-    }
-}

@@ -17,14 +17,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Backup
-import androidx.compose.material.icons.outlined.Badge
-import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -42,21 +41,22 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
+import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.net.Atualizador
 import io.github.marcosfaria94.bolao.notificacoes.Notificador
-import io.github.marcosfaria94.bolao.pdf.PdfsDoApp
 import io.github.marcosfaria94.bolao.ui.atualizacao.AtualizacaoViewModel
-import io.github.marcosfaria94.bolao.ui.comum.DialogoArquivoPronto
+import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
@@ -85,23 +85,34 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
     var editandoPreco by remember { mutableStateOf<Modalidade?>(null) }
     var confirmandoRestauracao by remember { mutableStateOf(false) }
     var trabalhando by remember { mutableStateOf(false) }
-    var editandoDadosDoTermo by remember { mutableStateOf(false) }
-    var termoPronto by remember { mutableStateOf<Uri?>(null) }
     var pedindoExtincao by remember { mutableStateOf(false) }
 
     val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) Notificador.teste(ctx)
     }
 
-    val escolherTermo = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    // Os dois anexos do termo: o sem assinaturas e o assinado pelos 3.
+    val escolherTermoAssinado = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) escopo.launch {
             try {
-                val arq = repo.guardarArquivo(uri, "termo")
+                val arq = repo.guardarArquivo(uri, "termo-assinado")
                 repo.atualizar { it.copy(termo = arq) }
                 repo.limparArquivosSoltos()
-                avisos.showSnackbar("Termo guardado.")
+                avisos.showSnackbar("Termo assinado guardado.")
             } catch (t: Throwable) {
-                avisos.showSnackbar("Não foi possível guardar o PDF: ${t.message}")
+                avisos.showSnackbar("Não foi possível guardar o arquivo: ${t.message}")
+            }
+        }
+    }
+    val escolherTermoSemAssinatura = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) escopo.launch {
+            try {
+                val arq = repo.guardarArquivo(uri, "termo-sem-assinatura")
+                repo.atualizar { it.copy(termoSemAssinatura = arq) }
+                repo.limparArquivosSoltos()
+                avisos.showSnackbar("Termo sem assinaturas guardado.")
+            } catch (t: Throwable) {
+                avisos.showSnackbar("Não foi possível guardar o arquivo: ${t.message}")
             }
         }
     }
@@ -171,62 +182,17 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
         item { TituloSecao("Termo") }
         item {
-            ListItem(
-                leadingContent = { Icon(Icons.Outlined.Description, contentDescription = null) },
-                headlineContent = { Text("Termo sem assinaturas (PDF)") },
-                supportingContent = { Text("Gerado com os dados do cadastro, para assinar. Vai para Downloads/Bolao e não fica no GitHub.") },
-                trailingContent = {
-                    OutlinedButton(
-                        enabled = !trabalhando,
-                        onClick = {
-                            escopo.launch {
-                                trabalhando = true
-                                try {
-                                    termoPronto = PdfsDoApp.termoEmDownloads(ctx, estado)
-                                } catch (t: Throwable) {
-                                    avisos.showSnackbar("Não foi possível gerar o termo: ${t.message}")
-                                } finally {
-                                    trabalhando = false
-                                }
-                            }
-                        },
-                    ) { Text("Baixar") }
-                },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            AnexoDoTermo(
+                titulo = "Termo sem assinaturas",
+                arquivo = estado.termoSemAssinatura,
+                aoAnexar = { escolherTermoSemAssinatura.launch(arrayOf("application/pdf", "image/*")) },
             )
         }
         item {
-            val faltaCpf = estado.pessoas.count { it.cpf.isBlank() }
-            ListItem(
-                leadingContent = { Icon(Icons.Outlined.Badge, contentDescription = null) },
-                headlineContent = { Text("Dados do termo") },
-                supportingContent = {
-                    Text(
-                        "CPF dos integrantes (só os 6 dígitos do meio) e ID do grupo do WhatsApp." +
-                            if (faltaCpf > 0) " Falta o CPF de $faltaCpf integrante(s)." else "",
-                    )
-                },
-                modifier = Modifier.clickable { editandoDadosDoTermo = true },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            )
-        }
-        item {
-            val termo = estado.termo
-            ListItem(
-                leadingContent = { Icon(Icons.Outlined.PictureAsPdf, contentDescription = null) },
-                headlineContent = { Text(termo?.nomeOriginal ?: "Termo assinado: nenhum PDF guardado") },
-                supportingContent = {
-                    Text(
-                        termo?.let { "Termo assinado, guardado em ${Datas.longa(Instant.ofEpochMilli(it.guardadoEm).atZone(ZoneId.systemDefault()).toLocalDate())}" }
-                            ?: "Guarde aqui o PDF do termo com as 3 assinaturas.",
-                    )
-                },
-                trailingContent = {
-                    OutlinedButton(onClick = { escolherTermo.launch(arrayOf("application/pdf")) }) {
-                        Text(if (termo == null) "Guardar" else "Trocar")
-                    }
-                },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            AnexoDoTermo(
+                titulo = "Termo assinado",
+                arquivo = estado.termo,
+                aoAnexar = { escolherTermoAssinado.launch(arrayOf("application/pdf", "image/*")) },
             )
         }
 
@@ -327,7 +293,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
                         Icon(Icons.Outlined.NotificationsActive, contentDescription = null)
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            "No Poco, os lembretes só chegam na hora certa se o app puder iniciar sozinho " +
+                            "No Poco, os avisos (ação necessária e aposta premiada) só chegam na hora certa se o app puder iniciar sozinho " +
                                 "e não for limitado pela economia de bateria.",
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -365,19 +331,6 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
         item { TituloSecao("Extinção do Bolão") }
         item { CartaoExtincao(estado, aoPedir = { pedindoExtincao = true }) }
-    }
-
-    termoPronto?.let { uri ->
-        DialogoArquivoPronto(
-            titulo = "Termo pronto",
-            texto = "O PDF do termo (sem assinaturas) foi salvo em Downloads/Bolao.",
-            uri = uri,
-            aoFechar = { termoPronto = null },
-        )
-    }
-
-    if (editandoDadosDoTermo) {
-        DialogoDadosDoTermo(estado, aoFechar = { editandoDadosDoTermo = false })
     }
 
     if (pedindoExtincao) {
@@ -427,4 +380,34 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
             aoFechar = { confirmandoRestauracao = false },
         )
     }
+}
+
+/** Um dos dois anexos do termo: ver e anexar (ou trocar). */
+@Composable
+private fun AnexoDoTermo(titulo: String, arquivo: Arquivo?, aoAnexar: () -> Unit) {
+    val ctx = LocalContext.current
+    val repo = remember { ctx.bolao.repo }
+    ListItem(
+        leadingContent = { Icon(Icons.Outlined.PictureAsPdf, contentDescription = null) },
+        headlineContent = { Text(titulo) },
+        supportingContent = {
+            Text(
+                arquivo?.let {
+                    "${it.nomeOriginal} · anexado em " +
+                        Datas.longa(Instant.ofEpochMilli(it.guardadoEm).atZone(ZoneId.systemDefault()).toLocalDate())
+                } ?: "Nenhum arquivo anexado.",
+            )
+        },
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (arquivo != null) {
+                    IconButton(onClick = { Compartilhar.abrir(ctx, repo.arquivo(arquivo), arquivo.mime) }) {
+                        Icon(Icons.Outlined.Visibility, contentDescription = "Ver $titulo")
+                    }
+                }
+                OutlinedButton(onClick = aoAnexar) { Text(if (arquivo == null) "Anexar" else "Trocar") }
+            }
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+    )
 }

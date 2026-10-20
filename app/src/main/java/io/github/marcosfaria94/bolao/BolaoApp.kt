@@ -19,6 +19,10 @@ class BolaoApp : Application() {
     /** Índices k1/k2 e odds das modalidades (Jogos, Nova aposta e concurso em destaque). */
     val indices: Indices by lazy { Indices(this) }
 
+    /** O app está na tela (o aviso "Ação necessária" espera o Administrador sair). */
+    @Volatile
+    var visivel: Boolean = false
+
     /** Tela pedida por uma notificação tocada (rota da navegação). */
     val destinoPendente = MutableStateFlow<String?>(null)
 

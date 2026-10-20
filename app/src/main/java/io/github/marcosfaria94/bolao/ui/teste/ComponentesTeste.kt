@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -23,20 +24,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
+import io.github.marcosfaria94.bolao.ui.tema.VermelhoTeste
 import kotlinx.coroutines.launch
 
-/** Faixa que fica embaixo do título em todas as telas enquanto o modo de teste estiver ligado. */
+/** Faixa vermelha (letra branca) embaixo do título em todas as telas enquanto o modo de teste estiver ligado. */
 @Composable
 fun FaixaModoTeste(aoSair: () -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        color = VermelhoTeste,
+        contentColor = Color.White,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -48,9 +52,12 @@ fun FaixaModoTeste(aoSair: () -> Unit) {
             Text(
                 "Modo de teste · dados de exemplo",
                 style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = aoSair) { Text("Sair") }
+            TextButton(onClick = aoSair, colors = ButtonDefaults.textButtonColors(contentColor = Color.White)) {
+                Text("Sair", fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -69,27 +76,6 @@ fun DialogoSairDoTeste(aoFechar: () -> Unit) {
         },
         aoFechar = aoFechar,
     )
-}
-
-/** Dica no topo do Painel durante o teste: o que dá para experimentar. */
-@Composable
-fun RoteiroDeTeste() {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Mês de exemplo pronto", style = MaterialTheme.typography.titleSmall)
-            Text(
-                "Apure o último jogo (aba Apostas, com o número vermelho), faça uma aposta nova, um aporte, o rateio, " +
-                    "o extrato e a auditoria. Os comprovantes abrem o WhatsApp com a linha TESTE no começo: mande para você mesmo.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-    }
 }
 
 /** Seção "Modo de teste" dos Ajustes. */

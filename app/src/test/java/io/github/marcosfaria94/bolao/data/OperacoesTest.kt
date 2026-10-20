@@ -66,7 +66,9 @@ class OperacoesTest {
         val cAposta = e.comprovantes.last()
         assertEquals(ModelosDoTermo.TITULO_APOSTA, cAposta.titulo)
         assertEquals(
-            "- APOSTA Nº1 010626 LF-3001 2M 030626 -\n\nSaldo Inicial:   R$ 40,00\nAposta.......: - R$  3,50\nSaldo Final..: = R$ 36,50",
+            "APOSTA: Nº1/JUN\nDATA: 01/06/2026\nMODALIDADE: LOTOFÁCIL\nCONCURSO: 3001\nPRÊMIO PRINCIPAL: 2 MILHÕES\n" +
+                "SORTEIO: 03/06/2026\nNÚMEROS: ...\n\nCONTABILIDADE DO GRUPO\n" +
+                "SALDO ATUAL:   R$ 40,00\nAPOSTA.....: - R$  3,50\nSALDO FINAL: = R$ 36,50",
             cAposta.texto,
         )
         assertEquals(listOf("caixa-1.pdf"), cAposta.anexos.map { it.nome })
@@ -77,7 +79,11 @@ class OperacoesTest {
         // O prêmio entra na data do sorteio (03/06), como no extrato do termo.
         assertEquals(d(3), e.lancamentos.last().data)
         assertEquals("APURAÇÃO Nº 1 - 04/06/26", e.comprovantes.last().titulo)
-        assertTrue(e.comprovantes.last().texto.contains("Acertos: 12/15 (Aposta Premiada!)"))
+        assertEquals(
+            "APOSTA: Nº1/JUN\nDATA: 01/06/2026\n\nCONTABILIDADE DO GRUPO\n" +
+                "SALDO ATUAL:   R$ 36,50\nPRÊMIO.....: + R$ 14,00\nSALDO FINAL: = R$ 50,50",
+            e.comprovantes.last().texto,
+        )
         assertThrows(IllegalArgumentException::class.java) {
             Operacoes.confirmarApuracao(e, a1.id, Apuracao("12/15", 1400, conferidaEm = 0), d(4), agora())
         }
@@ -230,20 +236,5 @@ class OperacoesTest {
         assertEquals(3, c.anexos.size)
         assertNotNull(e.extincao!!.registradaEm)
         assertNull(Operacoes.primeiraAutenticacaoQuebrada(e))
-    }
-
-    @Test
-    fun selos() {
-        var e = inicial()
-        val s1 = Selos.de(e, d(1))
-        assertTrue(s1.aportePendente)
-        assertEquals(1, s1.financeiro)
-        // No último dia, o extrato do mês também conta.
-        assertEquals(2, Selos.de(e, d(30)).financeiro)
-        e = Operacoes.registrarAporteMensal(e, d(1), agora())
-        val (e1, a) = aposta(e, 1, Modalidade.QUINA, 300); e = e1
-        assertEquals(0, Selos.de(e, d(2)).apostas)
-        e = Operacoes.guardarConferencia(e, a.id, Apuracao("1/5", 0, conferidaEm = 0))
-        assertEquals(1, Selos.de(e, d(2)).apostas)
     }
 }

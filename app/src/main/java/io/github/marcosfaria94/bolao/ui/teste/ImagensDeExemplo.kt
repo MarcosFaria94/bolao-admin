@@ -66,7 +66,7 @@ object ImagensDeExemplo {
         val m = a.modalidade
         val linhas = buildList {
             add("Aposta em ${Datas.longa(a.dataAposta)}")
-            a.dataSorteio?.let { add("Sorteio: ${Datas.diaSemana(it)}, ${Datas.longa(it)}") }
+            a.dataSorteio?.let { add("Sorteio: ${Datas.longa(it)}") }
             add("Valor: ${Dinheiro.rs(a.valor)}")
             add("")
             addAll(linhasDoPalpite(a))

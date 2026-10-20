@@ -48,7 +48,7 @@ object RenderTermico {
         Estilo.GRANDE -> LINHA * 2
         Estilo.LOGO -> ALTURA_LOGO
         Estilo.ESPACO -> LINHA / 2
-        Estilo.PEQUENO -> LINHA * 2 / 3
+        Estilo.PEQUENO -> LINHA * 9 / 10
         else -> LINHA
     }
 
@@ -126,7 +126,7 @@ object RenderTermico {
         val xCentro = BORDA + larguraPapel / 2
         var y = BORDA + SERRA + margem
         val invertido = pincel(context, TAMANHO, PAPEL)
-        val pequeno = pincel(context, TAMANHO * 2 / 3, TINTA)
+        val pequeno = pincel(context, TAMANHO * 9 / 10, TINTA)
         val subidaPequena = -pequeno.fontMetrics.ascent
         for (l in linhas) {
             when (l.estilo) {

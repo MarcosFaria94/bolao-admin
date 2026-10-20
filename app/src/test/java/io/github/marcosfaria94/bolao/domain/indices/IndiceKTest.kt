@@ -120,6 +120,10 @@ class IndiceKTest {
         assertEquals("1:2298", IndiceK.exibirOdds(2297.5612666360616))
         assertEquals("1:9,4", IndiceK.exibirOdds(9.443844149240453))
         assertEquals("1:100", IndiceK.exibirOdds(100.0))
+        // Nas telas, as odds são sempre inteiras.
+        assertEquals("1:9", IndiceK.exibirOddsInteiras(9.443844149240453))
+        assertEquals("1:34", IndiceK.exibirOddsInteiras(34.2))
+        assertEquals("1:2298", IndiceK.exibirOddsInteiras(2297.5612666360616))
     }
 
     @Test

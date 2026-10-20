@@ -312,7 +312,10 @@ object IndiceK {
         return pQualquer to 1.0 / pQualquer
     }
 
-    /** "1:2298" quando X >= 100; "1:9,4" quando X < 100. */
+    /** Odds das telas do app, sempre inteiras: "1:2298", "1:9", "1:34". */
+    fun exibirOddsInteiras(x: Double): String = "1:" + BigDecimal(x).setScale(0, RoundingMode.HALF_UP).toPlainString()
+
+    /** "1:2298" quando X >= 100; "1:9,4" quando X < 100 (formato do manual dos índices). */
     fun exibirOdds(x: Double): String =
         if (x >= 100) "1:" + BigDecimal(x).setScale(0, RoundingMode.HALF_EVEN).toPlainString()
         else "1:" + BigDecimal(x).setScale(1, RoundingMode.HALF_EVEN).toPlainString().replace(".", ",")

@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -35,6 +36,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -54,24 +56,22 @@ import io.github.marcosfaria94.bolao.imagem.LayoutTermico
 import io.github.marcosfaria94.bolao.imagem.Recibos
 import io.github.marcosfaria94.bolao.imagem.RenderTermico
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * "Visualizar comprovante": a imagem gerada pelo app e os anexos originais, um embaixo do
- * outro (sem o texto do WhatsApp). Serve para o registrado ([comprovante]) e para a prévia
- * de antes do registro ([previa]).
+ * A imagem do comprovante (registrado [comprovante] ou a [previa] de antes do registro) e os
+ * anexos originais, um embaixo do outro.
  */
 @Composable
-fun VisualizadorComprovante(
+fun ConteudoComprovante(
     estado: Estado,
-    titulo: String,
-    aoFechar: () -> Unit,
+    modifier: Modifier = Modifier,
     comprovante: Comprovante? = null,
     previa: List<LayoutTermico.Linha>? = null,
     anexos: List<Arquivo> = comprovante?.anexos.orEmpty(),
     /** Anexos que ainda não foram guardados (prévia), já como imagem: (legenda, imagem). */
     imagensExtras: List<Pair<String, Bitmap>> = emptyList(),
-    acoes: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
@@ -107,6 +107,77 @@ fun VisualizadorComprovante(
         }
     }
 
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        item {
+            val r = recibo
+            if (r == null) {
+                Box(Modifier.fillMaxWidth().height(240.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            } else {
+                Image(
+                    bitmap = r.asImageBitmap(),
+                    contentDescription = "Comprovante",
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        items(imagensExtras) { (legenda, b) ->
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(legenda, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Image(
+                    bitmap = b.asImageBitmap(),
+                    contentDescription = legenda,
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        val lista = paginas
+        if (anexos.isNotEmpty() && lista == null) {
+            item { Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
+        }
+        if (lista != null) {
+            items(lista) { (legenda, b) ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(legenda, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Image(
+                        bitmap = b.asImageBitmap(),
+                        contentDescription = legenda,
+                        contentScale = ContentScale.FillWidth,
+                        modifier = Modifier.fillMaxWidth().background(Color.White),
+                    )
+                }
+            }
+        }
+        // Anexos que não dão para mostrar aqui (ou PDFs com mais páginas): abrir no celular.
+        items(anexos) { a ->
+            TextButton(onClick = { Compartilhar.abrir(ctx, repo.arquivo(a), a.mime) }) {
+                Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text("  Abrir ${a.nomeOriginal}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/**
+ * "Visualizar comprovante": a imagem gerada pelo app e os anexos originais, em tela cheia.
+ * Serve para o registrado ([comprovante]) e para a prévia de antes do registro ([previa]).
+ */
+@Composable
+fun VisualizadorComprovante(
+    estado: Estado,
+    titulo: String,
+    aoFechar: () -> Unit,
+    comprovante: Comprovante? = null,
+    previa: List<LayoutTermico.Linha>? = null,
+    anexos: List<Arquivo> = comprovante?.anexos.orEmpty(),
+    imagensExtras: List<Pair<String, Bitmap>> = emptyList(),
+    acoes: (@Composable RowScope.() -> Unit)? = null,
+) {
     Dialog(
         onDismissRequest = aoFechar,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
@@ -124,60 +195,14 @@ fun VisualizadorComprovante(
                     )
                 }
                 HorizontalDivider()
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.weight(1f).background(MaterialTheme.colorScheme.surfaceContainerLow),
-                ) {
-                    item {
-                        val r = recibo
-                        if (r == null) {
-                            Box(Modifier.fillMaxWidth().height(240.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                        } else {
-                            Image(
-                                bitmap = r.asImageBitmap(),
-                                contentDescription = "Comprovante",
-                                contentScale = ContentScale.FillWidth,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    }
-                    items(imagensExtras) { (legenda, b) ->
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(legenda, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Image(
-                                bitmap = b.asImageBitmap(),
-                                contentDescription = legenda,
-                                contentScale = ContentScale.FillWidth,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    }
-                    val lista = paginas
-                    if (anexos.isNotEmpty() && lista == null) {
-                        item { Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
-                    }
-                    if (lista != null) {
-                        items(lista) { (legenda, b) ->
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(legenda, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Image(
-                                    bitmap = b.asImageBitmap(),
-                                    contentDescription = legenda,
-                                    contentScale = ContentScale.FillWidth,
-                                    modifier = Modifier.fillMaxWidth().background(Color.White),
-                                )
-                            }
-                        }
-                    }
-                    // Anexos que não dão para mostrar aqui (ou PDFs com mais páginas): abrir no celular.
-                    items(anexos) { a ->
-                        TextButton(onClick = { Compartilhar.abrir(ctx, repo.arquivo(a), a.mime) }) {
-                            Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Text("  Abrir ${a.nomeOriginal}", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
+                ConteudoComprovante(
+                    estado,
+                    modifier = Modifier.weight(1f),
+                    comprovante = comprovante,
+                    previa = previa,
+                    anexos = anexos,
+                    imagensExtras = imagensExtras,
+                )
                 if (acoes != null) {
                     HorizontalDivider()
                     Row(
@@ -187,6 +212,45 @@ fun VisualizadorComprovante(
                         content = acoes,
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Tela de um comprovante registrado (aberta pela pendência de envio ou pelas listas):
+ * a imagem, os anexos e o botão para enviar ao grupo.
+ */
+@Composable
+fun ComprovanteTela(estado: Estado, id: String) {
+    val ctx = LocalContext.current
+    val escopo = rememberCoroutineScope()
+    val c = estado.comprovante(id)
+    if (c == null) {
+        Box(Modifier.fillMaxSize().padding(24.dp)) { Text("Este comprovante não existe mais.") }
+        return
+    }
+    val enviado = estado.enviado(c)
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            c.titulo,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        ConteudoComprovante(estado, modifier = Modifier.weight(1f).fillMaxWidth(), comprovante = c)
+        HorizontalDivider()
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            if (c.envioDispensado) {
+                Text(
+                    "Este registro não vai ao grupo (o aporte mensal é só registrado).",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Button(
+                    onClick = { escopo.launch { Compartilhar.comprovante(ctx, estado, c) } },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                ) { Text(if (enviado) "Enviar de novo" else "Enviar ao grupo", style = MaterialTheme.typography.titleMedium) }
             }
         }
     }

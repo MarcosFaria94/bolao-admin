@@ -78,6 +78,24 @@ object Dinheiro {
     }
 
     /**
+     * Prêmio em milhões, para a lista de apostas: "185M" (185 milhões), "1,7M", "0,4M" (400 mil),
+     * "0,05M" (50 mil). Uma casa decimal até 100 milhões, como a Caixa arredonda as estimativas.
+     */
+    fun milhoes(centavos: Long): String {
+        val reais = centavos / 100
+        if (reais < 100_000) {
+            val centesimos = (reais * 100 + 500_000) / 1_000_000
+            return "0," + centesimos.toString().padStart(2, '0') + "M"
+        }
+        val decimos = (reais * 10 + 500_000) / 1_000_000
+        return when {
+            decimos >= 1000 -> "${(reais + 500_000) / 1_000_000}M"
+            decimos % 10 == 0L -> "${decimos / 10}M"
+            else -> "${decimos / 10},${decimos % 10}M"
+        }
+    }
+
+    /**
      * Prêmio por extenso, para as telas: "R$ 170 Milhões", "R$ 1,7 Milhão", "R$ 450 Mil", "R$ 1,2 Bilhão".
      * [maiuscula] = false dá "170 milhões" (lista das apostas do mês).
      */

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="fundo_claro">#FFF5FAF6</color>
-    <color name="fundo_escuro">#FF0E1512</color>
+    <color name="fundo_claro">#FFF4F6F9</color>
+    <color name="fundo_escuro">#FF0E1218</color>
     <style name="Theme.Bolao" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/fundo_claro</item>
     </style>

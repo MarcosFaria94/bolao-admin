@@ -5,6 +5,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -54,7 +56,6 @@ import io.github.marcosfaria94.bolao.ui.comum.Historico
 import io.github.marcosfaria94.bolao.ui.comum.LinhaAnexo
 import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
-import io.github.marcosfaria94.bolao.ui.comum.TextoDoWhatsapp
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.copiar
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
@@ -63,7 +64,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 @Composable
-fun RateioTela(estado: Estado) {
+fun RateioTela(estado: Estado, abrir: (String) -> Unit) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
     val avisos = LocalAvisos.current
@@ -108,50 +109,24 @@ fun RateioTela(estado: Estado) {
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
             Column(Modifier.padding(12.dp)) {
                 LinhaValor("Saldo líquido", Dinheiro.rs(saldo))
-                LinhaValor("Provisionado (${provisao.apostasRestantes} apostas no mês)", Dinheiro.rs(provisao.provisionado))
-                LinhaValor("Extra", (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)), destaque = true)
+                LinhaValor("Provisionado", Dinheiro.rs(provisao.provisionado))
+                LinhaValor("Extra", (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)))
             }
         }
 
         if (extra <= 0) {
             Aviso("Não há valor a ser rateado: o saldo líquido não passa do provisionado para as apostas do mês.", alerta = true)
         } else {
+            // Vermelho, com a explicação embaixo, só quando o valor passa do Extra.
             CampoDinheiro(
                 centavos = pedido,
                 aoMudar = { pedido = it },
-                rotulo = "Valor total a ser rateado",
-                erro = true,
-                ajuda = "Valor acima de ${Dinheiro.rs(extra)} não pode ser rateado.",
+                rotulo = "Valor total",
+                erro = acima,
+                ajuda = if (acima) "Valor acima de ${Dinheiro.rs(extra)} não pode ser rateado." else null,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-            ) {
-                Column(Modifier.padding(12.dp)) {
-                    LinhaValor("Cota de cada integrante (÷ ${estado.pessoas.size}, para baixo)", Dinheiro.rs(calculo.cota), destaque = true)
-                    LinhaValor("Total do rateio", Dinheiro.rs(calculo.total))
-                    if (calculo.sobra > 0) LinhaValor("Sobra que fica no saldo", Dinheiro.rs(calculo.sobra))
-                    Text(
-                        "=> Saldo após: ${Dinheiro.rs(calculo.saldoFinal)}",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-            }
-            if (acima) Aviso("Valor acima de ${Dinheiro.rs(extra)} não pode ser rateado.", alerta = true)
         }
-
-        Historico(
-            titulo = "Histórico de rateios",
-            estado = estado,
-            filtro = { it.tipo == TipoLancamento.RATEIO },
-            comprovanteDe = { l ->
-                estado.comprovantes.firstOrNull { it.tipo == TipoComprovante.RATEIO && it.rateioNumero == l.rateioNumero }
-            },
-        )
 
         if (extra > 0) {
             if (teste) {
@@ -198,7 +173,6 @@ fun RateioTela(estado: Estado) {
                     }
                 }
             }
-            TextoDoWhatsapp(Mensagens.tituloRateio(hoje), rodape = "A imagem do comprovante e os ${estado.pessoas.size} comprovantes do Pix vão juntos.")
             if (faltam > 0) Aviso("Falta anexar $faltam comprovante(s) do Pix.", alerta = true)
             BotoesDeRegistro(
                 habilitado = !acima && calculo.cota > 0 && faltam == 0,
@@ -208,6 +182,14 @@ fun RateioTela(estado: Estado) {
                 visualizarHabilitado = !acima && calculo.cota > 0,
             )
         }
+
+        Spacer(Modifier.height(8.dp))
+        Historico(
+            titulo = "Histórico de rateios",
+            estado = estado,
+            filtro = { it.tipo == TipoLancamento.RATEIO },
+            abrir = abrir,
+        )
     }
 
     if (vendo) {

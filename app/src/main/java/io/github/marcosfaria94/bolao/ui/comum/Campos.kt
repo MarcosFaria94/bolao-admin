@@ -1,6 +1,5 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,15 +7,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,7 +34,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.domain.Datas
-import io.github.marcosfaria94.bolao.ui.tema.EstiloMensagem
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
@@ -54,13 +48,11 @@ fun CampoData(
     rotulo: String,
     modifier: Modifier = Modifier,
     ajuda: String? = null,
-    /** Só a data (sem o dia da semana), para campos estreitos. */
-    curto: Boolean = false,
     habilitado: Boolean = true,
 ) {
     var aberto by remember { mutableStateOf(false) }
     OutlinedTextField(
-        value = data?.let { if (curto) Datas.longa(it) else "${Datas.diaSemana(it)}, ${Datas.longa(it)}" } ?: "",
+        value = data?.let { Datas.longa(it) } ?: "",
         enabled = habilitado,
         onValueChange = {},
         readOnly = true,
@@ -89,34 +81,6 @@ fun CampoData(
             dismissButton = { TextButton(onClick = { aberto = false }) { Text("Cancelar") } },
         ) {
             DatePicker(state = estado)
-        }
-    }
-}
-
-/** O texto que vai no WhatsApp: só o título, como nos modelos do termo. */
-@Composable
-fun TextoDoWhatsapp(titulo: String, modifier: Modifier = Modifier, rodape: String? = null) {
-    val ctx = LocalContext.current
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
-                Text("Texto no WhatsApp", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(titulo, style = EstiloMensagem, softWrap = false, modifier = Modifier.horizontalScroll(rememberScrollState()))
-                rodape?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-            }
-            IconButton(onClick = { copiar(ctx, "Mensagem", titulo) }) {
-                Icon(Icons.Outlined.ContentCopy, contentDescription = "Copiar texto")
-            }
         }
     }
 }

@@ -7,6 +7,9 @@ import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Conferencia
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
+import io.github.marcosfaria94.bolao.domain.Extra
+import io.github.marcosfaria94.bolao.domain.Formato
+import io.github.marcosfaria94.bolao.domain.LeituraComprovante
 import io.github.marcosfaria94.bolao.domain.Mensagens
 import io.github.marcosfaria94.bolao.domain.Palpite
 import io.github.marcosfaria94.bolao.domain.Volante
@@ -124,14 +127,27 @@ object Operacoes {
         }
     }
 
-    /** Identificação da aposta (Nº1 010626 LF-3060 2M 030626). */
-    fun identificacao(e: Estado, a: Aposta, hoje: LocalDate): String = Mensagens.identificacao(
+    /** O que foi apostado, para as linhas "NÚMEROS: ..." do bloco da aposta. */
+    fun jogoDe(a: Aposta): Mensagens.Jogo = Mensagens.Jogo(
+        numeros = a.numeros,
+        trevos = a.trevos,
+        extra = a.extra,
+        palpitesLoteca = a.palpitesLoteca,
+        bilheteFederal = a.bilheteFederal,
+        fracoesFederal = a.fracoesFederal,
+    )
+
+    /** Bloco APOSTA do termo, com o saldo de antes da aposta. */
+    private fun blocoAposta(e: Estado, a: Aposta, hoje: LocalDate, saldoAtual: Long): String = Mensagens.aposta(
         numero = numeroDe(e, a, hoje),
         dataAposta = if (a.registrada) a.dataAposta else hoje,
         modalidade = a.modalidade,
         concurso = a.concurso,
         premioEstimado = a.premioEstimado,
         dataSorteio = a.dataSorteio,
+        jogo = jogoDe(a),
+        saldoAtual = saldoAtual,
+        valor = a.valor,
     )
 
     /** Saldo logo antes do lançamento de [tipo] ligado à aposta [apostaId]. */
@@ -210,6 +226,17 @@ object Operacoes {
         return e.copy(envios = e.envios + Envio(comprovanteId, agora))
     }
 
+    /** Comprovante que registrou um lançamento (o do extrato, para o rendimento do mês). */
+    fun comprovanteDoLancamento(e: Estado, l: Lancamento): Comprovante? = when (l.tipo) {
+        TipoLancamento.APORTE -> e.comprovantes.firstOrNull { it.tipo == TipoComprovante.APORTE && it.criadoEm == l.criadoEm }
+        TipoLancamento.APOSTA -> e.comprovantes.lastOrNull { it.tipo == TipoComprovante.APOSTA && it.apostaId == l.apostaId }
+        TipoLancamento.PREMIO -> e.comprovantes.lastOrNull { it.tipo == TipoComprovante.APURACAO && it.apostaId == l.apostaId }
+        TipoLancamento.RATEIO -> e.comprovantes.lastOrNull { it.tipo == TipoComprovante.RATEIO && it.rateioNumero == l.rateioNumero }
+        TipoLancamento.RENDIMENTO -> e.comprovantes.lastOrNull { it.tipo == TipoComprovante.EXTRATO && it.mes == YearMonth.from(l.data).toString() }
+        TipoLancamento.COMPLEMENTO, TipoLancamento.DIVISAO_FINAL -> e.comprovantes.lastOrNull { it.tipo == TipoComprovante.EXTINCAO }
+        TipoLancamento.SALDO_INICIAL -> null
+    }
+
     fun comprovanteDaAposta(e: Estado, a: Aposta): Comprovante? =
         e.comprovantes.lastOrNull { it.tipo == TipoComprovante.APOSTA && it.apostaId == a.id }
 
@@ -218,8 +245,9 @@ object Operacoes {
 
     // ---------- aporte ----------
 
-    /** Prévia do bloco APORTE (o saldo inicial é o de agora). */
-    fun textoAporte(e: Estado, data: LocalDate, valor: Long): String = Mensagens.aporte(data, saldo(e), valor)
+    /** Prévia do bloco APORTE (o saldo atual é o de agora). */
+    fun textoAporte(e: Estado, data: LocalDate, valor: Long, adicional: Boolean): String =
+        Mensagens.aporte(data, saldo(e), valor, adicional)
 
     /** Aporte mensal: valor de Ajustes, no dia 1º do mês, só registrado (sem mensagem). */
     fun registrarAporteMensal(e: Estado, hoje: LocalDate, agora: Long): Estado {
@@ -235,7 +263,7 @@ object Operacoes {
     private fun registrarAporte(e: Estado, data: LocalDate, valor: Long, eventual: Boolean, agora: Long): Estado {
         require(valor > 0) { "Informe o valor do aporte." }
         require(!mesFechado(e, YearMonth.from(data))) { "O extrato de ${Datas.mesAno(YearMonth.from(data))} já foi fechado." }
-        val texto = Mensagens.aporte(data, saldo(e), valor)
+        val texto = Mensagens.aporte(data, saldo(e), valor, adicional = eventual)
         val lanc = Lancamento(id = novoId(), data = data, criadoEm = agora, tipo = TipoLancamento.APORTE, valor = valor, eventual = eventual)
         val c = novoComprovante(
             e, TipoComprovante.APORTE, Mensagens.tituloAporte(data), texto, data, agora,
@@ -260,11 +288,46 @@ object Operacoes {
     fun textoAposta(e: Estado, a: Aposta, hoje: LocalDate): String =
         comprovanteDaAposta(e, a)?.texto ?: run {
             val saldoAntes = if (a.registrada) saldoAntesDe(e, a.id, TipoLancamento.APOSTA) else saldo(e)
-            Mensagens.aposta(identificacao(e, a, hoje), saldoAntes, a.valor)
+            blocoAposta(e, a, hoje, saldoAntes)
         }
 
     fun tituloAposta(e: Estado, a: Aposta, hoje: LocalDate): String =
         Mensagens.tituloAposta(numeroDe(e, a, hoje), if (a.registrada) a.dataAposta else hoje)
+
+    /** Uma diferença entre a aposta do app e o comprovante da Caixa. */
+    data class Divergencia(val campo: String, val noApp: String, val naCaixa: String)
+
+    /**
+     * Compara a aposta com o que foi lido no comprovante da Caixa. Só entra o que a leitura
+     * conseguiu com segurança (o resto da leitura fica null e não conta).
+     */
+    fun divergencias(a: Aposta, l: LeituraComprovante.Lida): List<Divergencia> = buildList {
+        val m = a.modalidade
+        fun nums(v: List<Int>) = if (m.formato == Formato.COLUNAS) v.joinToString(" ") else v.sorted().joinToString(" ") { m.rotulo(it) }
+        l.concurso?.takeIf { it != a.concurso }?.let { add(Divergencia("Concurso", a.concurso.toString(), it.toString())) }
+        l.numeros?.let { lidos ->
+            val iguais = if (m.formato == Formato.COLUNAS) lidos == a.numeros else lidos.sorted() == a.numeros.sorted()
+            if (!iguais) add(Divergencia("Números", nums(a.numeros), nums(lidos)))
+        }
+        l.trevos?.takeIf { it.sorted() != a.trevos.sorted() }?.let { add(Divergencia("Trevos", a.trevos.sorted().joinToString(" "), it.joinToString(" "))) }
+        l.extra?.takeIf { !Conferencia.mesmoNome(it, a.extra) }?.let {
+            add(Divergencia(if (m.extra == Extra.MES_DE_SORTE) "Mês de Sorte" else "Time do Coração", a.extra ?: "—", it))
+        }
+        l.palpitesLoteca?.takeIf { it != a.palpitesLoteca }?.let { add(Divergencia("Palpites", a.palpitesLoteca.joinToString(" "), it.joinToString(" "))) }
+        l.bilhete?.takeIf { it.filter(Char::isDigit) != a.bilheteFederal.orEmpty().filter(Char::isDigit) }?.let {
+            add(Divergencia("Bilhete", a.bilheteFederal.orEmpty(), it))
+        }
+    }
+
+    /** A aposta como está no comprovante da Caixa (o que foi lido com segurança). */
+    fun ajustarPeloComprovante(a: Aposta, l: LeituraComprovante.Lida): Aposta = a.copy(
+        concurso = l.concurso ?: a.concurso,
+        numeros = l.numeros ?: a.numeros,
+        trevos = l.trevos ?: a.trevos,
+        extra = l.extra ?: a.extra,
+        palpitesLoteca = l.palpitesLoteca ?: a.palpitesLoteca,
+        bilheteFederal = l.bilhete ?: a.bilheteFederal,
+    )
 
     /** Dá o número do mês, marca como registrada, desconta do saldo e cria o comprovante. */
     fun registrarAposta(e: Estado, id: String, hoje: LocalDate, agora: Long): Estado {
@@ -275,7 +338,7 @@ object Operacoes {
         val anexo = requireNotNull(a.comprovante) { "Anexe o comprovante da Caixa." }
         val numero = proximoNumero(e, hoje)
         val registrada = a.copy(numero = numero, dataAposta = hoje, eventual = false, registrada = true)
-        val texto = Mensagens.aposta(identificacao(e, registrada, hoje), saldo(e), a.valor)
+        val texto = blocoAposta(e, registrada, hoje, saldo(e))
         val lanc = Lancamento(
             id = novoId(), data = hoje, criadoEm = agora, tipo = TipoLancamento.APOSTA, valor = -a.valor, apostaId = id,
         )
@@ -306,6 +369,7 @@ object Operacoes {
         faixasPremiadas = r.faixas.map { it.faixa },
         rateioOficial = c.faixas,
         acumulou = if (c.temResultado) c.acumulado else null,
+        precisaConfirmar = r.precisaConfirmarValor || r.observacoes.isNotEmpty(),
         conferidaEm = agora,
     )
 
@@ -321,10 +385,9 @@ object Operacoes {
         return if (s.isAfter(hoje) || mesFechado(e, YearMonth.from(s))) hoje else s
     }
 
-    /** Prévia do bloco APURAÇÃO (o saldo inicial é o de agora, antes do prêmio). Depois de registrada, vale o comprovante. */
-    fun textoApuracao(e: Estado, a: Aposta, acertos: String, premio: Long, hoje: LocalDate): String =
-        comprovanteDaApuracao(e, a)?.texto
-            ?: Mensagens.apuracao(identificacao(e, a, hoje), acertos, premio > 0, saldo(e), premio)
+    /** Prévia do bloco APURAÇÃO (o saldo atual é o de agora, antes do prêmio). Depois de registrada, vale o comprovante. */
+    fun textoApuracao(e: Estado, a: Aposta, premio: Long): String =
+        comprovanteDaApuracao(e, a)?.texto ?: Mensagens.apuracao(a.numero, a.dataAposta, saldo(e), premio)
 
     /** Confirma a apuração: soma o prêmio ao saldo e cria o comprovante (com a imagem dos acertos). */
     fun confirmarApuracao(e: Estado, id: String, apuracao: Apuracao, hoje: LocalDate, agora: Long, imagem: Arquivo? = null): Estado {
@@ -333,7 +396,7 @@ object Operacoes {
         require(a.apuracao?.confirmadaEm == null) { "Esta aposta já foi apurada." }
         require(apuracao.premio >= 0) { "Prêmio inválido." }
         val confirmada = apuracao.copy(confirmadaEm = agora)
-        val texto = Mensagens.apuracao(identificacao(e, a, hoje), apuracao.acertos, apuracao.premio > 0, saldo(e), apuracao.premio)
+        val texto = Mensagens.apuracao(a.numero, a.dataAposta, saldo(e), apuracao.premio)
         val premio = if (apuracao.premio > 0) {
             listOf(
                 Lancamento(
@@ -354,9 +417,6 @@ object Operacoes {
             comprovantes = e.comprovantes + c,
         )
     }
-
-    fun apuracoesDisponiveis(e: Estado): List<Aposta> =
-        e.apostas.filter { it.registrada && it.apuracao != null && it.apuracao.confirmadaEm == null }
 
     // ---------- rateio ----------
 

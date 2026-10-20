@@ -33,72 +33,11 @@ import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
-import io.github.marcosfaria94.bolao.domain.Cpf
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.seguranca.Biometria
 import io.github.marcosfaria94.bolao.seguranca.atividade
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import kotlinx.coroutines.launch
-
-/** CPF (só os 6 dígitos do meio ficam guardados) e ID do grupo, para o termo. */
-@Composable
-fun DialogoDadosDoTermo(estado: Estado, aoFechar: () -> Unit) {
-    val ctx = LocalContext.current
-    val escopo = rememberCoroutineScope()
-    val cpfs = remember { mutableStateListOf(*estado.pessoas.map { it.cpf }.toTypedArray()) }
-    var grupo by remember { mutableStateOf(estado.grupoWhatsapp) }
-    val mascarados = cpfs.map { Cpf.mascarar(it) }
-    AlertDialog(
-        onDismissRequest = aoFechar,
-        title = { Text("Dados do termo") },
-        text = {
-            Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Pode digitar o CPF completo: o app guarda só os 6 dígitos do meio (***.099.906-**), como no termo.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                estado.pessoas.forEachIndexed { i, p ->
-                    OutlinedTextField(
-                        value = cpfs[i],
-                        onValueChange = { cpfs[i] = it.take(14) },
-                        label = { Text("CPF de ${p.apelido}") },
-                        isError = mascarados[i] == null,
-                        supportingText = { Text(mascarados[i]?.ifBlank { "Não informado" } ?: "CPF incompleto") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                OutlinedTextField(
-                    value = grupo,
-                    onValueChange = { grupo = it.take(80) },
-                    label = { Text("ID do grupo do WhatsApp (opcional)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = mascarados.all { it != null },
-                onClick = {
-                    val novos = mascarados.map { it.orEmpty() }
-                    val id = grupo.trim()
-                    escopo.launch {
-                        ctx.bolao.repo.atualizar { e ->
-                            e.copy(
-                                pessoas = e.pessoas.mapIndexed { i, p -> p.copy(cpf = novos.getOrElse(i) { p.cpf }) },
-                                grupoWhatsapp = id,
-                            )
-                        }
-                    }
-                    aoFechar()
-                },
-            ) { Text("Salvar") }
-        },
-        dismissButton = { TextButton(onClick = aoFechar) { Text("Cancelar") } },
-    )
-}
 
 /** Seção "Extinção do Bolão" dos Ajustes. */
 @Composable

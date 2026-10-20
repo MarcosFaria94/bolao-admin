@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDate
 
-/** Geração dos PDFs no celular: auditoria (com as imagens guardadas) e termo sem assinaturas. */
+/** Geração dos PDFs da auditoria no celular (com as imagens guardadas). */
 object PdfsDoApp {
 
     private class Fonte(val context: Context, val e: Estado) : AuditoriaPdf.FonteDeImagens {
@@ -57,12 +57,6 @@ object PdfsDoApp {
                 temp.renameTo(destino)
             }
             r
-        }
-
-    /** Termo sem assinaturas, com os dados do cadastro, em Downloads/Bolao. */
-    suspend fun termoEmDownloads(context: Context, e: Estado): Uri =
-        Downloads.salvar(context, (if (e.exemplo) "termo-bolao-teste-" else "termo-bolao-") + data(LocalDate.now()) + ".pdf", "application/pdf") { saida ->
-            withContext(Dispatchers.Default) { TermoPdf.gerar(e, saida) }
         }
 
     /** Início do período da auditoria: o cadastro ou o primeiro registro. */

@@ -50,6 +50,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
+        bolao.visivel = true
         val longe = saiuEm > 0 && SystemClock.elapsedRealtime() - saiuEm > TEMPO_SEM_BLOQUEIO_MS
         if (longe && !bloqueado.value && Biometria.disponivel(this)) {
             bloqueado.value = true
@@ -67,6 +68,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onStop() {
         super.onStop()
+        bolao.visivel = false
         if (!isChangingConfigurations) saiuEm = SystemClock.elapsedRealtime()
     }
 

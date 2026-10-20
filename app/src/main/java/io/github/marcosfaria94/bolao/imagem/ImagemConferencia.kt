@@ -19,7 +19,8 @@ import kotlin.math.min
 /**
  * Imagem dos acertos no estilo da conferência do site da Caixa: fundo na cor da modalidade,
  * "Números sorteados", o divisor com o trevo e "Meus números" em círculos (cheio = acerto).
- * Vai anexada ao comprovante da APURAÇÃO.
+ * Vai anexada ao comprovante da APURAÇÃO. Sem apuração, mostra só os números apostados
+ * (tela da aposta feita).
  */
 object ImagemConferencia {
     private const val LARGURA = 1080
@@ -51,7 +52,7 @@ object ImagemConferencia {
         else -> 8
     }
 
-    fun gerar(context: Context, a: Aposta, ap: Apuracao): Bitmap {
+    fun gerar(context: Context, a: Aposta, ap: Apuracao?): Bitmap {
         val m = a.modalidade
         val cor = (m.cor and 0xFFFFFFFF).toInt()
         val p = Pinceis(context, cor)
@@ -140,86 +141,125 @@ object ImagemConferencia {
         }
 
         cabecalho()
-        when (m.formato) {
-            Formato.NUMEROS -> {
-                val apostados = a.numeros.sorted()
-                titulo("Números sorteados")
-                if (m == Modalidade.DUPLA_SENA) {
-                    subtitulo("1º sorteio")
-                    sorteados(ap.dezenasSorteadas.map { m.rotulo(it) })
-                    subtitulo("2º sorteio")
-                    sorteados(ap.segundoSorteio.map { m.rotulo(it) })
-                } else {
-                    sorteados(ap.dezenasSorteadas.map { m.rotulo(it) })
+        if (ap == null) {
+            // Aposta feita, ainda sem resultado: só o que foi apostado.
+            when (m.formato) {
+                Formato.NUMEROS -> {
+                    titulo("Meus números")
+                    meus(a.numeros.sorted().map { m.rotulo(it) }) { false }
+                    if (m.trevos > 0) {
+                        subtitulo("Meus trevos")
+                        meus(a.trevos.sorted().map { "$it" }) { false }
+                    }
+                    if (m.extra != Extra.NENHUM && !a.extra.isNullOrBlank()) {
+                        linhaTexto(if (m.extra == Extra.MES_DE_SORTE) "Meu mês:" else "Meu time:", a.extra)
+                    }
                 }
-                if (m.trevos > 0) {
-                    subtitulo("Trevos")
-                    sorteados(ap.trevosSorteados.map { "$it" })
+                Formato.COLUNAS -> {
+                    titulo("Meus números")
+                    meus(a.numeros.map { "$it" }) { false }
+                    subtitulo("Um número por coluna, da 1ª à 7ª.")
                 }
-                when (m.extra) {
-                    Extra.TIME_DO_CORACAO -> linhaTexto("Time do Coração:", ap.extraSorteado ?: "—")
-                    Extra.MES_DE_SORTE -> linhaTexto("Mês de Sorte:", ap.extraSorteado ?: "—")
-                    Extra.NENHUM -> Unit
+                Formato.LOTECA -> {
+                    titulo("Meus palpites")
+                    for (j in 0 until 14) {
+                        val rotulo = a.jogosLoteca.getOrNull(j)?.takeIf { it.isNotBlank() } ?: "Jogo ${j + 1}"
+                        val palpite = a.palpitesLoteca.getOrNull(j).orEmpty()
+                        c.drawText("${j + 1}. ${rotulo.take(34)}", MARGEM, y + 40f, p.texto)
+                        val cx = LARGURA - MARGEM - 40f
+                        c.drawCircle(cx, y + 28f, 28f, p.contorno)
+                        c.drawText(palpite, cx - p.textoNegrito.measureText(palpite) / 2, y + 42f, p.textoNegrito)
+                        y += 78f
+                    }
                 }
-                divisor()
-                titulo("Meus números")
-                if (m == Modalidade.DUPLA_SENA) {
-                    subtitulo("no 1º sorteio")
-                    meus(apostados.map { m.rotulo(it) }) { apostados[it] in ap.dezenasSorteadas }
-                    subtitulo("no 2º sorteio")
-                    meus(apostados.map { m.rotulo(it) }) { apostados[it] in ap.segundoSorteio }
-                } else {
-                    meus(apostados.map { m.rotulo(it) }) { apostados[it] in ap.dezenasSorteadas }
-                }
-                if (m.trevos > 0) {
-                    subtitulo("Meus trevos")
-                    val trevos = a.trevos.sorted()
-                    meus(trevos.map { "$it" }) { trevos[it] in ap.trevosSorteados }
-                }
-                if (m.extra != Extra.NENHUM && !a.extra.isNullOrBlank()) {
-                    val acertou = io.github.marcosfaria94.bolao.domain.Conferencia.mesmoNome(a.extra, ap.extraSorteado)
-                    linhaTexto(if (m.extra == Extra.MES_DE_SORTE) "Meu mês:" else "Meu time:", a.extra, destaque = acertou)
+                Formato.FEDERAL -> {
+                    titulo("Meu bilhete")
+                    linhaTexto("Bilhete:", a.bilheteFederal.orEmpty())
+                    linhaTexto("Frações:", "${a.fracoesFederal ?: 10} de 10")
                 }
             }
-            Formato.COLUNAS -> {
-                titulo("Números sorteados")
-                sorteados(ap.dezenasSorteadas.map { "$it" })
-                divisor()
-                titulo("Meus números")
-                meus(a.numeros.map { "$it" }) { i -> ap.dezenasSorteadas.getOrNull(i) == a.numeros[i] }
-                subtitulo("Um número por coluna, da 1ª à 7ª.")
-            }
-            Formato.LOTECA -> {
-                titulo("Resultados")
-                for (j in 0 until 14) {
-                    val rotulo = a.jogosLoteca.getOrNull(j)?.takeIf { it.isNotBlank() } ?: "Jogo ${j + 1}"
-                    val res = ap.resultadosLoteca.getOrNull(j).orEmpty()
-                    val palpite = a.palpitesLoteca.getOrNull(j).orEmpty()
-                    val ok = res.isNotEmpty() && res == palpite
-                    c.drawText("${j + 1}. ${rotulo.take(30)}", MARGEM, y + 40f, p.texto)
-                    val cx = LARGURA - MARGEM - 170f
-                    if (ok) c.drawCircle(cx, y + 28f, 30f, p.branco) else c.drawCircle(cx, y + 28f, 28f, p.contorno)
-                    p.textoNegrito.color = if (ok) cor else Color.WHITE
-                    c.drawText(palpite, cx - p.textoNegrito.measureText(palpite) / 2, y + 42f, p.textoNegrito)
-                    p.textoNegrito.color = Color.WHITE
-                    val r = res.ifEmpty { "?" }
-                    c.drawText(r, LARGURA - MARGEM - 40f - p.textoNegrito.measureText(r) / 2, y + 42f, p.textoNegrito)
-                    y += 78f
+        } else {
+            when (m.formato) {
+                Formato.NUMEROS -> {
+                    val apostados = a.numeros.sorted()
+                    titulo("Números sorteados")
+                    if (m == Modalidade.DUPLA_SENA) {
+                        subtitulo("1º sorteio")
+                        sorteados(ap.dezenasSorteadas.map { m.rotulo(it) })
+                        subtitulo("2º sorteio")
+                        sorteados(ap.segundoSorteio.map { m.rotulo(it) })
+                    } else {
+                        sorteados(ap.dezenasSorteadas.map { m.rotulo(it) })
+                    }
+                    if (m.trevos > 0) {
+                        subtitulo("Trevos")
+                        sorteados(ap.trevosSorteados.map { "$it" })
+                    }
+                    when (m.extra) {
+                        Extra.TIME_DO_CORACAO -> linhaTexto("Time do Coração:", ap.extraSorteado ?: "—")
+                        Extra.MES_DE_SORTE -> linhaTexto("Mês de Sorte:", ap.extraSorteado ?: "—")
+                        Extra.NENHUM -> Unit
+                    }
+                    divisor()
+                    titulo("Meus números")
+                    if (m == Modalidade.DUPLA_SENA) {
+                        subtitulo("no 1º sorteio")
+                        meus(apostados.map { m.rotulo(it) }) { apostados[it] in ap.dezenasSorteadas }
+                        subtitulo("no 2º sorteio")
+                        meus(apostados.map { m.rotulo(it) }) { apostados[it] in ap.segundoSorteio }
+                    } else {
+                        meus(apostados.map { m.rotulo(it) }) { apostados[it] in ap.dezenasSorteadas }
+                    }
+                    if (m.trevos > 0) {
+                        subtitulo("Meus trevos")
+                        val trevos = a.trevos.sorted()
+                        meus(trevos.map { "$it" }) { trevos[it] in ap.trevosSorteados }
+                    }
+                    if (m.extra != Extra.NENHUM && !a.extra.isNullOrBlank()) {
+                        val acertou = io.github.marcosfaria94.bolao.domain.Conferencia.mesmoNome(a.extra, ap.extraSorteado)
+                        linhaTexto(if (m.extra == Extra.MES_DE_SORTE) "Meu mês:" else "Meu time:", a.extra, destaque = acertou)
+                    }
                 }
-                c.drawText("meu palpite", LARGURA - MARGEM - 170f - p.pequeno.measureText("meu palpite") / 2, y + 30f, p.pequeno)
-                c.drawText("resultado", LARGURA - MARGEM - 40f - p.pequeno.measureText("resultado") / 2, y + 30f, p.pequeno)
-                y += 70f
-            }
-            Formato.FEDERAL -> {
-                titulo("Bilhetes premiados")
-                val meu = a.bilheteFederal.orEmpty().filter(Char::isDigit).padStart(6, '0').takeLast(6)
-                ap.premiosFederal.forEachIndexed { i, b ->
-                    linhaTexto("${i + 1}º prêmio:", b, destaque = b.takeLast(6) == meu)
+                Formato.COLUNAS -> {
+                    titulo("Números sorteados")
+                    sorteados(ap.dezenasSorteadas.map { "$it" })
+                    divisor()
+                    titulo("Meus números")
+                    meus(a.numeros.map { "$it" }) { i -> ap.dezenasSorteadas.getOrNull(i) == a.numeros[i] }
+                    subtitulo("Um número por coluna, da 1ª à 7ª.")
                 }
-                divisor()
-                titulo("Meu bilhete")
-                linhaTexto("Bilhete:", a.bilheteFederal.orEmpty())
-                linhaTexto("Frações:", "${a.fracoesFederal ?: 10} de 10")
+                Formato.LOTECA -> {
+                    titulo("Resultados")
+                    for (j in 0 until 14) {
+                        val rotulo = a.jogosLoteca.getOrNull(j)?.takeIf { it.isNotBlank() } ?: "Jogo ${j + 1}"
+                        val res = ap.resultadosLoteca.getOrNull(j).orEmpty()
+                        val palpite = a.palpitesLoteca.getOrNull(j).orEmpty()
+                        val ok = res.isNotEmpty() && res == palpite
+                        c.drawText("${j + 1}. ${rotulo.take(30)}", MARGEM, y + 40f, p.texto)
+                        val cx = LARGURA - MARGEM - 170f
+                        if (ok) c.drawCircle(cx, y + 28f, 30f, p.branco) else c.drawCircle(cx, y + 28f, 28f, p.contorno)
+                        p.textoNegrito.color = if (ok) cor else Color.WHITE
+                        c.drawText(palpite, cx - p.textoNegrito.measureText(palpite) / 2, y + 42f, p.textoNegrito)
+                        p.textoNegrito.color = Color.WHITE
+                        val r = res.ifEmpty { "?" }
+                        c.drawText(r, LARGURA - MARGEM - 40f - p.textoNegrito.measureText(r) / 2, y + 42f, p.textoNegrito)
+                        y += 78f
+                    }
+                    c.drawText("meu palpite", LARGURA - MARGEM - 170f - p.pequeno.measureText("meu palpite") / 2, y + 30f, p.pequeno)
+                    c.drawText("resultado", LARGURA - MARGEM - 40f - p.pequeno.measureText("resultado") / 2, y + 30f, p.pequeno)
+                    y += 70f
+                }
+                Formato.FEDERAL -> {
+                    titulo("Bilhetes premiados")
+                    val meu = a.bilheteFederal.orEmpty().filter(Char::isDigit).padStart(6, '0').takeLast(6)
+                    ap.premiosFederal.forEachIndexed { i, b ->
+                        linhaTexto("${i + 1}º prêmio:", b, destaque = b.takeLast(6) == meu)
+                    }
+                    divisor()
+                    titulo("Meu bilhete")
+                    linhaTexto("Bilhete:", a.bilheteFederal.orEmpty())
+                    linhaTexto("Frações:", "${a.fracoesFederal ?: 10} de 10")
+                }
             }
         }
         y += 40f

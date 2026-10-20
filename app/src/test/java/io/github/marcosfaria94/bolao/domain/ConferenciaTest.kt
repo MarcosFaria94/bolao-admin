@@ -111,14 +111,14 @@ class ConferenciaTest {
 
     @Test
     fun volanteSorteiaCompleto() {
+        // O Time do Coração e o Mês de Sorte também são sorteados, como os números.
         for (m in Modalidade.entries) {
             val p = Volante.sortear(m)
-            if (m == Modalidade.TIMEMANIA) {
-                assertEquals(listOf("Informe o Time do Coração."), Volante.pendencias(m, p))
-            } else {
-                assertEquals(emptyList<String>(), Volante.pendencias(m, p))
-            }
+            assertEquals(m.name, emptyList<String>(), Volante.pendencias(m, p))
         }
+        val time = Volante.sortear(Modalidade.TIMEMANIA).extra
+        assertTrue(time in TIMES_DO_CORACAO)
+        assertEquals(listOf("Informe o Time do Coração."), Volante.pendencias(Modalidade.TIMEMANIA, Volante.sortear(Modalidade.TIMEMANIA).copy(extra = null)))
         val parcial = Palpite(numeros = listOf(10, 20))
         val completo = Volante.completar(Modalidade.MEGA_SENA, parcial)
         assertEquals(6, completo.numeros.size)

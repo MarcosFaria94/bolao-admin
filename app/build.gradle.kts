@@ -92,6 +92,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment.ktx)
+    implementation(libs.mlkit.texto)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)

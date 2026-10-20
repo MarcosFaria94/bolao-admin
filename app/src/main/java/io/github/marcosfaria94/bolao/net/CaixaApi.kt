@@ -73,7 +73,9 @@ object CaixaApi {
         val c = r.first
         // Nunca apurar com o resultado de outro concurso.
         if (c.numero != numero) throw IOException("A Caixa devolveu o concurso ${c.numero} em vez do $numero.")
-        if (c.temResultado) cacheConcurso["${m.name}-$numero"] = c
+        // Só guarda o resultado completo (com o rateio oficial): antes disso, a conferência pergunta de novo.
+        val completo = c.temResultado && c.faixas.isNotEmpty() && c.faixas.none { it.ganhadores > 0 && it.valor <= 0 }
+        if (completo) cacheConcurso["${m.name}-$numero"] = c
         return r
     }
 
