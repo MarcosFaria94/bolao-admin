@@ -94,16 +94,16 @@ object Operacoes {
                 val aposta = l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }
                 when (l.tipo) {
                     TipoLancamento.APORTE -> Mensagens.Movimento(l.data, Mensagens.Categoria.APORTE, Mensagens.descricaoAporte(), l.valor)
-                    TipoLancamento.COMPLEMENTO -> Mensagens.Movimento(l.data, Mensagens.Categoria.APORTE, "COMPLEMENTO ADM. ", l.valor)
+                    TipoLancamento.COMPLEMENTO -> Mensagens.Movimento(l.data, Mensagens.Categoria.APORTE, "COMPLEMENTO ADM.", l.valor)
                     TipoLancamento.APOSTA -> Mensagens.Movimento(
                         l.data, Mensagens.Categoria.APOSTA,
-                        aposta?.let { Mensagens.descricaoAposta(it.numero, it.modalidade) } ?: "APOSTA ", l.valor,
+                        aposta?.let { Mensagens.descricaoAposta(it.numero, it.modalidade) } ?: "APOSTA", l.valor,
                     )
                     TipoLancamento.PREMIO -> Mensagens.Movimento(
                         l.data, Mensagens.Categoria.PREMIO,
-                        aposta?.let { Mensagens.descricaoPremio(it.numero, it.modalidade) } ?: "PRÊMIO ", l.valor,
+                        aposta?.let { Mensagens.descricaoPremio(it.numero, it.modalidade) } ?: "PRÊMIO", l.valor,
                     )
-                    TipoLancamento.DIVISAO_FINAL -> Mensagens.Movimento(l.data, Mensagens.Categoria.RATEIO, "DIVISÃO FINAL ", l.valor)
+                    TipoLancamento.DIVISAO_FINAL -> Mensagens.Movimento(l.data, Mensagens.Categoria.RATEIO, "DIVISÃO FINAL", l.valor)
                     else -> Mensagens.Movimento(l.data, Mensagens.Categoria.RATEIO, Mensagens.descricaoRateio(), l.valor)
                 }
             }
@@ -385,9 +385,26 @@ object Operacoes {
         return if (s.isAfter(hoje) || mesFechado(e, YearMonth.from(s))) hoje else s
     }
 
-    /** Prévia do bloco APURAÇÃO (o saldo atual é o de agora, antes do prêmio). Depois de registrada, vale o comprovante. */
-    fun textoApuracao(e: Estado, a: Aposta, premio: Long): String =
-        comprovanteDaApuracao(e, a)?.texto ?: Mensagens.apuracao(a.numero, a.dataAposta, saldo(e), premio)
+    /** Bloco APURAÇÃO da aposta [a], apurada em [hoje], com o [saldoAtual] de antes do prêmio. */
+    private fun blocoApuracao(a: Aposta, hoje: LocalDate, saldoAtual: Long, premio: Long, resultado: String): String =
+        Mensagens.apuracao(
+            numero = a.numero,
+            dataAposta = a.dataAposta,
+            modalidade = a.modalidade,
+            concurso = a.concurso,
+            premioEstimado = a.premioEstimado,
+            dataApuracao = hoje,
+            saldoAtual = saldoAtual,
+            premio = premio,
+            resultado = resultado,
+        )
+
+    /**
+     * Prévia do bloco APURAÇÃO (o saldo atual é o de agora, antes do prêmio; o resultado vai
+     * na imagem anexada). Depois de registrada, vale o comprovante.
+     */
+    fun textoApuracao(e: Estado, a: Aposta, premio: Long, hoje: LocalDate): String =
+        comprovanteDaApuracao(e, a)?.texto ?: blocoApuracao(a, hoje, saldo(e), premio, Mensagens.VIDE_ANEXO)
 
     /** Confirma a apuração: soma o prêmio ao saldo e cria o comprovante (com a imagem dos acertos). */
     fun confirmarApuracao(e: Estado, id: String, apuracao: Apuracao, hoje: LocalDate, agora: Long, imagem: Arquivo? = null): Estado {
@@ -396,7 +413,9 @@ object Operacoes {
         require(a.apuracao?.confirmadaEm == null) { "Esta aposta já foi apurada." }
         require(apuracao.premio >= 0) { "Prêmio inválido." }
         val confirmada = apuracao.copy(confirmadaEm = agora)
-        val texto = Mensagens.apuracao(a.numero, a.dataAposta, saldo(e), apuracao.premio)
+        // O resultado vai na imagem dos acertos; sem ela, fica a contagem no próprio bloco.
+        val resultado = if (imagem != null) Mensagens.VIDE_ANEXO else apuracao.acertos
+        val texto = blocoApuracao(a, hoje, saldo(e), apuracao.premio, resultado)
         val premio = if (apuracao.premio > 0) {
             listOf(
                 Lancamento(
@@ -439,7 +458,7 @@ object Operacoes {
         return CalculoDoRateio(extra(e, hoje), pedido, cota, total, pedido - total, saldo(e) - total)
     }
 
-    fun textoRateio(e: Estado, hoje: LocalDate, total: Long): String = Mensagens.rateio(hoje, saldo(e), total)
+    fun textoRateio(e: Estado, total: Long): String = Mensagens.rateio(saldo(e), total)
 
     fun registrarRateio(e: Estado, hoje: LocalDate, pedido: Long, comprovantes: List<Arquivo>, agora: Long): Estado {
         val extra = extra(e, hoje)
@@ -456,7 +475,7 @@ object Operacoes {
             valor = -calc.total, rateioNumero = numero,
         )
         val c = novoComprovante(
-            e, TipoComprovante.RATEIO, Mensagens.tituloRateio(hoje), Mensagens.rateio(hoje, saldoAntes, calc.total), hoje, agora,
+            e, TipoComprovante.RATEIO, Mensagens.tituloRateio(hoje), Mensagens.rateio(saldoAntes, calc.total), hoje, agora,
             anexos = comprovantes, rateioNumero = numero,
         )
         return e.copy(
@@ -498,7 +517,9 @@ object Operacoes {
     /** null = pode registrar; senão, o motivo. */
     fun impedimentoDoExtrato(e: Estado, mes: YearMonth, hoje: LocalDate): String? = when {
         mesFechado(e, mes) -> "O extrato de ${Datas.mesAno(mes)} já foi registrado."
-        hoje.isBefore(mes.atEndOfMonth()) -> "O extrato só pode ser registrado a partir do último dia do mês (${Datas.longa(mes.atEndOfMonth())})."
+        hoje.isBefore(mes.atEndOfMonth()) ->
+            if (hoje.plusDays(1) == mes.atEndOfMonth()) "O extrato só pode ser registrado a partir de amanhã, último dia do mês."
+            else "O extrato só pode ser registrado a partir do último dia do mês (${Datas.longa(mes.atEndOfMonth())})."
         else -> null
     }
 
@@ -592,9 +613,9 @@ object Operacoes {
         return e.copy(extincao = x.copy(comprovantes = x.comprovantes + (pessoaId to arquivo)))
     }
 
-    fun textoExtincao(e: Estado, hoje: LocalDate): String {
+    fun textoExtincao(e: Estado): String {
         val d = divisaoFinal(e)
-        return Mensagens.extincao(hoje, d.saldo, d.complemento, d.total)
+        return Mensagens.extincao(d.saldo, d.complemento, d.total)
     }
 
     /** Registra a divisão final: complemento do Administrador, saída das cotas e o comprovante. */
@@ -616,7 +637,7 @@ object Operacoes {
             add(Lancamento(id = novoId(), data = hoje, criadoEm = agora + 1, tipo = TipoLancamento.DIVISAO_FINAL, valor = -d.total))
         }
         val c = novoComprovante(
-            e, TipoComprovante.EXTINCAO, Mensagens.tituloExtincao(hoje), textoExtincao(e, hoje), hoje, agora,
+            e, TipoComprovante.EXTINCAO, Mensagens.tituloExtincao(hoje), textoExtincao(e), hoje, agora,
             anexos = anexos, envioDispensado = true,
         )
         return e.copy(

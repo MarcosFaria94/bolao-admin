@@ -197,7 +197,7 @@ fun RateioTela(estado: Estado, abrir: (String) -> Unit) {
             estado,
             Mensagens.tituloRateio(hoje),
             aoFechar = { vendo = false },
-            previa = Recibos.previa(estado, TipoComprovante.RATEIO, Operacoes.textoRateio(estado, hoje, calculo.total), estado.pessoas.size),
+            previa = Recibos.previa(estado, TipoComprovante.RATEIO, Operacoes.textoRateio(estado, calculo.total), estado.pessoas.size),
             anexos = estado.pessoas.mapNotNull { comprovantes[it.id] },
         )
     }

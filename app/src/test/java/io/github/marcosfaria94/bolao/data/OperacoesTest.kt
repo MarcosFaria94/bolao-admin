@@ -66,8 +66,8 @@ class OperacoesTest {
         val cAposta = e.comprovantes.last()
         assertEquals(ModelosDoTermo.TITULO_APOSTA, cAposta.titulo)
         assertEquals(
-            "APOSTA: Nº1/JUN\nDATA: 01/06/2026\nMODALIDADE: LOTOFÁCIL\nCONCURSO: 3001\nPRÊMIO PRINCIPAL: 2 MILHÕES\n" +
-                "SORTEIO: 03/06/2026\nNÚMEROS: ...\n\nCONTABILIDADE DO GRUPO\n" +
+            "APOSTA: Nº1 - JUN/2026\nDATA: 01/06/2026\nMODALIDADE: LOTOFÁCIL\nCONCURSO: 3001\nPRÊMIO PRINCIPAL: 2 MILHÕES\n" +
+                "SORTEIO: 03/06/2026\nNÚMEROS: ...\n\nFINANCEIRO -\n" +
                 "SALDO ATUAL:   R$ 40,00\nAPOSTA.....: - R$  3,50\nSALDO FINAL: = R$ 36,50",
             cAposta.texto,
         )
@@ -75,15 +75,18 @@ class OperacoesTest {
         // Uma aposta registrada não muda mais.
         assertThrows(IllegalArgumentException::class.java) { Operacoes.salvarRascunho(e, a1.copy(registrada = false, valor = 1)) }
 
-        e = Operacoes.confirmarApuracao(e, a1.id, Apuracao("12/15", 1400, conferidaEm = agora()), d(4), agora())
+        val acertos = anexo("acertos-1.png")
+        e = Operacoes.confirmarApuracao(e, a1.id, Apuracao("12/15", 1400, conferidaEm = agora()), d(4), agora(), acertos)
         // O prêmio entra na data do sorteio (03/06), como no extrato do termo.
         assertEquals(d(3), e.lancamentos.last().data)
         assertEquals("APURAÇÃO Nº 1 - 04/06/26", e.comprovantes.last().titulo)
         assertEquals(
-            "APOSTA: Nº1/JUN\nDATA: 01/06/2026\n\nCONTABILIDADE DO GRUPO\n" +
+            "APOSTA: Nº1 - JUN/2026\nDATA: 01/06/2026\nMODALIDADE: LOTOFÁCIL\nCONCURSO: 3001\nPRÊMIO PRINCIPAL: 2 MILHÕES\n" +
+                "APURAÇÃO: 04/06/2026\nRESULTADO: (VIDE ANEXO)\n\nFINANCEIRO -\n" +
                 "SALDO ATUAL:   R$ 36,50\nPRÊMIO.....: + R$ 14,00\nSALDO FINAL: = R$ 50,50",
             e.comprovantes.last().texto,
         )
+        assertEquals(listOf(acertos), e.comprovantes.last().anexos)
         assertThrows(IllegalArgumentException::class.java) {
             Operacoes.confirmarApuracao(e, a1.id, Apuracao("12/15", 1400, conferidaEm = 0), d(4), agora())
         }

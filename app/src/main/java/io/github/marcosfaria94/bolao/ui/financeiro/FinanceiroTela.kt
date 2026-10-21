@@ -60,7 +60,7 @@ fun FinanceiroTela(estado: Estado, abrir: (String) -> Unit) {
     fun abrirLancamento(l: Lancamento) {
         when {
             l.tipo == TipoLancamento.APOSTA && l.apostaId != null -> abrir("aposta/${l.apostaId}")
-            l.tipo == TipoLancamento.PREMIO && l.apostaId != null -> abrir("apuracao/${l.apostaId}")
+            l.tipo == TipoLancamento.PREMIO && l.apostaId != null -> abrir("aposta/${l.apostaId}")
             else -> Operacoes.comprovanteDoLancamento(estado, l)?.let { abrir("comprovante/${it.id}") }
         }
     }
@@ -116,7 +116,7 @@ private fun Saldo(data: LocalDate, saldo: Long, provisionado: Long, extra: Long,
     Column(Modifier.fillMaxWidth().clickable(onClick = aoTocar).padding(top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Saldo líquido · ${Datas.longa(data)}",
+                "Saldo líquido · ${Datas.relativa(data, LocalDate.now())}",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),

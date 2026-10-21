@@ -29,7 +29,7 @@ data class Pendencia(
     enum class Tipo { APORTE, APOSTA_DO_DIA, RASCUNHO, ENVIO, APURACAO, EXTRATO }
 }
 
-/** Aviso de aposta premiada (o outro aviso que vai para o celular). */
+/** Aviso de aposta premiada (o outro aviso que vai para o celular), sem o valor: ele é surpresa no app. */
 data class Premiada(val chave: String, val aposta: Aposta, val titulo: String, val texto: String, val destino: String)
 
 /**
@@ -104,7 +104,7 @@ object Pendencias {
             lista += Pendencia(
                 "aposta-$hoje", Pendencia.Tipo.APOSTA_DO_DIA,
                 "Fazer a aposta de hoje",
-                "Hoje, ${Datas.longa(hoje)}, é dia de aposta do bolão. Saldo: ${Dinheiro.rs(Operacoes.saldo(e))}.",
+                "Hoje é dia de aposta do bolão. Saldo: ${Dinheiro.rs(Operacoes.saldo(e))}.",
                 hoje.atStartOfDay(), hoje.atTime(HORA_JOGO, 0), "apostar",
             )
         }
@@ -132,7 +132,7 @@ object Pendencias {
                     "apuracao-${a.id}", Pendencia.Tipo.APURACAO,
                     "Confirmar a apuração",
                     "${nome(a)}: confira o resultado e o prêmio no app da Caixa.",
-                    conferida, conferida, "apuracao/${a.id}",
+                    conferida, conferida, "aposta/${a.id}",
                 )
             } else if (!hoje.isBefore(sorteio.plusDays(DIAS_PARA_APURAR_A_MAO))) {
                 val desde = sorteio.plusDays(DIAS_PARA_APURAR_A_MAO).atStartOfDay()
@@ -140,7 +140,7 @@ object Pendencias {
                     "apuracao-${a.id}", Pendencia.Tipo.APURACAO,
                     "Apurar a aposta",
                     "${nome(a)}: a apuração automática não conseguiu o resultado da Caixa.",
-                    desde, desde.withHour(HORA_APURACAO), "apuracao/${a.id}",
+                    desde, desde.withHour(HORA_APURACAO), "aposta/${a.id}",
                 )
             }
         }
@@ -163,7 +163,10 @@ object Pendencias {
         if (agora.hour !in HORARIO_DOS_AVISOS) emptyList()
         else pendencias.filter { it.chave !in avisados && !agora.isBefore(it.avisarDesde) }
 
-    /** Apostas premiadas conferidas há pouco que ainda não tiveram o aviso. */
+    /**
+     * Apostas premiadas conferidas há pouco que ainda não tiveram o aviso. O aviso não traz o
+     * valor do prêmio: ele aparece ao abrir a aposta no app.
+     */
     fun premiadas(e: Estado, agora: LocalDateTime, avisados: Set<String>, fuso: ZoneId = ZoneId.systemDefault()): List<Premiada> {
         if (!e.cadastroConcluido || e.extincao != null) return emptyList()
         val limite = agora.minusDays(DIAS_AVISO_PREMIO)
@@ -172,8 +175,7 @@ object Pendencias {
             val premiada = ap.premio > 0 || ap.faixasPremiadas.isNotEmpty()
             val chave = "premiada-${a.id}"
             if (!premiada || chave in avisados || instante(ap.conferidaEm, fuso).isBefore(limite)) return@mapNotNull null
-            val valor = if (ap.premio > 0 && !ap.precisaConfirmar) "Prêmio: ${Dinheiro.rs(ap.premio)}" else "Confira o valor do prêmio no app da Caixa"
-            Premiada(chave, a, "Aposta premiada!", "${nome(a)} · $valor", "apuracao/${a.id}")
+            Premiada(chave, a, "Aposta premiada!", "${nome(a)} · Toque para ver o prêmio.", "aposta/${a.id}")
         }
     }
 

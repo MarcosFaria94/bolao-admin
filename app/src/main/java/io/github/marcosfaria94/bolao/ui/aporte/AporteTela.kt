@@ -91,7 +91,7 @@ fun AporteTela(estado: Estado, abrir: (String) -> Unit) {
                 style = MaterialTheme.typography.titleMedium,
             )
             OutlinedTextField(
-                value = Datas.longa(dataAporte),
+                value = Datas.relativa(dataAporte, hoje),
                 onValueChange = {},
                 readOnly = true,
                 enabled = false,
@@ -171,8 +171,8 @@ fun AporteTela(estado: Estado, abrir: (String) -> Unit) {
         DialogoConfirmar(
             titulo = if (mensal) "Registrar o aporte mensal?" else "Registrar o aporte adicional?",
             texto = (
-                if (mensal) "Aporte de ${Dinheiro.rs(valorAporte)} em ${Datas.longa(dataAporte)}. Fica só registrado (sem mensagem para o grupo)."
-                else "Aporte de ${Dinheiro.rs(valorAporte)} em ${Datas.longa(dataAporte)}. Em seguida o WhatsApp abre com o comprovante."
+                if (mensal) "Aporte de ${Dinheiro.rs(valorAporte)} ${Datas.quando(dataAporte, hoje)}. Fica só registrado (sem mensagem para o grupo)."
+                else "Aporte de ${Dinheiro.rs(valorAporte)} ${Datas.quando(dataAporte, hoje)}. Em seguida o WhatsApp abre com o comprovante."
                 ) + "\n\n" + AVISO_DEFINITIVO,
             confirmar = "Confirmar",
             aoConfirmar = {

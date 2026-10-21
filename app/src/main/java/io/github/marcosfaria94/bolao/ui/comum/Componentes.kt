@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -41,12 +42,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isUnspecified
 import androidx.compose.ui.unit.sp
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
@@ -117,6 +123,47 @@ fun CampoInteiro(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = imeAction),
         modifier = modifier,
     )
+}
+
+/**
+ * Texto de uma linha só que diminui a letra (até [menor]) para caber na largura disponível,
+ * sem quebrar nem cortar: prêmios grandes ao lado do botão, nomes longos de modalidade.
+ */
+@Composable
+fun TextoQueCabe(
+    texto: String,
+    estilo: TextStyle,
+    modifier: Modifier = Modifier,
+    cor: Color = Color.Unspecified,
+    peso: FontWeight? = null,
+    menor: TextUnit = 14.sp,
+) {
+    val medidor = rememberTextMeasurer()
+    BoxWithConstraints(modifier) {
+        val largura = constraints.maxWidth
+        val base = if (peso != null) estilo.copy(fontWeight = peso) else estilo
+        val tamanho = remember(texto, base, largura) {
+            var t = base.fontSize.value
+            if (largura != Constraints.Infinity && !base.fontSize.isUnspecified) {
+                while (t > menor.value) {
+                    val r = medidor.measure(texto, base.copy(fontSize = t.sp), maxLines = 1, softWrap = false)
+                    if (r.size.width <= largura) break
+                    t -= 1f
+                }
+            }
+            t
+        }
+        val final = if (base.fontSize.isUnspecified || tamanho == base.fontSize.value) {
+            base
+        } else {
+            val escala = tamanho / base.fontSize.value
+            base.copy(
+                fontSize = tamanho.sp,
+                lineHeight = if (base.lineHeight.isSp) (base.lineHeight.value * escala).sp else base.lineHeight,
+            )
+        }
+        Text(texto, style = final, color = cor, maxLines = 1, softWrap = false)
+    }
 }
 
 /** Título de seção dentro das listas. */

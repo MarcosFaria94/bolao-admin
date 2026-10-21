@@ -393,8 +393,8 @@ private fun AnexoDoTermo(titulo: String, arquivo: Arquivo?, aoAnexar: () -> Unit
         supportingContent = {
             Text(
                 arquivo?.let {
-                    "${it.nomeOriginal} · anexado em " +
-                        Datas.longa(Instant.ofEpochMilli(it.guardadoEm).atZone(ZoneId.systemDefault()).toLocalDate())
+                    "${it.nomeOriginal} · anexado " +
+                        Datas.quando(Instant.ofEpochMilli(it.guardadoEm).atZone(ZoneId.systemDefault()).toLocalDate(), java.time.LocalDate.now())
                 } ?: "Nenhum arquivo anexado.",
             )
         },

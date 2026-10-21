@@ -43,26 +43,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.time.LocalDate
 
 /**
- * Documento do saldo atual, no mesmo estilo dos comprovantes, para mandar ao grupo.
- * Não é registro: a imagem é feita na hora, numa pasta temporária, e apagada depois.
+ * Documento do saldo atual (o "Saldo atual" do termo), no mesmo estilo dos comprovantes, para
+ * mandar ao grupo: vai só a imagem, sem texto. Não é registro: a imagem é feita na hora, numa
+ * pasta temporária, e apagada depois.
  */
 @Composable
 fun SaldoTela(estado: Estado) {
     val ctx = LocalContext.current
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
-    val hoje = LocalDate.now()
     val geradoEm = remember { System.currentTimeMillis() }
     val saldo = Operacoes.saldo(estado)
-    val provisionado = Operacoes.provisao(estado, hoje).provisionado
-    val titulo = Mensagens.tituloSaldo(hoje)
-    val linhas = remember(saldo, provisionado) {
+    val titular = estado.administrador?.nome.orEmpty()
+    val linhas = remember(saldo, titular) {
         LayoutTermico.consultaSaldo(
             estado.nomeExibicao,
-            Mensagens.saldo(hoje, saldo, provisionado),
+            Mensagens.saldo(saldo, titular),
             geradoEm,
             estado.comprovantes.lastOrNull()?.autenticacao,
             teste = estado.exemplo,
@@ -84,7 +82,7 @@ fun SaldoTela(estado: Estado) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            "Documento com o saldo de agora, para mandar ao grupo. Ele não é registrado nem fica guardado no app.",
+            "Saldo atual do bolão, para mandar ao grupo (vai só a imagem). Ele não é registrado nem fica guardado no app.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -110,7 +108,7 @@ fun SaldoTela(estado: Estado) {
                                 RenderTermico.salvar(ctx, linhas, it)
                             }
                         }
-                        Compartilhar.whatsapp(ctx, titulo, listOf(Anexo(arquivo, "image/png")))
+                        Compartilhar.whatsapp(ctx, "", listOf(Anexo(arquivo, "image/png")))
                     } catch (t: Throwable) {
                         avisos.showSnackbar("Não foi possível gerar o documento: ${t.message}")
                     } finally {

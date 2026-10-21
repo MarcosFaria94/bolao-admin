@@ -34,11 +34,15 @@ object Compartilhar {
     fun uri(context: Context, arquivo: File): Uri =
         FileProvider.getUriForFile(context, "${context.packageName}.arquivos", arquivo)
 
-    private fun comAvisoDeTeste(context: Context, texto: String): String =
-        if (context.bolao.repo.emTeste) "$AVISO_TESTE\n$texto" else texto
+    private fun comAvisoDeTeste(context: Context, texto: String): String = when {
+        !context.bolao.repo.emTeste -> texto
+        texto.isBlank() -> AVISO_TESTE
+        else -> "$AVISO_TESTE\n$texto"
+    }
 
     /**
      * Abre o WhatsApp com o texto e os anexos prontos (o Administrador escolhe o grupo e envia).
+     * Com [texto] vazio vão só os anexos (o "Saldo atual" do termo não tem mensagem).
      * Devolve false se não deu para abrir.
      */
     fun whatsapp(context: Context, texto: String, anexos: List<Anexo> = emptyList()): Boolean {
@@ -51,14 +55,14 @@ object Compartilhar {
                 .setType(if (anexos.all { it.mime.startsWith("image/") }) "image/*" else "*/*")
                 .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
         }
-        intent.putExtra(Intent.EXTRA_TEXT, mensagem)
+        if (mensagem.isNotBlank()) intent.putExtra(Intent.EXTRA_TEXT, mensagem)
         if (uris.isNotEmpty()) {
             val clip = ClipData.newRawUri("anexo", uris[0])
             uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
             intent.clipData = clip
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             // Se o WhatsApp não puser o texto junto dos anexos, é só colar.
-            copiar(context, "Mensagem do bolão", mensagem)
+            if (mensagem.isNotBlank()) copiar(context, "Mensagem do bolão", mensagem)
         }
         val pacote = PACOTES_WHATSAPP.firstOrNull { instalado(context, it) }
         return try {

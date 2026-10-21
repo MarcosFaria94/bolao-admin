@@ -85,16 +85,19 @@ import io.github.marcosfaria94.bolao.ui.teste.ModoTeste
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-/** Tela de uma aposta: rascunho (editável) ou já registrada (só leitura). */
+/**
+ * Tela de uma aposta: rascunho (editável) ou já registrada, com a apuração na mesma tela
+ * (DetalheAposta).
+ */
 @Composable
-fun ApostaTela(estado: Estado, id: String, abrirApuracao: (String) -> Unit, aoSair: () -> Unit) {
+fun ApostaTela(estado: Estado, id: String, aoSair: () -> Unit) {
     val a = estado.apostas.firstOrNull { it.id == id }
     if (a == null) {
         Box(Modifier.fillMaxSize().padding(24.dp)) { Text("Esta aposta não existe mais.") }
         return
     }
     if (a.registrada) {
-        DetalheAposta(estado, a, abrirApuracao)
+        DetalheAposta(estado, a)
     } else {
         EditorAposta(estado, a, aoSair)
     }
@@ -106,7 +109,7 @@ fun textoPremio(a: Aposta): String? = a.premioEstimado?.takeIf { it > 0 }?.let {
 }
 
 /**
- * Cabeçalho das telas de aposta e de apuração:
+ * Cabeçalho da tela da aposta:
  * "Nº5 | Mega-Sena · 3071" e, embaixo, "Prêmio: 170 Milhões".
  */
 @Composable
@@ -212,7 +215,6 @@ private fun EditorAposta(estado: Estado, inicial: Aposta, aoSair: () -> Unit) {
         if (r.concurso <= 0) add("Informe o número do concurso.")
         if (r.valor <= 0) add("Informe o valor da aposta.")
     }
-    val saldo = Operacoes.saldo(estado)
     val numero = Operacoes.proximoNumero(estado, hoje)
     val titulo = Operacoes.tituloAposta(estado, r, hoje)
 
@@ -226,8 +228,8 @@ private fun EditorAposta(estado: Estado, inicial: Aposta, aoSair: () -> Unit) {
     ) {
         CabecalhoAposta(r, numero)
         Column {
-            LinhaInfo("Data da aposta", Datas.longa(hoje))
-            LinhaInfo("Data do sorteio", r.dataSorteio?.let { Datas.longa(it) } ?: "a confirmar")
+            LinhaInfo("Aposta", Datas.relativa(hoje, hoje))
+            LinhaInfo("Sorteio", r.dataSorteio?.let { Datas.relativa(it, hoje) } ?: "a confirmar")
         }
 
         // Concurso
@@ -258,7 +260,7 @@ private fun EditorAposta(estado: Estado, inicial: Aposta, aoSair: () -> Unit) {
                 CampoData(
                     data = r.dataSorteio,
                     aoMudar = { mudar(r.copy(dataSorteio = it)) },
-                    rotulo = "Data do sorteio",
+                    rotulo = "Sorteio",
                     modifier = Modifier.fillMaxWidth(),
                 )
                 CampoDinheiro(
@@ -287,9 +289,6 @@ private fun EditorAposta(estado: Estado, inicial: Aposta, aoSair: () -> Unit) {
                 ajuda = "Preço da aposta simples: ${Dinheiro.rs(estado.config.preco(m))}",
                 modifier = Modifier.fillMaxWidth(),
             )
-        }
-        if (r.valor > saldo) {
-            Aviso("O valor passa do saldo do bolão (${Dinheiro.rs(saldo)}).", alerta = true)
         }
 
         // Comprovante da Caixa
@@ -542,72 +541,6 @@ private fun EscolhaMes(atual: String?, aoEscolher: (String) -> Unit) {
                 })
             }
         }
-    }
-}
-
-@Composable
-private fun DetalheAposta(estado: Estado, a: Aposta, abrirApuracao: (String) -> Unit) {
-    val ctx = LocalContext.current
-    val escopo = rememberCoroutineScope()
-    val hoje = LocalDate.now()
-    val m = a.modalidade
-    val ap = a.apuracao
-    val comprovante = Operacoes.comprovanteDaAposta(estado, a)
-    var vendo by remember { mutableStateOf(false) }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        CabecalhoAposta(a, a.numero)
-        Column {
-            LinhaInfo("Data da aposta", Datas.longa(a.dataAposta))
-            LinhaInfo("Data do sorteio", a.dataSorteio?.let { Datas.longa(it) } ?: "a confirmar")
-            val s = situacaoDe(a, hoje)
-            val situacao = when {
-                s == Situacao.PREMIADA -> "Aposta premiada (${Dinheiro.rs(ap?.premio ?: 0)})"
-                s == Situacao.AGUARDANDO && a.dataSorteio == hoje -> "Sorteio hoje"
-                else -> s.texto
-            }
-            LinhaInfo("Situação", situacao, destaque = true, cor = corDaSituacao(s))
-        }
-
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(12.dp)) {
-                LinhaValor("Valor", Dinheiro.rs(a.valor))
-                a.premioEstimado?.let { LinhaValor(if (m == Modalidade.FEDERAL) "1º prêmio" else "Prêmio estimado", Dinheiro.rs(it)) }
-                if (m == Modalidade.FEDERAL) {
-                    LinhaValor("Bilhete", a.bilheteFederal.orEmpty())
-                    LinhaValor("Frações", "${a.fracoesFederal ?: 10} de 10")
-                }
-            }
-        }
-
-        ImagemDaAposta(a, ap)
-
-        if (comprovante != null) {
-            OutlinedButton(onClick = { vendo = true }, modifier = Modifier.fillMaxWidth()) { Text("Visualizar comprovante") }
-            val enviado = estado.enviado(comprovante)
-            OutlinedButton(
-                onClick = { escopo.launch { Compartilhar.comprovante(ctx, estado, comprovante) } },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (enviado) "Enviar de novo" else "Enviar ao grupo") }
-        }
-
-        val podeApurar = ap?.confirmadaEm != null || (a.dataSorteio != null && !a.dataSorteio.isAfter(hoje))
-        if (podeApurar) {
-            Button(onClick = { abrirApuracao(a.id) }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (ap?.confirmadaEm != null) "Ver apuração" else "Apurar")
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-    }
-
-    if (vendo && comprovante != null) {
-        VisualizadorComprovante(estado, comprovante.titulo, aoFechar = { vendo = false }, comprovante = comprovante)
     }
 }
 

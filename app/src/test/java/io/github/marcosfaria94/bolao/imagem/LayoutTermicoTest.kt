@@ -1,7 +1,9 @@
 package io.github.marcosfaria94.bolao.imagem
 
 import io.github.marcosfaria94.bolao.data.TipoComprovante
-import io.github.marcosfaria94.bolao.domain.FaixaPremio
+import io.github.marcosfaria94.bolao.domain.Autenticacao
+import io.github.marcosfaria94.bolao.domain.Mensagens
+import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.imagem.LayoutTermico.Estilo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,15 +24,11 @@ class LayoutTermicoTest {
         java.io.File(pasta, "$nome.json").writeText(json)
     }
 
-    private val bloco = io.github.marcosfaria94.bolao.domain.Mensagens.apuracao(1, LocalDate.of(2026, 6, 1), 1500, 700)
-
-    private val faixas = listOf(
-        FaixaPremio(1, "15 acertos", 0, 0),
-        FaixaPremio(2, "14 acertos", 210, 182_345),
-        FaixaPremio(3, "13 acertos", 7_812, 3_000),
-        FaixaPremio(4, "12 acertos", 98_765, 1_200),
-        FaixaPremio(5, "11 acertos", 512_345, 700),
+    private val bloco = Mensagens.apuracao(
+        1, LocalDate.of(2026, 6, 1), Modalidade.LOTOFACIL, 3060, 200_000_000, LocalDate.of(2026, 6, 4), 1500, 700,
     )
+
+    private val codigo = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
 
     @Test
     fun comprovanteDeApuracaoRegistrado() {
@@ -41,27 +39,25 @@ class LayoutTermicoTest {
             texto = bloco,
             quantidadeAnexos = 1,
             registradoEm = registro,
-            autenticacao = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
-            rateio = LayoutTermico.RateioOficial(3060, faixas, setOf(5), acumulou = true),
+            autenticacao = codigo,
         )
         assertEquals(Estilo.LOGO, linhas[0].estilo)
         assertEquals(LayoutTermico.Linha("BOLÃO DOS AMIGOS", Estilo.GRANDE), linhas[1])
         assertEquals(LayoutTermico.Linha("COMPROVANTE DE APURAÇÃO", Estilo.CENTRO), linhas[2])
         assertEquals("=".repeat(48), linhas[3].texto)
         salvar("recibo-apuracao", linhas)
-        assertEquals(bloco.split("\n"), linhas.subList(4, 11).map { it.texto })
+        // O bloco do termo, linha por linha, entre as duas linhas de "=".
+        val partes = bloco.split("\n")
+        assertEquals(partes, linhas.subList(4, 4 + partes.size).map { it.texto })
+        assertEquals("=".repeat(48), linhas[4 + partes.size].texto)
         val textos = linhas.map { it.texto }
-        assertTrue(textos.contains("RATEIO OFICIAL - CONCURSO 3060"))
-        assertTrue(textos.contains("ACUMULOU: SIM"))
-        val premiada = linhas.single { it.estilo == Estilo.INVERTIDO }
-        assertTrue(premiada.texto, premiada.texto.startsWith("11 acertos"))
-        assertTrue(premiada.texto, premiada.texto.endsWith("R$ 7,00"))
-        assertTrue(premiada.texto.contains("512.345"))
-        // Faixa sem ganhador mostra "-" no prêmio.
-        assertTrue(textos.single { it.startsWith("15 acertos") }.endsWith("-"))
+        assertTrue(textos.contains("RESULTADO: (VIDE ANEXO)"))
+        // Sem a tabela do rateio oficial: o resultado vai na imagem anexada.
+        assertFalse(textos.any { it.startsWith("RATEIO OFICIAL") })
         assertTrue(textos.contains("ANEXO: IMAGEM DOS ACERTOS"))
-        // REGISTRO e AUTENTICAÇÃO no fim, uma linha cada.
-        val fim = textos.indexOf("AUTENTICAÇÃO: 0123-4567-89AB-CDEF-0123-4567")
+        // REGISTRO e AUTENTICAÇÃO no fim, uma linha cada; o código tem 8 algarismos.
+        val fim = textos.indexOf("AUTENTICAÇÃO: ${Autenticacao.formatar(codigo)}")
+        assertTrue(textos[fim], textos[fim].matches(Regex("AUTENTICAÇÃO: \\d{4}-\\d{4}")))
         assertEquals("REGISTRO: 04/06/2026 10:32:15", textos[fim - 1])
         // Rodapé: aviso de integridade em letra um pouco menor (até 53 colunas).
         val aviso = linhas.drop(fim + 2)
@@ -94,18 +90,16 @@ class LayoutTermicoTest {
 
     @Test
     fun documentoDeSaldoNaoTemRegistro() {
-        val texto = io.github.marcosfaria94.bolao.domain.Mensagens.saldo(LocalDate.of(2026, 10, 19), 1403, 1200)
-        assertEquals(
-            "- SALDO 191026 -\n\nSALDO LÍQUIDO:   R$ 14,03\nPROVISIONADO.: - R$ 12,00\nEXTRA........: = R$  2,03",
-            texto,
-        )
+        val texto = Mensagens.saldo(1403, "Fulano de Tal")
+        assertEquals("CAIXA DO BOLÃO: R$ 14,03\nLOCAL: CAIXINHA NUBANK 100% CDI\nTITULAR: FULANO DE TAL", texto)
         val agora = LocalDate.of(2026, 10, 19).atTime(11, 45, 10).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val linhas = LayoutTermico.consultaSaldo("Bolão dos Amigos", texto, agora, "ABCDEF0123456789ABCDEF0123456789")
+        val linhas = LayoutTermico.consultaSaldo("Bolão dos Amigos", texto, agora, codigo)
         salvar("documento-saldo", linhas)
         val textos = linhas.map { it.texto }
-        assertTrue(textos.contains("CONSULTA DE SALDO"))
+        assertTrue(textos.contains("SALDO ATUAL"))
+        assertTrue(textos.contains("CAIXA DO BOLÃO: R$ 14,03"))
         assertTrue(textos.contains("POSIÇÃO EM: 19/10/2026 11:45:10"))
-        assertTrue(textos.contains("ÚLTIMO REGISTRO: ABCD-EF01-2345-6789-ABCD-EF01"))
+        assertTrue(textos.contains("ÚLTIMO REGISTRO: ${Autenticacao.formatar(codigo)}"))
         assertFalse(textos.any { it.startsWith("AUTENTICAÇÃO") })
         assertEquals(LayoutTermico.AVISO_SALDO, linhas.filter { it.estilo == Estilo.PEQUENO }.joinToString(" ") { it.texto })
     }

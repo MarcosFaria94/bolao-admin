@@ -78,11 +78,11 @@ fun iconeLancamento(t: TipoLancamento): ImageVector = when (t) {
 /** "+ R$ 30,00" ou "- R$ 3,00". */
 fun valorComSinal(centavos: Long): String = (if (centavos < 0) "- " else "+ ") + Dinheiro.rs(kotlin.math.abs(centavos))
 
-/** Data que separa os grupos da lista: "13/10/2026". */
+/** Data que separa os grupos da lista: "Hoje", "Ontem" ou "13/10/2026". */
 @Composable
-fun CabecalhoDia(data: LocalDate, modifier: Modifier = Modifier) {
+fun CabecalhoDia(data: LocalDate, hoje: LocalDate = LocalDate.now(), modifier: Modifier = Modifier) {
     Text(
-        Datas.longa(data),
+        Datas.relativa(data, hoje),
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -137,13 +137,14 @@ fun ItemMovimento(icone: ImageVector, titulo: String, valor: Long, aoTocar: (() 
 /** Lançamentos agrupados por dia (o mais recente primeiro), com uma linha entre um e outro. */
 @Composable
 fun ListaLancamentos(estado: Estado, lista: List<Lancamento>, aoTocar: ((Lancamento) -> Unit)?) {
+    val hoje = LocalDate.now()
     var dia: LocalDate? = null
     lista.forEach { l ->
         if (l.data != dia) {
             // Divisória inteira entre um dia e outro; dentro do mesmo dia, uma mais curta.
             if (dia != null) HorizontalDivider(Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
             dia = l.data
-            CabecalhoDia(l.data)
+            CabecalhoDia(l.data, hoje)
         } else {
             HorizontalDivider(Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant)
         }

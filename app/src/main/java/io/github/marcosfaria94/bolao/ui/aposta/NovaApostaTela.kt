@@ -50,7 +50,7 @@ fun ResumoSaldo(estado: Estado, hoje: LocalDate) {
     val provisionado = Operacoes.provisao(estado, hoje).provisionado
     val extra = saldo - provisionado
     Column {
-        Text("Saldo líquido · ${Datas.longa(hoje)}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Saldo líquido · ${Datas.relativa(hoje, LocalDate.now())}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(Dinheiro.rs(saldo), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
         Text("Provisionado: ${Dinheiro.rs(provisionado)}", style = MaterialTheme.typography.bodyMedium)
         Text("Extra: " + (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)), style = MaterialTheme.typography.bodyMedium)

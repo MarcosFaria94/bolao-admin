@@ -116,7 +116,7 @@ fun ExtratoTela(estado: Estado, mesInicial: YearMonth? = null) {
 
                 if (existente != null) {
                     val quando = Instant.ofEpochMilli(existente.criadoEm).atZone(ZoneId.systemDefault()).toLocalDate()
-                    Aviso("O extrato de ${Datas.mesAno(mes)} foi registrado em ${Datas.longa(quando)}: só dá para ver o comprovante.")
+                    Aviso("O extrato de ${Datas.mesAno(mes)} foi registrado ${Datas.quando(quando, hoje)}: só dá para ver o comprovante.")
                     LinhaValor("Saldo da caixinha informado", Dinheiro.rs(existente.saldoInformado))
                     LinhaValor(
                         "Rendimento líquido do mês",

@@ -40,7 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Comprovante
@@ -52,6 +52,7 @@ import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.tema.EstiloMensagem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 
 /**
  * Verificador de integridade: refaz a corrente de autenticação, confere a impressão digital
@@ -106,7 +107,7 @@ fun IntegridadeTela(estado: Estado) {
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                         )
-                        Text("Conferido em ${Datas.dataHora(System.currentTimeMillis())}", style = MaterialTheme.typography.bodySmall)
+                        Text("Conferido ${Datas.quandoHora(System.currentTimeMillis(), LocalDate.now())}", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -152,7 +153,7 @@ fun IntegridadeTela(estado: Estado) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Conferir um comprovante", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Digite o código de autenticação impresso no comprovante (ex.: 3F2A-9C1E-5B7D-0A41-77C2-8B90).",
+                    "Digite os 8 algarismos do código de autenticação impresso no comprovante (ex.: 4829-1736).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -165,11 +166,11 @@ fun IntegridadeTela(estado: Estado) {
                     label = { Text("Código de autenticação") },
                     textStyle = EstiloMensagem,
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Button(
-                    enabled = Integridade.normalizar(codigo).length >= 8,
+                    enabled = Integridade.podeBuscar(codigo),
                     onClick = { achados = Integridade.buscar(estado, codigo) },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Verificar código") }
@@ -191,7 +192,7 @@ fun IntegridadeTela(estado: Estado) {
                                 color = if (confere) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                             )
                             Text(
-                                "Registrado em ${Datas.dataHora(c.criadoEm)} · ${Autenticacao.formatar(c.autenticacao)}",
+                                "Registrado ${Datas.quandoHora(c.criadoEm, LocalDate.now())} · ${Autenticacao.formatar(c.autenticacao)}",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             TextButton(onClick = { vendo = c }) { Text("Ver o comprovante") }

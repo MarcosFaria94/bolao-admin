@@ -69,7 +69,6 @@ import io.github.marcosfaria94.bolao.ui.aporte.AporteTela
 import io.github.marcosfaria94.bolao.ui.aposta.ApostaTela
 import io.github.marcosfaria94.bolao.ui.aposta.ApostasTela
 import io.github.marcosfaria94.bolao.ui.aposta.NovaApostaTela
-import io.github.marcosfaria94.bolao.ui.apuracao.ApuracaoTela
 import io.github.marcosfaria94.bolao.ui.atualizacao.AtualizacaoViewModel
 import io.github.marcosfaria94.bolao.ui.atualizacao.DialogosAtualizacao
 import io.github.marcosfaria94.bolao.ui.cadastro.CadastroTela
@@ -205,8 +204,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         "extrato", "extrato/{mes}" -> "Extrato"
         "comprovante/{id}" -> "Comprovante"
         "apostar" -> "Nova aposta"
-        "aposta/{id}" -> "Aposta"
-        "apuracao/{id}" -> "Apuração"
+        "aposta/{id}", "apuracao/{id}" -> "Aposta"
         "modalidade/{nome}" -> "Jogos"
         "saldo" -> "Saldo"
         "integridade" -> "Verificar integridade"
@@ -298,14 +296,12 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                 })
             }
             composable("aposta/{id}") { e ->
-                ApostaTela(
-                    estado,
-                    id = e.arguments?.getString("id").orEmpty(),
-                    abrirApuracao = { abrir("apuracao/$it") },
-                    aoSair = { nav.popBackStack() },
-                )
+                ApostaTela(estado, id = e.arguments?.getString("id").orEmpty(), aoSair = { nav.popBackStack() })
             }
-            composable("apuracao/{id}") { e -> ApuracaoTela(estado, e.arguments?.getString("id").orEmpty(), abrir = ::abrir) }
+            // A apuração fica na tela da aposta (avisos antigos ainda podem abrir este endereço).
+            composable("apuracao/{id}") { e ->
+                ApostaTela(estado, id = e.arguments?.getString("id").orEmpty(), aoSair = { nav.popBackStack() })
+            }
             composable("modalidade/{nome}") { e ->
                 val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
                 if (m != null) {

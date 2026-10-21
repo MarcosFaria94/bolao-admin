@@ -493,7 +493,7 @@ private fun PassoSaldo(vm: CadastroViewModel) {
                 Text(Datas.mesAnoTitulo(m), style = MaterialTheme.typography.bodyLarge)
                 Text(
                     if (m == atual) "O aporte deste mês será cobrado (data fixa no dia 1º)."
-                    else "Este mês fica coberto pelo saldo inicial; o primeiro aporte é em ${Datas.longa(m.atDay(1))}.",
+                    else "Este mês fica coberto pelo saldo inicial; o primeiro aporte é ${Datas.quando(m.atDay(1), hoje)}.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

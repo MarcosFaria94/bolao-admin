@@ -163,15 +163,8 @@ class Indices(private val context: Context) {
         Modalidade.entries.map { mapa[it] ?: Item(it, null, null, oddsDe(it)) }
             .sortedWith(compareByDescending<Item> { it.k1 ?: Double.NEGATIVE_INFINITY }.thenBy { it.modalidade.ordinal })
 
-    /**
-     * Concurso em destaque: o de maior k1 entre as modalidades que cabem no saldo
-     * (o termo manda olhar o preço em relação ao saldo e o melhor retorno esperado).
-     * Se nenhuma couber, o de maior k1.
-     */
-    fun destaque(mapa: Map<Modalidade, Item>, saldo: Long, preco: (Modalidade) -> Long): Item? {
-        val comK = ordenados(mapa).filter { it.k1 != null }
-        return comK.firstOrNull { preco(it.modalidade) in 1..saldo } ?: comK.firstOrNull()
-    }
+    /** Concurso em destaque: o de maior k1 (o melhor retorno esperado), sem olhar o saldo. */
+    fun destaque(mapa: Map<Modalidade, Item>): Item? = ordenados(mapa).firstOrNull { it.k1 != null }
 
     companion object {
         private const val VALIDADE_MS = 10 * 60 * 1000L

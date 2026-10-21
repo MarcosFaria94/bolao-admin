@@ -63,10 +63,17 @@ class IntegridadeTest {
     @Test
     fun buscaPeloCodigoImpresso() {
         val c = exemplo.comprovantes[5]
+        // O comprovante traz 8 algarismos: "4829-1736".
         val impresso = Autenticacao.formatar(c.autenticacao)
-        assertEquals(listOf(c), Integridade.buscar(exemplo, impresso))
-        assertEquals(listOf(c), Integridade.buscar(exemplo, impresso.lowercase().replace("-", " ")))
+        assertTrue(impresso, impresso.matches(Regex("\\d{4}-\\d{4}")))
+        assertTrue(c in Integridade.buscar(exemplo, impresso))
+        assertTrue(c in Integridade.buscar(exemplo, impresso.replace("-", " ")))
+        assertTrue(Integridade.buscar(exemplo, impresso).all { Autenticacao.curto(it.autenticacao) == Autenticacao.curto(c.autenticacao) })
+        assertFalse(Integridade.podeBuscar(impresso.take(6)))
         assertEquals(emptyList<Comprovante>(), Integridade.buscar(exemplo, impresso.take(6)))
+        // Comprovantes das versões até a 0.4 traziam o começo do SHA-256 (24 caracteres).
+        val antigo = c.autenticacao.take(24).chunked(4).joinToString("-").lowercase()
+        assertEquals(listOf(c), Integridade.buscar(exemplo, antigo))
         assertTrue(Integridade.conferePosicao(exemplo, c))
         val adulterado = exemplo.copy(comprovantes = exemplo.comprovantes.mapIndexed { i, x -> if (i == 2) x.copy(texto = x.texto + " ") else x })
         assertFalse(Integridade.conferePosicao(adulterado, adulterado.comprovantes[5]))

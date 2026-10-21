@@ -12,6 +12,12 @@ class MensagensTest {
     private val d = { dia: Int -> LocalDate.of(2026, 6, dia) }
 
     @Test
+    fun saldoAtualIgualAoTermo() {
+        assertEquals(ModelosDoTermo.SALDO, Mensagens.saldo(1002, "Fulano de Tal"))
+        assertEquals("CAIXA DO BOLÃO: R$ 1.234,56", Mensagens.saldo(123456, "Fulano de Tal").lines()[0])
+    }
+
+    @Test
     fun aporteIgualAoTermo() {
         assertEquals(ModelosDoTermo.TITULO_APORTE, Mensagens.tituloAporte(d(1)))
         assertEquals(ModelosDoTermo.APORTE, Mensagens.aporte(d(1), saldoAtual = 1002, aportes = 3000))
@@ -71,9 +77,14 @@ class MensagensTest {
     @Test
     fun apuracaoIgualAoTermo() {
         assertEquals(ModelosDoTermo.TITULO_APURACAO, Mensagens.tituloApuracao(1, d(4)))
-        assertEquals(ModelosDoTermo.APURACAO, Mensagens.apuracao(1, d(1), saldoAtual = 3652, premio = 1400))
-        val semPremio = Mensagens.apuracao(1, d(1), saldoAtual = 3652, premio = 0)
-        assertEquals("PRÊMIO.....: + R$  0,00", semPremio.lines()[5])
+        assertEquals(
+            ModelosDoTermo.APURACAO,
+            Mensagens.apuracao(1, d(1), Modalidade.LOTOFACIL, 3060, 200_000_000, d(4), saldoAtual = 3652, premio = 1400),
+        )
+        val semPremio = Mensagens.apuracao(1, d(1), Modalidade.QUINA, 7146, null, d(4), saldoAtual = 3652, premio = 0, resultado = "1/5")
+        assertTrue(semPremio.lines().contains("PRÊMIO PRINCIPAL: A CONFIRMAR"))
+        assertTrue(semPremio.lines().contains("RESULTADO: 1/5"))
+        assertEquals("PRÊMIO.....: + R$  0,00", semPremio.lines().last { it.startsWith("PRÊMIO.") })
     }
 
     @Test
@@ -91,7 +102,7 @@ class MensagensTest {
         assertEquals(2, r.sobra)
         assertEquals(1502, r.saldoFinal)
         assertEquals(ModelosDoTermo.TITULO_RATEIO, Mensagens.tituloRateio(d(14)))
-        assertEquals(ModelosDoTermo.RATEIO, Mensagens.rateio(d(14), r.saldoLiquido, r.total))
+        assertEquals(ModelosDoTermo.RATEIO, Mensagens.rateio(r.saldoLiquido, r.total))
     }
 
     @Test
@@ -118,9 +129,18 @@ class MensagensTest {
     }
 
     @Test
+    fun extratoSoComAporteAlinhaPeloMaiorRotulo() {
+        val movs = listOf(Mensagens.Movimento(d(1), Mensagens.Categoria.APORTE, Mensagens.descricaoAporte(), 3000))
+        val linhas = Mensagens.extrato(YearMonth.of(2026, 6), 0, 0, movs).lines()
+        assertEquals("00  01/06/26 SALDO LÍQUIDO:   R$ 0,00", linhas[linhas.size - 2])
+        assertEquals("01  01/06/26 APORTE.......: + R$30,00", linhas.last())
+    }
+
+    @Test
     fun valoresMaioresContinuamAlinhados() {
         val msg = Mensagens.aporte(d(1), saldoAtual = 123456, aportes = 600)
         val linhas = msg.lines()
+        assertEquals("FINANCEIRO -", linhas[3])
         assertEquals("SALDO ATUAL:   R$ 1.234,56", linhas[4])
         assertEquals("APORTES....: + R$     6,00", linhas[5])
         assertEquals("SALDO FINAL: = R$ 1.240,56", linhas[6])
@@ -132,14 +152,14 @@ class MensagensTest {
         assertEquals("1,7 MILHÃO", Mensagens.premioPrincipal(170_000_000))
         assertEquals("450 MIL", Mensagens.premioPrincipal(45_000_000))
         assertEquals("A CONFIRMAR", Mensagens.premioPrincipal(null))
-        assertEquals("Nº12/OUT", Mensagens.numeroNoMes(12, LocalDate.of(2026, 10, 19)))
+        assertEquals("Nº12 - OUT/2026", Mensagens.numeroNoMes(12, LocalDate.of(2026, 10, 19)))
     }
 
     @Test
     fun extincaoArredondaParaCima() {
-        val msg = Mensagens.extincao(LocalDate.of(2026, 10, 19), saldoAtual = 5, complemento = 1, divisao = 6)
+        val msg = Mensagens.extincao(saldoAtual = 5, complemento = 1, divisao = 6)
         assertEquals(
-            "- EXTINÇÃO 191026 -\n\nSALDO ATUAL:   R$ 0,05\nCOMPLEMENTO: + R$ 0,01\nDIVISÃO....: - R$ 0,06\nSALDO FINAL: = R$ 0,00",
+            "FINANCEIRO -\nSALDO ATUAL:   R$ 0,05\nCOMPLEMENTO: + R$ 0,01\nDIVISÃO....: - R$ 0,06\nSALDO FINAL: = R$ 0,00",
             msg,
         )
         assertEquals("EXTINÇÃO - 19/10/26", Mensagens.tituloExtincao(LocalDate.of(2026, 10, 19)))
@@ -169,13 +189,38 @@ class MensagensTest {
     }
 
     @Test
-    fun premioEmMilhoes() {
-        assertEquals("185M", Dinheiro.milhoes(18_500_000_000))
-        assertEquals("0,4M", Dinheiro.milhoes(40_000_000))
-        assertEquals("1,7M", Dinheiro.milhoes(170_000_000))
-        assertEquals("51M", Dinheiro.milhoes(5_100_000_000))
-        assertEquals("2M", Dinheiro.milhoes(200_000_000))
-        assertEquals("11,6M", Dinheiro.milhoes(1_160_000_000))
-        assertEquals("0,05M", Dinheiro.milhoes(5_000_000))
+    fun premioDaTarja() {
+        // Tarja das apostas do mês: o valor inteiro, no formato "R$ 999.999.999,99".
+        assertEquals("R$ 52.000.000,00", Dinheiro.rs(5_200_000_000))
+        assertEquals("R$ 185.000.000,00", Dinheiro.rs(18_500_000_000))
+        assertEquals("R$ 450.000,00", Dinheiro.rs(45_000_000))
+    }
+
+    @Test
+    fun datasDasTelas() {
+        val hoje = LocalDate.of(2026, 10, 20)
+        assertEquals("Ontem", Datas.relativa(hoje.minusDays(1), hoje))
+        assertEquals("Hoje", Datas.relativa(hoje, hoje))
+        assertEquals("Amanhã", Datas.relativa(hoje.plusDays(1), hoje))
+        assertEquals("22/10/2026", Datas.relativa(hoje.plusDays(2), hoje))
+        assertEquals("18/10/2026", Datas.relativa(hoje.minusDays(2), hoje))
+        assertEquals("hoje", Datas.quando(hoje, hoje))
+        assertEquals("em 01/11/2026", Datas.quando(LocalDate.of(2026, 11, 1), hoje))
+        assertEquals("Sorteio hoje", Datas.sorteioEm(hoje, hoje))
+        assertEquals("Sorteio amanhã", Datas.sorteioEm(hoje.plusDays(1), hoje))
+        assertEquals("Sorteio em 3 dias", Datas.sorteioEm(hoje.plusDays(3), hoje))
+        // Virada do ano.
+        assertEquals("Amanhã", Datas.relativa(LocalDate.of(2027, 1, 1), LocalDate.of(2026, 12, 31)))
+    }
+
+    @Test
+    fun codigoDeAutenticacaoCurto() {
+        val codigo = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+        // Os 15 primeiros dígitos hexadecimais (0x0123456789ABCDE) e os 8 últimos algarismos deles.
+        val esperado = (0x0123456789ABCDEL % 100_000_000L).toString().padStart(8, '0')
+        assertEquals(esperado, Autenticacao.curto(codigo))
+        assertEquals(esperado.take(4) + "-" + esperado.drop(4), Autenticacao.formatar(codigo))
+        assertEquals(9, Autenticacao.formatar(Autenticacao.sha256("qualquer coisa")).length)
+        assertTrue(Autenticacao.formatar(Autenticacao.sha256("x")).matches(Regex("\\d{4}-\\d{4}")))
     }
 }

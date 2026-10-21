@@ -38,7 +38,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,8 +62,10 @@ import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
+import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /** Jogos: as modalidades em ordem de k1 (melhor retorno matemático primeiro). */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -141,7 +146,7 @@ private fun premiacao(m: Modalidade): String = when (m) {
     Modalidade.FEDERAL -> "5 prêmios, aproximações e finais"
 }
 
-/** Detalhe de uma modalidade: odds, último resultado, premiação, regras e probabilidades. */
+/** Detalhe de uma modalidade: próximo concurso, último resultado, premiação, regras e probabilidades. */
 @Composable
 fun ModalidadeTela(estado: Estado, m: Modalidade, abrirAposta: (String) -> Unit) {
     val ctx = LocalContext.current
@@ -154,6 +159,7 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrirAposta: (String) -> Unit)
     val item: Indices.Item? = itens[m]
     val u = item?.ultimo
     val cor = corModalidade(m.cor)
+    val hoje = LocalDate.now()
 
     Column(
         Modifier
@@ -174,47 +180,48 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrirAposta: (String) -> Unit)
             }
         }
 
-        // Próximo concurso, com o botão de apostar de frente.
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-            Column(Modifier.weight(1f)) {
+        // Próximo concurso: o número, o prêmio numa linha só ao lado do botão de apostar e o dia do sorteio.
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
+            if (u == null) {
                 Text("Próximo concurso", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (u == null) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
-                        if (atualizando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Text(
-                            if (atualizando) "  Consultando a Caixa..." else "Sem dados da Caixa agora.",
-                            style = MaterialTheme.typography.bodyLarge,
+            } else {
+                RotuloValor("Próximo concurso", item?.proximoNumero?.toString() ?: "a confirmar")
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    if (u == null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (atualizando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text(
+                                if (atualizando) "  Consultando a Caixa..." else "Sem dados da Caixa agora.",
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
+                    } else {
+                        TextoQueCabe(
+                            u.premioEstimadoProximo?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) } ?: "Prêmio a confirmar",
+                            MaterialTheme.typography.headlineLarge,
+                            peso = FontWeight.Bold,
+                            menor = 20.sp,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                } else {
-                    Text(
-                        u.premioEstimadoProximo?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) } ?: "Prêmio a confirmar",
-                        style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        listOfNotNull(item?.proximoNumero?.toString(), u.proximaData?.let { Datas.longa(it) }).joinToString(" · "),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Normal,
-                    )
                 }
-            }
-            Spacer(Modifier.width(12.dp))
-            Button(
-                onClick = {
-                    escopo.launch {
-                        try {
-                            abrirAposta(abrirOuCriarAposta(ctx, estado, m))
-                        } catch (t: Throwable) {
-                            avisos.showSnackbar("Não foi possível começar a aposta: ${t.message}")
+                Spacer(Modifier.width(16.dp))
+                Button(
+                    onClick = {
+                        escopo.launch {
+                            try {
+                                abrirAposta(abrirOuCriarAposta(ctx, estado, m))
+                            } catch (t: Throwable) {
+                                avisos.showSnackbar("Não foi possível começar a aposta: ${t.message}")
+                            }
                         }
-                    }
-                },
-                contentPadding = PaddingValues(horizontal = 26.dp, vertical = 20.dp),
-            ) { Text("APOSTAR", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-        }
-        if (item != null && (item.k != null || item.especial || item.odds != null)) {
-            Text(linhaIndices(item), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    },
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
+                ) { Text("APOSTAR", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            }
+            u?.proximaData?.let { RotuloValor("Sorteio", Datas.relativa(it, hoje)) }
         }
 
         // Último resultado.
@@ -228,7 +235,7 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrirAposta: (String) -> Unit)
                         else -> Unit
                     }
                     Text(
-                        "Concurso ${u.numero}" + (u.data?.let { " · ${Datas.longa(it)}" } ?: ""),
+                        "Concurso ${u.numero}" + (u.data?.let { " · ${Datas.relativa(it, hoje)}" } ?: ""),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Resultado(m, u, cor)
@@ -278,6 +285,18 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrirAposta: (String) -> Unit)
         }
         Spacer(Modifier.height(8.dp))
     }
+}
+
+/** "Próximo concurso: 7147" e "Sorteio: Hoje": rótulo discreto e o valor em destaque. */
+@Composable
+private fun RotuloValor(rotulo: String, valor: String) {
+    Text(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("$rotulo: ") }
+            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(valor) }
+        },
+        style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

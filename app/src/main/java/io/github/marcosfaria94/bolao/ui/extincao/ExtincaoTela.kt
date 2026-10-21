@@ -151,7 +151,7 @@ fun ExtincaoTela(estado: Estado) {
         ) {
             Text("Extinção do Bolão", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
             Text(
-                "Iniciada em ${Datas.dataHora(x.iniciadaEm)}. Esta tela só fecha quando a divisão final for registrada e o PDF da auditoria for enviado ao grupo.",
+                "Iniciada ${Datas.quandoHora(x.iniciadaEm, hoje)}. Esta tela só fecha quando a divisão final for registrada e o PDF da auditoria for enviado ao grupo.",
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -219,7 +219,7 @@ fun ExtincaoTela(estado: Estado) {
                 )
             } else {
                 val quando = Instant.ofEpochMilli(x.registradaEm).atZone(ZoneId.systemDefault()).toLocalDate()
-                Aviso("Divisão final registrada em ${Datas.longa(quando)}.")
+                Aviso("Divisão final registrada ${Datas.quando(quando, hoje)}.")
                 val pdf = x.auditoria
                 if (pdf == null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -261,7 +261,7 @@ fun ExtincaoTela(estado: Estado) {
             estado,
             Mensagens.tituloExtincao(hoje),
             aoFechar = { vendo = false },
-            previa = Recibos.previa(estado, TipoComprovante.EXTINCAO, Operacoes.textoExtincao(estado, hoje), x.comprovantes.size),
+            previa = Recibos.previa(estado, TipoComprovante.EXTINCAO, Operacoes.textoExtincao(estado), x.comprovantes.size),
             anexos = estado.pessoas.mapNotNull { x.comprovantes[it.id] },
         )
     }

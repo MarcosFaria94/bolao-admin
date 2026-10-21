@@ -112,6 +112,7 @@ fun NotificacoesTela(pendencias: List<Pendencia>, abrir: (String) -> Unit) {
 
 @Composable
 private fun ItemPendencia(p: Pendencia, aoTocar: () -> Unit) {
+    val hoje = java.time.LocalDate.now()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().clickable(onClick = aoTocar).padding(vertical = 12.dp),
@@ -123,7 +124,7 @@ private fun ItemPendencia(p: Pendencia, aoTocar: () -> Unit) {
         // A data fica em cima, pequena: o título usa a largura toda.
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                Datas.longa(p.desde.toLocalDate()),
+                Datas.relativa(p.desde.toLocalDate(), hoje),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

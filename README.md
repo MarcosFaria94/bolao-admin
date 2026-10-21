@@ -13,13 +13,15 @@ Os dados (integrantes, chaves Pix, saldo, comprovantes) ficam **só no celular**
 ## Como funciona
 
 - **Biometria**: o app abre com a digital (ou o bloqueio do celular) e volta a pedir depois de alguns minutos fora dele. A extinção do bolão também pede a biometria.
-- **Notificações**: a aba com o sino reúne tudo o que falta fazer (aporte, aposta do dia, comprovante da Caixa, envio de comprovante ao grupo, apuração a confirmar, extrato), a mais recente primeiro; o número vermelho no sino é a quantidade. Tocar numa pendência abre a tela que resolve. No celular chegam só dois avisos: **Ação necessária** e **Aposta premiada** (com o valor).
+- **Notificações**: a aba com o sino reúne tudo o que falta fazer (aporte, aposta do dia, comprovante da Caixa, envio de comprovante ao grupo, apuração a confirmar, extrato), a mais recente primeiro; o número vermelho no sino é a quantidade. Tocar numa pendência abre a tela que resolve. No celular chegam só dois avisos: **Ação necessária** e **Aposta premiada** (sem o valor: o prêmio é surpresa ao abrir a aposta no app).
 - **Apuração automática**: depois do sorteio o app confere a aposta na Caixa e, no dia seguinte (a partir das 8h), registra a apuração sozinho quando não há nada a confirmar. O envio do comprovante ao grupo vira uma pendência. Se faltar algum dado (valor de uma faixa, Time do Coração...), a pendência pede a confirmação do Administrador.
 - **Conferência com a Caixa**: ao registrar uma aposta, o app lê o comprovante da Caixa (imagem ou PDF, com o reconhecimento de texto do próprio celular) e compara o concurso e os números. Se forem diferentes, a aposta e o comprovante do bolão ficam como na Caixa.
 - **Registro que só cresce**: nada é alterado nem desfeito depois de registrado; todo registro pede confirmação.
-- **Comprovante único**: os blocos seguem os modelos da Parte 4 do termo; no fim de todo comprovante vêm o REGISTRO e a AUTENTICAÇÃO. O código de autenticação é um SHA-256 encadeado com os comprovantes anteriores, e cada anexo guarda a sua impressão digital. Em Ajustes > **Verificar integridade** o app confere tudo e também confere um código impresso num comprovante.
-- **Índices k1 e k2**: as modalidades aparecem em ordem de k1 (retorno matemático esperado de uma aposta simples), calculado com os dados da Caixa e os parâmetros em `app/src/main/assets/parametros_k.json`.
-- **Saldo**: tocar no Saldo Líquido gera um documento do saldo para mandar ao grupo; ele não é registrado nem fica guardado.
+- **Comprovante único**: os blocos seguem os modelos da Parte 4 do termo (Saldo atual, aporte, aposta, apuração, rateio e extrato); no fim de todo comprovante vêm o REGISTRO e a AUTENTICAÇÃO. O app guarda um SHA-256 encadeado com os comprovantes anteriores, e cada anexo guarda a sua impressão digital; no comprovante vai um código curto de 8 algarismos (ex.: 4829-1736). Em Ajustes > **Verificar integridade** o app confere tudo e também confere um código impresso num comprovante.
+- **Aposta e apuração numa tela só**: aposta, sorteio, situação e (depois do sorteio) se acumulou; os números com os acertos; a apuração, quando ainda falta; e os dois comprovantes para ver e enviar.
+- **Datas**: nas telas, ontem, hoje e amanhã aparecem por extenso; nos comprovantes e nas mensagens vai sempre a data.
+- **Índices k1 e k2**: as modalidades aparecem em ordem de k1 (retorno matemático esperado de uma aposta simples), calculado com os dados da Caixa e os parâmetros em `app/src/main/assets/parametros_k.json`. O concurso em destaque é o de maior k1.
+- **Saldo**: tocar no Saldo Líquido gera o "Saldo atual" do termo para mandar ao grupo (só a imagem, sem texto); ele não é registrado nem fica guardado.
 - **Auditoria**: em Extrato, um PDF com todos os comprovantes do período e os anexos originais, em ordem cronológica.
 
 ## Modo de teste
@@ -47,5 +49,5 @@ Ajustes > **Fazer backup** grava um `.zip` em `Downloads/Bolao` com todos os dad
 
 - Kotlin + Jetpack Compose, `minSdk` 29. Leitura do comprovante da Caixa com o ML Kit (Google Play Services, no celular).
 - O APK é assinado no GitHub Actions. A chave fica cifrada em `keystore/bolao.p12.enc`; a senha é o segredo `KEYSTORE_PASSWORD` do repositório. **Guarde essa senha**: sem ela não é possível gerar atualizações que instalem por cima da versão atual.
-- O número da versão é a base de `gradle.properties` mais a contagem de commits (ex.: `0.4.8`).
+- O número da versão é a base de `gradle.properties` mais a contagem de commits (ex.: `0.5.9`).
 - Fontes dos comprovantes: VT323 e Jost (SIL Open Font License, em `app/src/main/assets/fontes`).

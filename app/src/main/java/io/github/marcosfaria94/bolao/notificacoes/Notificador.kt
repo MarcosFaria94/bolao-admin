@@ -19,7 +19,8 @@ import io.github.marcosfaria94.bolao.data.Premiada
 
 /**
  * Os dois avisos que vão para o celular: "Ação necessária" (há pendência no bolão) e
- * "Aposta premiada" (com o valor do prêmio). Todo o resto fica na aba Notificações do app.
+ * "Aposta premiada" (sem o valor: o prêmio é surpresa ao abrir o app). Todo o resto fica na
+ * aba Notificações do app.
  */
 object Notificador {
     private const val CANAL_ACOES = "acoes"
@@ -42,7 +43,7 @@ object Notificador {
         )
         nm.createNotificationChannel(
             NotificationChannel(CANAL_PREMIOS, "Aposta premiada", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Quando uma aposta do bolão é premiada, com o valor do prêmio."
+                description = "Quando uma aposta do bolão é premiada (o valor aparece ao abrir o app)."
             },
         )
     }
@@ -88,7 +89,7 @@ object Notificador {
         NotificationManagerCompat.from(context).cancel(ID_ACOES)
     }
 
-    /** "Aposta premiada!" com o valor do prêmio. Tocar abre a apuração da aposta. */
+    /** "Aposta premiada!", sem o valor. Tocar abre a aposta, onde o prêmio aparece. */
     @SuppressLint("MissingPermission")
     fun apostaPremiada(context: Context, p: Premiada, prefixo: String = "") {
         if (!permitido(context)) return

@@ -52,7 +52,7 @@ fun CampoData(
 ) {
     var aberto by remember { mutableStateOf(false) }
     OutlinedTextField(
-        value = data?.let { Datas.longa(it) } ?: "",
+        value = data?.let { Datas.relativa(it, LocalDate.now()) } ?: "",
         enabled = habilitado,
         onValueChange = {},
         readOnly = true,

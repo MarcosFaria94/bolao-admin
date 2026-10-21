@@ -19,17 +19,8 @@ object Recibos {
 
     private val trava = Any()
 
-    /** Tabela do rateio oficial (só no comprovante de apuração). */
-    fun rateioDe(e: Estado, c: Comprovante): LayoutTermico.RateioOficial? {
-        if (c.tipo != TipoComprovante.APURACAO) return null
-        val a = e.apostas.firstOrNull { it.id == c.apostaId } ?: return null
-        val ap = a.apuracao ?: return null
-        if (ap.rateioOficial.isEmpty()) return null
-        return LayoutTermico.RateioOficial(a.concurso, ap.rateioOficial, ap.faixasPremiadas.toSet(), ap.acumulou)
-    }
-
     fun linhas(e: Estado, c: Comprovante): List<LayoutTermico.Linha> =
-        LayoutTermico.deComprovante(e.nomeExibicao, c, rateioDe(e, c), teste = e.exemplo)
+        LayoutTermico.deComprovante(e.nomeExibicao, c, teste = e.exemplo)
 
     /** Arquivo PNG do comprovante, desenhado agora se ainda não existir (fora da tela principal). */
     fun arquivoAgora(context: Context, e: Estado, c: Comprovante): File {
@@ -48,12 +39,6 @@ object Recibos {
         withContext(Dispatchers.Default) { RenderTermico.desenhar(context, linhas) }
 
     /** Como o comprovante vai ficar, antes de registrar (sem autenticação e com a faixa "PRÉVIA"). */
-    fun previa(
-        e: Estado,
-        tipo: TipoComprovante,
-        texto: String,
-        anexos: Int,
-        rateio: LayoutTermico.RateioOficial? = null,
-    ): List<LayoutTermico.Linha> =
-        LayoutTermico.montar(e.nomeExibicao, tipo, texto, anexos, null, null, rateio, teste = e.exemplo, previa = true)
+    fun previa(e: Estado, tipo: TipoComprovante, texto: String, anexos: Int): List<LayoutTermico.Linha> =
+        LayoutTermico.montar(e.nomeExibicao, tipo, texto, anexos, null, null, teste = e.exemplo, previa = true)
 }

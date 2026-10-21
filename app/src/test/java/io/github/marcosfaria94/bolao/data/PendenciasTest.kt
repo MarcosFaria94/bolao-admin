@@ -131,7 +131,7 @@ class PendenciasTest {
             e, "a", Apuracao("3/7", 0, faixasPremiadas = listOf(5), rateioOficial = rateio, precisaConfirmar = true, conferidaEm = ms(sorteio.atTime(22, 30))),
         )
         val p = Pendencias.de(e, sorteio.atTime(22, 40), fuso).single { it.chave == "apuracao-a" }
-        assertEquals("apuracao/a", p.destino)
+        assertEquals("aposta/a", p.destino)
         assertTrue(Pendencias.prontasParaApurar(e, sorteio.plusDays(1).atTime(9, 0)).isEmpty())
         // E continua sendo conferida (a Caixa pode completar o valor).
         assertEquals(1, Pendencias.aguardandoResultado(e, sorteio.atTime(23, 0)).size)
@@ -146,8 +146,10 @@ class PendenciasTest {
         e = Operacoes.guardarConferencia(e, "a", Apuracao("2/5", 425, faixasPremiadas = listOf(4), rateioOficial = rateio, conferidaEm = ms(agora)))
         val p = Pendencias.premiadas(e, agora, emptySet(), fuso).single()
         assertEquals("Aposta premiada!", p.titulo)
-        assertEquals("Nº1 | Quina · 7146 · Prêmio: R$ 4,25", p.texto)
-        assertEquals("apuracao/a", p.destino)
+        // Sem o valor do prêmio: é surpresa ao abrir o app.
+        assertEquals("Nº1 | Quina · 7146 · Toque para ver o prêmio.", p.texto)
+        assertTrue(p.texto, !p.texto.contains("R$"))
+        assertEquals("aposta/a", p.destino)
         // Avisa uma vez só, e só conferências recentes.
         assertTrue(Pendencias.premiadas(e, agora, setOf(p.chave), fuso).isEmpty())
         assertTrue(Pendencias.premiadas(e, agora.plusDays(4), emptySet(), fuso).isEmpty())
