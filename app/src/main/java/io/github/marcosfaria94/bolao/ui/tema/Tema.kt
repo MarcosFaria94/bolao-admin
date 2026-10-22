@@ -130,6 +130,23 @@ fun corAguardando(): Color = if (isSystemInDarkTheme()) Color(0xFF7CC4FF) else C
 @Composable
 fun corApuracao(): Color = if (isSystemInDarkTheme()) Color(0xFFFFB74D) else Color(0xFFB26A00)
 
+/** Amarelo-ouro do valor das apostas nas movimentações. */
+@Composable
+fun corAposta(): Color = if (isSystemInDarkTheme()) Dourado else Color(0xFF9A6A00)
+
+/** Azul do valor dos rateios nas movimentações. */
+@Composable
+fun corRateio(): Color = if (isSystemInDarkTheme()) Color(0xFF6CB6FF) else Color(0xFF1E63C6)
+
+/** Tarja do prêmio na lista de apostas: tom discreto, diferente da cor da modalidade. */
+object Tarja {
+    @Composable
+    fun fundo(): Color = if (isSystemInDarkTheme()) Color(0xFF222C3A) else Color(0xFFE6EBF2)
+
+    @Composable
+    fun texto(): Color = if (isSystemInDarkTheme()) Color(0xFFE4E9F1) else Color(0xFF13294B)
+}
+
 /** Barra de baixo: azul-noite do ícone, aba escolhida em dourado. */
 object Barra {
     @Composable

@@ -207,6 +207,31 @@ fun SeloModalidade(m: Modalidade, modifier: Modifier = Modifier, tamanho: Int = 
     }
 }
 
+/**
+ * Etiqueta pequena de canto arredondado com o número da aposta ("Nº8"), logo embaixo do selo
+ * da modalidade (na cor dela) ou do ícone de uma movimentação (na cor do ícone).
+ */
+@Composable
+fun EtiquetaNumero(texto: String, fundo: Color, cor: Color, largura: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .width(largura)
+            .background(fundo, RoundedCornerShape(6.dp))
+            .padding(horizontal = 2.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            texto,
+            color = cor,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+            lineHeight = 14.sp,
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
 /** Uma linha "rótulo ......... valor". */
 @Composable
 fun LinhaValor(rotulo: String, valor: String, modifier: Modifier = Modifier, destaque: Boolean = false) {

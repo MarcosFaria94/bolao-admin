@@ -195,6 +195,8 @@ data class Envio(val comprovanteId: String, val em: Long)
 @Serializable
 data class Extincao(
     val iniciadaEm: Long,
+    /** Extinção forçada (opção escondida em Ajustes): começou com pendências, que ficaram como estavam. */
+    val forcada: Boolean = false,
     /** Comprovantes da divisão final (Pix de cada integrante), na ordem dos integrantes. */
     val comprovantes: Map<String, Arquivo> = emptyMap(),
     /** Divisão final registrada (lançamentos e comprovante). */

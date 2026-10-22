@@ -22,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -32,15 +31,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
-import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
-import io.github.marcosfaria94.bolao.domain.Modalidade
-import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.TituloSecao
 import io.github.marcosfaria94.bolao.ui.jogos.CartaoIndice
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /** Saldo, provisionado e extra (topo da Nova aposta e do Financeiro). */
@@ -50,7 +45,7 @@ fun ResumoSaldo(estado: Estado, hoje: LocalDate) {
     val provisionado = Operacoes.provisao(estado, hoje).provisionado
     val extra = saldo - provisionado
     Column {
-        Text("Saldo líquido · ${Datas.relativa(hoje, LocalDate.now())}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Saldo líquido", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(Dinheiro.rs(saldo), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
         Text("Provisionado: ${Dinheiro.rs(provisionado)}", style = MaterialTheme.typography.bodyMedium)
         Text("Extra: " + (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)), style = MaterialTheme.typography.bodyMedium)
@@ -58,10 +53,8 @@ fun ResumoSaldo(estado: Estado, hoje: LocalDate) {
 }
 
 @Composable
-fun NovaApostaTela(estado: Estado, abrirAposta: (String) -> Unit) {
+fun NovaApostaTela(estado: Estado, abrir: (String) -> Unit) {
     val ctx = LocalContext.current
-    val avisos = LocalAvisos.current
-    val escopo = rememberCoroutineScope()
     val hoje = LocalDate.now()
     val indices = remember { ctx.bolao.indices }
     val itens by indices.itens.collectAsStateWithLifecycle()
@@ -69,16 +62,6 @@ fun NovaApostaTela(estado: Estado, abrirAposta: (String) -> Unit) {
     val falhou by indices.falhou.collectAsStateWithLifecycle()
     val rascunhos = Operacoes.rascunhos(estado)
     LaunchedEffect(Unit) { indices.atualizar() }
-
-    fun abrir(m: Modalidade) {
-        escopo.launch {
-            try {
-                abrirAposta(abrirOuCriarAposta(ctx, estado, m))
-            } catch (t: Throwable) {
-                avisos.showSnackbar("Não foi possível começar a aposta: ${t.message}")
-            }
-        }
-    }
 
     LazyColumn(
         contentPadding = PaddingTela,
@@ -91,7 +74,7 @@ fun NovaApostaTela(estado: Estado, abrirAposta: (String) -> Unit) {
             items(rascunhos, key = { it.id }) { r ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                    modifier = Modifier.fillMaxWidth().clickable { abrirAposta(r.id) },
+                    modifier = Modifier.fillMaxWidth().clickable { abrir("aposta/${r.id}") },
                 ) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         SeloModalidade(r.modalidade, tamanho = 36)
@@ -128,7 +111,7 @@ fun NovaApostaTela(estado: Estado, abrirAposta: (String) -> Unit) {
             }
         }
         items(indices.ordenados(itens), key = { it.modalidade.name }) { item ->
-            CartaoIndice(item, estado, aoTocar = { abrir(item.modalidade) })
+            CartaoIndice(item, estado, aoTocar = { abrir(rotaDaAposta(estado, item.modalidade)) })
         }
         item { Spacer(Modifier.height(8.dp)) }
     }

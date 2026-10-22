@@ -33,7 +33,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -57,14 +56,12 @@ import io.github.marcosfaria94.bolao.domain.Formato
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Probabilidades
 import io.github.marcosfaria94.bolao.domain.indices.IndiceK
-import io.github.marcosfaria94.bolao.ui.aposta.abrirOuCriarAposta
+import io.github.marcosfaria94.bolao.ui.aposta.rotaDaAposta
 import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
-import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /** Jogos: as modalidades em ordem de k1 (melhor retorno matemático primeiro). */
@@ -89,12 +86,7 @@ fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit) {
             modifier = Modifier.fillMaxSize(),
         ) {
             item {
-                Text(
-                    "Em ordem de k1: o prêmio líquido esperado de uma aposta simples no próximo concurso, dividido pelo preço. " +
-                        "k2 é a parte do k1 que vem dos prêmios frequentes.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Legenda()
                 if (falhou && itens.values.all { it.ultimo == null }) {
                     Text(
                         "Não foi possível consultar a Caixa agora. Puxe a lista para baixo para tentar de novo.",
@@ -105,6 +97,34 @@ fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit) {
             }
             items(indices.ordenados(itens), key = { it.modalidade.name }) { item ->
                 CartaoIndice(item, estado, aoTocar = { abrirModalidade(item.modalidade) })
+            }
+        }
+    }
+}
+
+/** O que querem dizer os índices dos cartões (a lista vem em ordem de k1). */
+private val LEGENDA = listOf(
+    "k1" to "Melhor retorno",
+    "k2" to "Melhor retorno a curto prazo",
+    "odds" to "Chance de algum prêmio",
+)
+
+/**
+ * Legenda dos índices, com os dois-pontos alinhados:
+ * · k1  : Melhor retorno
+ * · k2  : Melhor retorno a curto prazo
+ * · odds: Chance de algum prêmio
+ */
+@Composable
+private fun Legenda() {
+    val estilo = MaterialTheme.typography.bodyMedium
+    val cor = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)) {
+        LEGENDA.forEach { (sigla, texto) ->
+            Row {
+                Text("·", style = estilo, color = cor, modifier = Modifier.width(14.dp))
+                Text(sigla, style = estilo, color = cor, modifier = Modifier.width(38.dp))
+                Text(": $texto", style = estilo, color = cor)
             }
         }
     }
@@ -148,10 +168,8 @@ private fun premiacao(m: Modalidade): String = when (m) {
 
 /** Detalhe de uma modalidade: próximo concurso, último resultado, premiação, regras e probabilidades. */
 @Composable
-fun ModalidadeTela(estado: Estado, m: Modalidade, abrirAposta: (String) -> Unit) {
+fun ModalidadeTela(estado: Estado, m: Modalidade, abrir: (String) -> Unit) {
     val ctx = LocalContext.current
-    val avisos = LocalAvisos.current
-    val escopo = rememberCoroutineScope()
     val indices = remember { ctx.bolao.indices }
     val itens by indices.itens.collectAsStateWithLifecycle()
     val atualizando by indices.atualizando.collectAsStateWithLifecycle()
@@ -209,15 +227,8 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrirAposta: (String) -> Unit)
                 }
                 Spacer(Modifier.width(16.dp))
                 Button(
-                    onClick = {
-                        escopo.launch {
-                            try {
-                                abrirAposta(abrirOuCriarAposta(ctx, estado, m))
-                            } catch (t: Throwable) {
-                                avisos.showSnackbar("Não foi possível começar a aposta: ${t.message}")
-                            }
-                        }
-                    },
+                    // A aposta em andamento da modalidade, ou uma nova (com o volante vazio).
+                    onClick = { abrir(rotaDaAposta(estado, m)) },
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
                 ) { Text("APOSTAR", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             }

@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
@@ -86,6 +87,8 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
     var confirmandoRestauracao by remember { mutableStateOf(false) }
     var trabalhando by remember { mutableStateOf(false) }
     var pedindoExtincao by remember { mutableStateOf(false) }
+    // Extinção forçada: destravada pelos toques no quadro da extinção (vale enquanto a tela está aberta).
+    var forcadaLiberada by remember { mutableStateOf(false) }
 
     val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) Notificador.teste(ctx)
@@ -330,11 +333,22 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
 
         item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
         item { TituloSecao("Extinção do Bolão") }
-        item { CartaoExtincao(estado, aoPedir = { pedindoExtincao = true }) }
+        item {
+            CartaoExtincao(
+                estado,
+                forcadaLiberada = forcadaLiberada,
+                aoLiberarForcada = { forcadaLiberada = true },
+                aoPedir = { pedindoExtincao = true },
+            )
+        }
     }
 
     if (pedindoExtincao) {
-        DialogoExtincao(estado, aoFechar = { pedindoExtincao = false })
+        DialogoExtincao(
+            estado,
+            forcada = forcadaLiberada && Operacoes.impedimentosDaExtincao(estado).isNotEmpty(),
+            aoFechar = { pedindoExtincao = false },
+        )
     }
 
     if (sairDoTeste) DialogoSairDoTeste(aoFechar = { sairDoTeste = false })

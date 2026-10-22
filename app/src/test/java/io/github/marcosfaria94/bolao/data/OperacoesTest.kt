@@ -240,4 +240,41 @@ class OperacoesTest {
         assertNotNull(e.extincao!!.registradaEm)
         assertNull(Operacoes.primeiraAutenticacaoQuebrada(e))
     }
+
+    @Test
+    fun extincaoForcada() {
+        var e = inicial()
+        // Aposta sem apuração e comprovante não enviado: a extinção normal não começa.
+        val (e1, _) = aposta(e.copy(lancamentos = e.lancamentos + Lancamento("x", d(1), 1, TipoLancamento.APORTE, 300)), 4, Modalidade.QUINA, 300)
+        e = e1
+        assertTrue(Operacoes.impedimentosDaExtincao(e).isNotEmpty())
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.iniciarExtincao(e, agora()) }
+
+        // A forçada começa assim mesmo, e as pendências ficam como estavam.
+        val forcada = Operacoes.iniciarExtincao(e, agora(), forcada = true)
+        assertTrue(forcada.extincao!!.forcada)
+        assertEquals(e.apostas, forcada.apostas)
+        assertEquals(e.envios, forcada.envios)
+        // Com saldo, segue a divisão final de sempre.
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.encerrarSemDivisao(forcada, agora()) }
+    }
+
+    @Test
+    fun extincaoForcadaSemSaldo() {
+        var e = inicial().copy(lancamentos = listOf(Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 300)))
+        val (e1, _) = aposta(e, 4, Modalidade.QUINA, 300)
+        e = e1
+        assertEquals(0L, Operacoes.saldo(e))
+        assertTrue(Operacoes.impedimentosDaExtincao(e).any { it.contains("saldo remanescente") })
+
+        e = Operacoes.iniciarExtincao(e, agora(), forcada = true)
+        // Sem saldo não há divisão: a extinção vai direto para o PDF, sem lançamento nem comprovante.
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarExtincao(e, d(7), agora()) }
+        val antes = e.comprovantes.size
+        e = Operacoes.encerrarSemDivisao(e, agora())
+        assertNotNull(e.extincao!!.registradaEm)
+        assertEquals(antes, e.comprovantes.size)
+        assertEquals(0L, Operacoes.saldo(e))
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.encerrarSemDivisao(e, agora()) }
+    }
 }

@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -33,7 +32,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,8 +51,9 @@ import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.domain.Calendario
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
+import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.ui.comum.CabecalhoDia
-import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
+import io.github.marcosfaria94.bolao.ui.comum.EtiquetaNumero
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
@@ -63,11 +62,11 @@ import io.github.marcosfaria94.bolao.ui.comum.TituloComMes
 import io.github.marcosfaria94.bolao.ui.comum.mesesComDados
 import io.github.marcosfaria94.bolao.ui.tema.AzulMarinho
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
+import io.github.marcosfaria94.bolao.ui.tema.Tarja
 import io.github.marcosfaria94.bolao.ui.tema.corAguardando
 import io.github.marcosfaria94.bolao.ui.tema.corApuracao
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import io.github.marcosfaria94.bolao.ui.tema.corPremiada
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -107,15 +106,13 @@ fun corDaSituacao(s: Situacao): Color = when (s) {
     Situacao.NAO_PREMIADA -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
-/** "Nº8 | Mega-Sena · 3072". */
-fun tituloDaAposta(a: Aposta, numero: Int = a.numero): String =
-    "Nº$numero | ${a.modalidade.nome}" + if (a.concurso > 0) " · ${a.concurso}" else ""
+/** "Mega-Sena · 3073" (o Nº da aposta vai na etiqueta embaixo do selo). */
+fun tituloDaAposta(a: Aposta): String =
+    a.modalidade.nome + if (a.concurso > 0) " · ${a.concurso}" else ""
 
 @Composable
 fun ApostasTela(estado: Estado, abrir: (String) -> Unit) {
     val ctx = LocalContext.current
-    val avisos = LocalAvisos.current
-    val escopo = rememberCoroutineScope()
     val hoje = LocalDate.now()
     val indices = remember { ctx.bolao.indices }
     val itens by indices.itens.collectAsStateWithLifecycle()
@@ -134,19 +131,9 @@ fun ApostasTela(estado: Estado, abrir: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item {
-            CartaoDestaque(destaque, hoje) {
-                val m = destaque?.modalidade ?: return@CartaoDestaque
-                escopo.launch {
-                    try {
-                        abrir("aposta/" + abrirOuCriarAposta(ctx, estado, m))
-                    } catch (t: Throwable) {
-                        avisos.showSnackbar("Não foi possível começar a aposta: ${t.message}")
-                    }
-                }
-            }
-        }
-        item { CartaoProximaAposta(hoje, Operacoes.apostaFeitaEm(estado, hoje), aoJogar = { abrir("apostar") }) }
+        // Tocar no concurso em destaque abre a página do jogo (lá fica o botão de apostar).
+        item { CartaoDestaque(destaque, hoje) { m -> abrir("modalidade/${m.name}") } }
+        item { CartaoProximaAposta(hoje, Operacoes.apostaFeitaEm(estado, hoje), aoApostar = { abrir("apostar") }) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TituloComMes("Apostas do mês", meses, mes) { mes = it }
@@ -181,13 +168,21 @@ fun ApostasTela(estado: Estado, abrir: (String) -> Unit) {
 
 /**
  * Concurso em destaque (o de maior k1): azul-noite com dourado. Selo com "Quina · 7147",
- * o prêmio grande, "Sorteio: Hoje" e o botão "Apostar agora".
+ * o prêmio grande e "Sorteio: Hoje". O cartão inteiro abre a página do jogo.
  */
 @Composable
-private fun CartaoDestaque(item: Indices.Item?, hoje: LocalDate, aoApostar: () -> Unit) {
+private fun CartaoDestaque(item: Indices.Item?, hoje: LocalDate, aoTocar: (Modalidade) -> Unit) {
     val suave = Color(0xFFC9D3E6)
+    val cores = CardDefaults.cardColors(
+        containerColor = AzulMarinho,
+        contentColor = Color.White,
+        disabledContainerColor = AzulMarinho,
+        disabledContentColor = Color.White,
+    )
     Card(
-        colors = CardDefaults.cardColors(containerColor = AzulMarinho, contentColor = Color.White),
+        onClick = { item?.let { aoTocar(it.modalidade) } },
+        enabled = item != null,
+        colors = cores,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(18.dp)) {
@@ -200,7 +195,11 @@ private fun CartaoDestaque(item: Indices.Item?, hoje: LocalDate, aoApostar: () -
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.2.sp,
                     color = Dourado,
+                    modifier = Modifier.weight(1f),
                 )
+                if (item != null) {
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = "Abrir o jogo", tint = suave)
+                }
             }
             Spacer(Modifier.height(14.dp))
             if (item == null) {
@@ -240,20 +239,12 @@ private fun CartaoDestaque(item: Indices.Item?, hoje: LocalDate, aoApostar: () -
                     color = suave,
                 )
             }
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = aoApostar,
-                colors = ButtonDefaults.buttonColors(containerColor = Dourado, contentColor = Color(0xFF241A00)),
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-            ) {
-                Text("Apostar agora", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            }
         }
     }
 }
 
 @Composable
-private fun CartaoProximaAposta(hoje: LocalDate, apostaDeHojeFeita: Boolean, aoJogar: () -> Unit) {
+private fun CartaoProximaAposta(hoje: LocalDate, apostaDeHojeFeita: Boolean, aoApostar: () -> Unit) {
     val ehHoje = Calendario.ehDiaProgramado(hoje) && !apostaDeHojeFeita
     val dia = if (ehHoje) hoje else Calendario.diaProgramadoDepoisDe(hoje)
     Card(
@@ -267,45 +258,51 @@ private fun CartaoProximaAposta(hoje: LocalDate, apostaDeHojeFeita: Boolean, aoJ
                 Text(Datas.relativa(dia, hoje), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             }
             Button(
-                onClick = aoJogar,
-                contentPadding = PaddingValues(horizontal = 30.dp, vertical = 14.dp),
-            ) { Text("Jogar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                onClick = aoApostar,
+                contentPadding = PaddingValues(horizontal = 26.dp, vertical = 14.dp),
+            ) { Text("Apostar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         }
     }
 }
 
-/** Tarja com o prêmio principal do concurso, no formato "R$ 52.000.000,00", na cor da modalidade. */
+/** Tarja com o prêmio principal do concurso, no formato "R$ 52.000.000,00", em tom discreto. */
 @Composable
-private fun TarjaPremio(a: Aposta, centavos: Long) {
+private fun TarjaPremio(centavos: Long) {
     Box(
         Modifier
             .fillMaxWidth()
-            .background(corModalidade(a.modalidade.cor), RoundedCornerShape(6.dp))
+            .background(Tarja.fundo(), RoundedCornerShape(6.dp))
             .padding(horizontal = 8.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
+        TextoQueCabe(
             Dinheiro.rs(centavos),
-            color = Color.White,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
+            MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, textAlign = TextAlign.Center),
+            cor = Tarja.texto(),
+            peso = FontWeight.Bold,
+            menor = 13.sp,
         )
     }
 }
 
-/** Uma aposta: o selo, a tarja com o prêmio, "Nº8 | Mega-Sena · 3072" e a situação. */
+/**
+ * Uma aposta: o selo com a etiqueta "Nº8" embaixo (na cor da modalidade), a tarja com o prêmio,
+ * "Mega-Sena · 3073" e a situação.
+ */
 @Composable
 private fun ItemAposta(a: Aposta, s: Situacao, hoje: LocalDate, aoTocar: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().clickable(onClick = aoTocar).padding(vertical = 12.dp),
     ) {
-        SeloModalidade(a.modalidade, tamanho = 52)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            SeloModalidade(a.modalidade, tamanho = 52)
+            Spacer(Modifier.height(4.dp))
+            EtiquetaNumero("Nº${a.numero}", fundo = corModalidade(a.modalidade.cor), cor = Color.White, largura = 52.dp)
+        }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            a.premioEstimado?.takeIf { it > 0 }?.let { TarjaPremio(a, it) }
+            a.premioEstimado?.takeIf { it > 0 }?.let { TarjaPremio(it) }
             Text(
                 tituloDaAposta(a),
                 style = MaterialTheme.typography.titleMedium,

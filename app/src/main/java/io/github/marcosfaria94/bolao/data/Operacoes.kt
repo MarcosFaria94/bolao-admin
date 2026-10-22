@@ -601,10 +601,25 @@ object Operacoes {
         if (saldo(e) <= 0) add("Não há saldo remanescente para dividir.")
     }
 
-    fun iniciarExtincao(e: Estado, agora: Long): Estado {
+    /**
+     * Começa a extinção. A [forcada] (opção escondida em Ajustes) não espera as pendências:
+     * apostas sem apuração, rascunhos e comprovantes não enviados ficam como estão.
+     */
+    fun iniciarExtincao(e: Estado, agora: Long, forcada: Boolean = false): Estado {
         require(e.extincao == null) { "A extinção já começou." }
-        impedimentosDaExtincao(e).firstOrNull()?.let { throw IllegalArgumentException(it) }
-        return e.copy(extincao = Extincao(iniciadaEm = agora))
+        if (!forcada) impedimentosDaExtincao(e).firstOrNull()?.let { throw IllegalArgumentException(it) }
+        return e.copy(extincao = Extincao(iniciadaEm = agora, forcada = forcada))
+    }
+
+    /**
+     * Extinção forçada sem saldo para dividir: não há Pix nem lançamento; a extinção segue
+     * direto para o PDF da auditoria.
+     */
+    fun encerrarSemDivisao(e: Estado, agora: Long): Estado {
+        val x = requireNotNull(e.extincao) { "A extinção não começou." }
+        require(x.registradaEm == null) { "A divisão final já foi registrada." }
+        require(saldo(e) <= 0) { "Há saldo para dividir: registre a divisão final." }
+        return e.copy(extincao = x.copy(registradaEm = agora))
     }
 
     fun anexarNaExtincao(e: Estado, pessoaId: String, arquivo: Arquivo): Estado {

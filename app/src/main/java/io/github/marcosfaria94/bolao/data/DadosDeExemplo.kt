@@ -343,7 +343,7 @@ object DadosDeExemplo {
         return (if (dias >= 0) numeroRef - passos else numeroRef + passos).coerceAtLeast(1)
     }
 
-    /** Palpite sorteado, como o do botão "Completar com aleatórios" (com Time do Coração). */
+    /** Palpite sorteado, como o do botão "Completar" (com Time do Coração). */
     private fun palpiteLivre(m: Modalidade, r: Random): Palpite {
         val p = Volante.sortear(m, r)
         return if (m.extra == Extra.TIME_DO_CORACAO) p.copy(extra = TIME_APOSTADO) else p

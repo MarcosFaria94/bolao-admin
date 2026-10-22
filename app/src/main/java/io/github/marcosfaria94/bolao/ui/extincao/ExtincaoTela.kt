@@ -90,6 +90,9 @@ fun ExtincaoTela(estado: Estado) {
     val x = estado.extincao ?: return
     val hoje = LocalDate.now()
     val divisao = Operacoes.divisaoFinal(estado)
+    // Só na extinção forçada: sem saldo, não há divisão nem Pix (vai direto para o PDF).
+    // Depois de registrada, a divisão deixa o saldo zerado: aí vale se houve o comprovante dela.
+    val semDivisao = if (x.registradaEm == null) divisao.saldo <= 0 else estado.comprovantes.none { it.tipo == TipoComprovante.EXTINCAO }
 
     var paraQuem by remember { mutableStateOf<String?>(null) }
     var confirmar by remember { mutableStateOf(false) }
@@ -97,6 +100,7 @@ fun ExtincaoTela(estado: Estado) {
     var trabalhando by remember { mutableStateOf(false) }
     var perguntarSeEnviou by remember { mutableStateOf(false) }
     var confirmarApagar by remember { mutableStateOf(false) }
+    var confirmarSemDivisao by remember { mutableStateOf(false) }
 
     // Não há como voltar: a extinção vai até o fim.
     BackHandler(enabled = true) {}
@@ -155,7 +159,10 @@ fun ExtincaoTela(estado: Estado) {
                 style = MaterialTheme.typography.bodyMedium,
             )
 
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            if (x.forcada) {
+                Aviso("Extinção forçada: as pendências do bolão ficaram como estavam.")
+            }
+            if (!semDivisao) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                 Column(Modifier.padding(12.dp)) {
                     Text("Divisão final do saldo", style = MaterialTheme.typography.titleMedium)
                     LinhaValor("Saldo líquido", Dinheiro.rs(divisao.saldo))
@@ -165,7 +172,14 @@ fun ExtincaoTela(estado: Estado) {
                 }
             }
 
-            if (x.registradaEm == null) {
+            if (x.registradaEm == null && semDivisao) {
+                Aviso("Não há saldo para dividir: não há Pix a fazer. A extinção segue direto para o PDF da auditoria.")
+                Button(
+                    onClick = { confirmarSemDivisao = true },
+                    enabled = !trabalhando,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Gerar o PDF da auditoria") }
+            } else if (x.registradaEm == null) {
                 if (estado.exemplo) {
                     TextButton(onClick = {
                         escopo.launch {
@@ -219,7 +233,7 @@ fun ExtincaoTela(estado: Estado) {
                 )
             } else {
                 val quando = Instant.ofEpochMilli(x.registradaEm).atZone(ZoneId.systemDefault()).toLocalDate()
-                Aviso("Divisão final registrada ${Datas.quando(quando, hoje)}.")
+                Aviso(if (semDivisao) "Extinção registrada ${Datas.quando(quando, hoje)}, sem saldo para dividir." else "Divisão final registrada ${Datas.quando(quando, hoje)}.")
                 val pdf = x.auditoria
                 if (pdf == null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -288,6 +302,25 @@ fun ExtincaoTela(estado: Estado) {
                 }
             },
             aoFechar = { confirmar = false },
+        )
+    }
+
+    if (confirmarSemDivisao) {
+        DialogoConfirmar(
+            titulo = "Encerrar sem divisão?",
+            texto = "Não há saldo para dividir. O app gera agora o PDF da auditoria completa, para enviar ao grupo.\n\n$AVISO_DEFINITIVO",
+            confirmar = "Confirmar",
+            aoConfirmar = {
+                confirmarSemDivisao = false
+                escopo.launch {
+                    try {
+                        repo.atualizar { Operacoes.encerrarSemDivisao(it, System.currentTimeMillis()) }
+                    } catch (t: Throwable) {
+                        avisos.showSnackbar("Não foi possível encerrar: ${t.message}")
+                    }
+                }
+            },
+            aoFechar = { confirmarSemDivisao = false },
         )
     }
 

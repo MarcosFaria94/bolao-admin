@@ -259,6 +259,22 @@ class Repositorio(private val context: Context) {
     }
 
     /**
+     * Apaga um anexo que nenhum registro usa: o comprovante da Caixa de uma aposta descartada
+     * ou um anexo trocado. Roda na fila, depois das mudanças já pedidas (se a aposta foi
+     * gravada ou registrada antes, o arquivo continua).
+     */
+    fun apagarSeSolto(a: Arquivo) {
+        escopo.launch {
+            runCatching {
+                naFila {
+                    val e = _estado.value ?: lerDoDisco(espaco)
+                    if (a.nome !in usados(e)) File(pastaArquivos, a.nome).delete()
+                }
+            }
+        }
+    }
+
+    /**
      * Fim da extinção: apaga todos os dados e anexos do bolão (o app volta ao cadastro).
      * No modo de teste, apaga só os dados de exemplo e volta aos dados reais.
      */

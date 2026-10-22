@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,34 +35,57 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Lancamento
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
+import io.github.marcosfaria94.bolao.ui.tema.corAposta
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
+import io.github.marcosfaria94.bolao.ui.tema.corRateio
 import java.time.LocalDate
 import java.time.YearMonth
 
-/** Nome de um lançamento nas listas: "Aposta Nº05 · Lotomania", "Aporte mensal"... */
+/**
+ * Nome de um lançamento nas listas: "Aposta · Lotomania · 2850", "Prêmio · Lotofácil · 3809",
+ * "Aporte mensal"... O Nº da aposta vai na etiqueta embaixo do ícone ([numeroLancamento]).
+ */
 fun rotuloLancamento(e: Estado, l: Lancamento): String {
     val a = l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }
-    fun n(v: Int) = v.toString().padStart(2, '0')
+    fun jogo(a: Aposta) = a.modalidade.nome + if (a.concurso > 0) " · ${a.concurso}" else ""
     return when (l.tipo) {
         TipoLancamento.SALDO_INICIAL -> "Saldo inicial"
         TipoLancamento.APORTE -> if (l.eventual) "Aporte adicional" else "Aporte mensal"
-        TipoLancamento.APOSTA -> a?.let { "Aposta Nº${n(it.numero)} · ${it.modalidade.nome}" } ?: "Aposta"
-        TipoLancamento.PREMIO -> a?.let { "Prêmio Nº${n(it.numero)} · ${it.modalidade.nome}" } ?: "Prêmio"
+        TipoLancamento.APOSTA -> a?.let { "Aposta · ${jogo(it)}" } ?: "Aposta"
+        TipoLancamento.PREMIO -> a?.let { "Prêmio · ${jogo(it)}" } ?: "Prêmio"
         TipoLancamento.RATEIO -> "Rateio entre os integrantes"
         TipoLancamento.RENDIMENTO -> "Rendimento da caixinha"
         TipoLancamento.COMPLEMENTO -> "Complemento do Administrador"
         TipoLancamento.DIVISAO_FINAL -> "Divisão final do saldo"
     }
+}
+
+/** Nº da aposta de uma aposta ou de um prêmio (null nos outros lançamentos). */
+fun numeroLancamento(e: Estado, l: Lancamento): Int? =
+    if (l.tipo == TipoLancamento.APOSTA || l.tipo == TipoLancamento.PREMIO) {
+        l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }?.numero?.takeIf { it > 0 }
+    } else {
+        null
+    }
+
+/** Cor do valor: amarelo-ouro nas apostas, azul nos rateios e verde no dinheiro que entra. */
+@Composable
+fun corDoValor(t: TipoLancamento, valor: Long): Color = when (t) {
+    TipoLancamento.APOSTA -> corAposta()
+    TipoLancamento.RATEIO, TipoLancamento.DIVISAO_FINAL -> corRateio()
+    else -> if (valor >= 0) corEntrada() else MaterialTheme.colorScheme.onSurface
 }
 
 fun iconeLancamento(t: TipoLancamento): ImageVector = when (t) {
@@ -91,11 +115,19 @@ fun CabecalhoDia(data: LocalDate, hoje: LocalDate = LocalDate.now(), modifier: M
 }
 
 /**
- * Uma movimentação, como nos apps de banco: ícone redondo, o nome em negrito e o valor
- * logo embaixo (verde quando o dinheiro entra).
+ * Uma movimentação, como nos apps de banco: ícone redondo (com a etiqueta "Nº7" embaixo, nas
+ * apostas e nos prêmios), o nome em negrito e o valor logo embaixo, na cor do tipo.
  */
 @Composable
-fun ItemMovimento(icone: ImageVector, titulo: String, valor: Long, aoTocar: (() -> Unit)? = null) {
+fun ItemMovimento(
+    icone: ImageVector,
+    titulo: String,
+    valor: Long,
+    corValor: Color,
+    numero: Int? = null,
+    aoTocar: (() -> Unit)? = null,
+) {
+    val fundoIcone = MaterialTheme.colorScheme.surfaceContainerHighest
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -103,11 +135,17 @@ fun ItemMovimento(icone: ImageVector, titulo: String, valor: Long, aoTocar: (() 
             .clickable(enabled = aoTocar != null) { aoTocar?.invoke() }
             .padding(vertical = 10.dp),
     ) {
-        Box(
-            Modifier.size(42.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icone, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                Modifier.size(42.dp).background(fundoIcone, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icone, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+            }
+            if (numero != null) {
+                Spacer(Modifier.height(4.dp))
+                EtiquetaNumero("Nº$numero", fundo = fundoIcone, cor = MaterialTheme.colorScheme.onSurfaceVariant, largura = 42.dp)
+            }
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -121,7 +159,7 @@ fun ItemMovimento(icone: ImageVector, titulo: String, valor: Long, aoTocar: (() 
             Text(
                 valorComSinal(valor),
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (valor >= 0) corEntrada() else MaterialTheme.colorScheme.onSurface,
+                color = corValor,
             )
         }
         if (aoTocar != null) {
@@ -148,7 +186,14 @@ fun ListaLancamentos(estado: Estado, lista: List<Lancamento>, aoTocar: ((Lancame
         } else {
             HorizontalDivider(Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant)
         }
-        ItemMovimento(iconeLancamento(l.tipo), rotuloLancamento(estado, l), l.valor, aoTocar?.let { { it(l) } })
+        ItemMovimento(
+            icone = iconeLancamento(l.tipo),
+            titulo = rotuloLancamento(estado, l),
+            valor = l.valor,
+            corValor = corDoValor(l.tipo, l.valor),
+            numero = numeroLancamento(estado, l),
+            aoTocar = aoTocar?.let { { it(l) } },
+        )
     }
 }
 

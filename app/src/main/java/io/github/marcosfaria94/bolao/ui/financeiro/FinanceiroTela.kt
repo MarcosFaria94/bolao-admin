@@ -1,5 +1,7 @@
 package io.github.marcosfaria94.bolao.ui.financeiro
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,15 +15,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Savings
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Lancamento
 import io.github.marcosfaria94.bolao.data.Operacoes
@@ -42,6 +44,7 @@ import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.ui.comum.ListaLancamentos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
+import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.comum.TextoVazio
 import io.github.marcosfaria94.bolao.ui.comum.TituloComMes
 import io.github.marcosfaria94.bolao.ui.comum.mesesComDados
@@ -72,7 +75,6 @@ fun FinanceiroTela(estado: Estado, abrir: (String) -> Unit) {
     ) {
         item {
             Saldo(
-                data = hoje,
                 saldo = saldo,
                 provisionado = provisao.provisionado,
                 extra = saldo - provisao.provisionado,
@@ -108,41 +110,54 @@ fun FinanceiroTela(estado: Estado, abrir: (String) -> Unit) {
 }
 
 /**
- * Saldo no estilo dos apps de banco: rótulo discreto, o valor grande e, embaixo,
- * o provisionado e o extra. Tocar gera o documento do saldo para o grupo.
+ * Saldo no estilo dos apps de banco, num quadro que dá para tocar: "Saldo líquido", o valor
+ * grande e, embaixo, o provisionado e o extra. Tocar gera o "Saldo atual" para o grupo.
  */
 @Composable
-private fun Saldo(data: LocalDate, saldo: Long, provisionado: Long, extra: Long, aoTocar: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clickable(onClick = aoTocar).padding(top = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+private fun Saldo(saldo: Long, provisionado: Long, extra: Long, aoTocar: () -> Unit) {
+    Card(
+        onClick = aoTocar,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+    ) {
+        Column(Modifier.padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 18.dp)) {
             Text(
-                "Saldo líquido · ${Datas.relativa(data, LocalDate.now())}",
-                style = MaterialTheme.typography.titleSmall,
+                "Saldo líquido",
+                style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = aoTocar) {
-                Icon(Icons.Outlined.Share, contentDescription = "Enviar o saldo ao grupo", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextoQueCabe(
+                Dinheiro.rs(saldo),
+                MaterialTheme.typography.displayMedium,
+                peso = FontWeight.Bold,
+                menor = 28.sp,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Indicador("Provisionado", Dinheiro.rs(provisionado), Modifier.weight(1f))
+                Indicador("Extra", (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)), Modifier.weight(1f))
             }
-        }
-        Text(Dinheiro.rs(saldo), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            Indicador("Provisionado", Dinheiro.rs(provisionado), Modifier.weight(1f))
-            Indicador("Extra", (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)), Modifier.weight(1f))
         }
     }
 }
 
 @Composable
 private fun Indicador(rotulo: String, valor: String, modifier: Modifier) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        modifier = modifier,
+    Box(
+        modifier
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Text(rotulo, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(valor, style = MaterialTheme.typography.titleMedium)
+        Column {
+            Text(rotulo, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextoQueCabe(
+                valor,
+                MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
+                menor = 14.sp,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

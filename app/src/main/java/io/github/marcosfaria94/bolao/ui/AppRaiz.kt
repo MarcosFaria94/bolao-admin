@@ -5,6 +5,8 @@ import android.content.Context
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -66,6 +68,7 @@ import io.github.marcosfaria94.bolao.notificacoes.Notificador
 import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.ui.ajustes.AjustesTela
 import io.github.marcosfaria94.bolao.ui.aporte.AporteTela
+import io.github.marcosfaria94.bolao.ui.aposta.ApostaNovaTela
 import io.github.marcosfaria94.bolao.ui.aposta.ApostaTela
 import io.github.marcosfaria94.bolao.ui.aposta.ApostasTela
 import io.github.marcosfaria94.bolao.ui.aposta.NovaApostaTela
@@ -204,7 +207,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         "extrato", "extrato/{mes}" -> "Extrato"
         "comprovante/{id}" -> "Comprovante"
         "apostar" -> "Nova aposta"
-        "aposta/{id}", "apuracao/{id}" -> "Aposta"
+        "aposta/{id}", "apuracao/{id}", "nova/{nome}" -> "Aposta"
         "modalidade/{nome}" -> "Jogos"
         "saldo" -> "Saldo"
         "integridade" -> "Verificar integridade"
@@ -274,7 +277,16 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         // Nas abas a barra de baixo já cuida da margem do sistema; nas outras telas, o conteúdo cuida.
         contentWindowInsets = if (ehAba) WindowInsets(0, 0, 0, 0) else WindowInsets.navigationBars,
     ) { padding ->
-        NavHost(nav, startDestination = Aba.FINANCEIRO.rota, modifier = Modifier.padding(padding)) {
+        // Troca de tela instantânea, sem o esmaecer (fade) padrão da navegação.
+        NavHost(
+            nav,
+            startDestination = Aba.FINANCEIRO.rota,
+            modifier = Modifier.padding(padding),
+            enterTransition = { EnterTransition.None },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { ExitTransition.None },
+        ) {
             composable(Aba.FINANCEIRO.rota) { FinanceiroTela(estado, abrir = ::abrir) }
             composable(Aba.APOSTAS.rota) { ApostasTela(estado, abrir = ::abrir) }
             composable(Aba.JOGOS.rota) { JogosTela(estado, abrirModalidade = { abrir("modalidade/${it.name}") }) }
@@ -291,12 +303,17 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             }
             composable("comprovante/{id}") { e -> ComprovanteTela(estado, e.arguments?.getString("id").orEmpty()) }
             composable("apostar") {
-                NovaApostaTela(estado, abrirAposta = { id ->
-                    nav.navigate("aposta/$id") { popUpTo("apostar") { inclusive = true } }
+                NovaApostaTela(estado, abrir = { r ->
+                    nav.navigate(r) { popUpTo("apostar") { inclusive = true } }
                 })
             }
             composable("aposta/{id}") { e ->
                 ApostaTela(estado, id = e.arguments?.getString("id").orEmpty(), aoSair = { nav.popBackStack() })
+            }
+            // Aposta nova: só vai para "Em andamento" quando confirmada (senão, é descartada ao sair).
+            composable("nova/{nome}") { e ->
+                val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
+                if (m != null) ApostaNovaTela(estado, m, aoSair = { nav.popBackStack() })
             }
             // A apuração fica na tela da aposta (avisos antigos ainda podem abrir este endereço).
             composable("apuracao/{id}") { e ->
@@ -304,9 +321,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             }
             composable("modalidade/{nome}") { e ->
                 val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
-                if (m != null) {
-                    ModalidadeTela(estado, m, abrirAposta = { id -> nav.navigate("aposta/$id") })
-                }
+                if (m != null) ModalidadeTela(estado, m, abrir = ::abrir)
             }
         }
     }
