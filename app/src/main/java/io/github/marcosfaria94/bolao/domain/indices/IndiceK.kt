@@ -30,6 +30,8 @@ data class RegistroK(
     val indicadorConcursoEspecial: Int = 1,
     /** Ganhadores por faixa (listaRateioPremio). */
     val ganhadores: Map<Int, Int> = emptyMap(),
+    /** Prêmio pago a cada ganhador, por faixa (listaRateioPremio, valorPremio; líquido do IR). */
+    val premios: Map<Int, Double> = emptyMap(),
 ) {
     companion object {
         /** Lê os campos do JSON da API (ou dos casos de teste, no mesmo formato). */
@@ -49,6 +51,12 @@ data class RegistroK(
                 val f = e as? JsonObject ?: return@mapNotNull null
                 val faixa = f.inteiro("faixa") ?: return@mapNotNull null
                 faixa to (f.inteiro("numeroDeGanhadores") ?: 0)
+            }.toMap(),
+            premios = o.lista("listaRateioPremio").mapNotNull { e ->
+                val f = e as? JsonObject ?: return@mapNotNull null
+                val faixa = f.inteiro("faixa") ?: return@mapNotNull null
+                val valor = f.numOuNull("valorPremio") ?: return@mapNotNull null
+                faixa to valor
             }.toMap(),
         )
     }
@@ -259,9 +267,16 @@ object IndiceK {
         return runCatching { LocalDate.of(a, m, d).dayOfWeek.value - 1 }.getOrNull()
     }
 
-    /** k1, k2 e as entradas do próximo concurso, a partir do último concurso apurado [u] e do anterior [a]. */
-    fun calcular(p: ParametrosK, chave: String, u: RegistroK, a: RegistroK): ResultadoK {
-        val m = p.modalidades[chave] ?: throw IllegalArgumentException("Modalidade sem parâmetros: $chave")
+    /**
+     * k1, k2 e as entradas do próximo concurso, a partir do último concurso apurado [u] e do anterior [a].
+     * [preco]: preço da aposta simples em reais (o de Ajustes); null = o do parametros_k.json. Ele entra
+     * em tudo o que depende do preço: o pote de cada aposta, as vendas do concurso anterior
+     * (arrecadação ÷ preço) e a divisão final do retorno. Assim, se a Caixa reajusta o preço e Ajustes
+     * é atualizado, os índices acompanham.
+     */
+    fun calcular(p: ParametrosK, chave: String, u: RegistroK, a: RegistroK, preco: Double? = null): ResultadoK {
+        val doArquivo = p.modalidades[chave] ?: throw IllegalArgumentException("Modalidade sem parâmetros: $chave")
+        val m = if (preco != null && preco > 0 && preco != doArquivo.preco) doArquivo.copy(preco = preco) else doArquivo
         val ir = p.irAliquota
         val limite = p.limiteIsencao
         val numero = u.numeroConcursoProximo ?: (u.numero + 1)

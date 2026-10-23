@@ -40,6 +40,7 @@ import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.domain.Dinheiro
+import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.seguranca.Biometria
 import io.github.marcosfaria94.bolao.seguranca.atividade
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
@@ -56,7 +57,7 @@ private const val ESPERA_DEPOIS_DA_DICA_MS = 4_000L
 /**
  * Seção "Extinção do Bolão" dos Ajustes. O quadro tem um botão invisível: 5 toques seguidos
  * mostram a dica "Toque mais 5 vezes para desbloquear opção" e, com mais 5, o botão vira
- * "Extinção forçada" (ignora as pendências da lista).
+ * "Extinção forçada": a formatação do app (ignora tudo, inclusive a divisão e a auditoria).
  */
 @Composable
 fun CartaoExtincao(estado: Estado, forcadaLiberada: Boolean, aoLiberarForcada: () -> Unit, aoPedir: () -> Unit) {
@@ -88,7 +89,7 @@ fun CartaoExtincao(estado: Estado, forcadaLiberada: Boolean, aoLiberarForcada: (
             }
         }
     }
-    val forcar = forcadaLiberada && impedimentos.isNotEmpty()
+    val forcar = forcadaLiberada
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
         modifier = Modifier
@@ -99,14 +100,19 @@ fun CartaoExtincao(estado: Estado, forcadaLiberada: Boolean, aoLiberarForcada: (
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "Encerra o bolão (Parte 5 do termo): divide o saldo entre os integrantes, gera o PDF da auditoria " +
-                    "completa e, depois de enviado ao grupo, apaga tudo para cadastrar um novo grupo.",
+                if (forcar) {
+                    "Extinção forçada: formata o app. Apaga todos os dados deste celular, sem dividir o saldo e sem o PDF " +
+                        "da auditoria, e volta ao cadastro inicial."
+                } else {
+                    "Encerra o bolão (Parte 5 do termo): divide o saldo entre os integrantes, gera o PDF da auditoria " +
+                        "completa e, depois de enviado ao grupo, apaga tudo para cadastrar um novo grupo."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
-            if (impedimentos.isNotEmpty()) {
+            if (impedimentos.isNotEmpty() && !forcar) {
                 Text(
-                    if (forcar) "A extinção forçada ignora:" else "Antes, é preciso resolver:",
+                    "Antes, é preciso resolver:",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
@@ -124,8 +130,8 @@ fun CartaoExtincao(estado: Estado, forcadaLiberada: Boolean, aoLiberarForcada: (
 
 /**
  * Confirmação séria da extinção: digitar EXTINGUIR e autorizar com a biometria.
- * Depois disso o app só mostra a tela da extinção, até o fim. Na [forcada], as pendências
- * ficam como estão (e, sem saldo, não há divisão: vai direto para o PDF da auditoria).
+ * Normal: depois disso o app só mostra a tela da extinção, até o fim.
+ * [forcada]: a formatação do app, na hora (sem divisão, sem PDF), e o app volta ao cadastro.
  */
 @Composable
 fun DialogoExtincao(estado: Estado, forcada: Boolean, aoFechar: () -> Unit) {
@@ -135,30 +141,31 @@ fun DialogoExtincao(estado: Estado, forcada: Boolean, aoFechar: () -> Unit) {
     var texto by remember { mutableStateOf("") }
     val divisao = Operacoes.divisaoFinal(estado)
     val pode = texto.trim().equals("EXTINGUIR", ignoreCase = false)
-    val pendencias = if (forcada) Operacoes.impedimentosDaExtincao(estado) else emptyList()
+    val teste = estado.exemplo
     AlertDialog(
         onDismissRequest = aoFechar,
         title = { Text(if (forcada) "Extinção forçada?" else "Extinguir o bolão?", color = MaterialTheme.colorScheme.error) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    if (divisao.saldo > 0) {
+                if (forcada) {
+                    Text(
+                        if (teste) {
+                            "Modo de teste: apaga os dados de exemplo e volta aos dados reais, sem divisão nem auditoria."
+                        } else {
+                            "Formatação do app: apaga todos os dados deste celular (registros, comprovantes, anexos e o termo), " +
+                                "sem dividir o saldo e sem o PDF da auditoria. O app volta ao cadastro inicial, como recém-instalado."
+                        },
+                    )
+                    if (!teste) Text("Os backups e PDFs já salvos em Downloads/Bolao não são apagados.")
+                } else {
+                    Text(
                         "Isto encerra o bolão de vez. Nenhuma aposta mais será feita e o saldo de ${Dinheiro.rs(divisao.saldo)} " +
                             "será dividido: ${Dinheiro.rs(divisao.cota)} para cada um" +
-                            (if (divisao.complemento > 0) " (o Administrador completa ${Dinheiro.rs(divisao.complemento)})" else "") + "."
-                    } else {
-                        "Isto encerra o bolão de vez. Nenhuma aposta mais será feita. Não há saldo para dividir: " +
-                            "a extinção vai direto para o PDF da auditoria."
-                    },
-                )
-                if (pendencias.isNotEmpty()) {
-                    Text("As pendências abaixo ficam como estão:", fontWeight = FontWeight.Bold)
-                    pendencias.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+                            (if (divisao.complemento > 0) " (o Administrador completa ${Dinheiro.rs(divisao.complemento)})" else "") + ".",
+                    )
+                    Text("No fim, todos os dados deste bolão serão apagados do celular.")
                 }
-                Text(
-                    "No fim, todos os dados deste bolão serão apagados do celular. Não há como voltar atrás.",
-                    fontWeight = FontWeight.Bold,
-                )
+                Text("Não há como voltar atrás.", fontWeight = FontWeight.Bold)
                 Text("Para continuar, digite EXTINGUIR e confirme com a biometria.")
                 OutlinedTextField(
                     value = texto,
@@ -185,10 +192,20 @@ fun DialogoExtincao(estado: Estado, forcada: Boolean, aoFechar: () -> Unit) {
                             return@launch
                         }
                         try {
-                            ctx.bolao.repo.atualizar { Operacoes.iniciarExtincao(it, System.currentTimeMillis(), forcada = forcada) }
+                            val repo = ctx.bolao.repo
+                            if (forcada) {
+                                repo.formatar()
+                                if (teste) Vigia.esquecerAvisosDeTeste(ctx) else Vigia.esquecerTodosOsAvisos(ctx)
+                                repo.avisar(
+                                    if (teste) "Extinção de teste concluída: os dados de exemplo foram apagados."
+                                    else "App formatado: todos os dados foram apagados. Cadastre o grupo de novo.",
+                                )
+                            } else {
+                                repo.atualizar { Operacoes.iniciarExtincao(it, System.currentTimeMillis()) }
+                            }
                             aoFechar()
                         } catch (t: Throwable) {
-                            avisos.showSnackbar("Não foi possível iniciar a extinção: ${t.message}")
+                            avisos.showSnackbar("Não foi possível concluir: ${t.message}")
                         }
                     }
                 },

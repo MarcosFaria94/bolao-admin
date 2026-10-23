@@ -91,7 +91,7 @@ class LayoutTermicoTest {
     @Test
     fun documentoDeSaldoNaoTemRegistro() {
         val texto = Mensagens.saldo(1403, "Fulano de Tal")
-        assertEquals("CAIXA DO BOLÃO: R$ 14,03\nLOCAL: CAIXINHA NUBANK 100% CDI\nTITULAR: FULANO DE TAL", texto)
+        assertEquals("CAIXA DO BOLÃO: R$ 14,03\nBANCO: NUBANK\nTITULAR: FULANO DE TAL", texto)
         val agora = LocalDate.of(2026, 10, 19).atTime(11, 45, 10).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val linhas = LayoutTermico.consultaSaldo("Bolão dos Amigos", texto, agora, codigo)
         salvar("documento-saldo", linhas)

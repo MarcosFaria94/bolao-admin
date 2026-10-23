@@ -58,7 +58,12 @@ class OperacoesTest {
         assertFalse(Operacoes.aporteMensalPendente(e, d(1)))
         assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarAporteMensal(e, d(2), agora()) }
         val cAporte = e.comprovantes.single()
-        assertEquals("APORTE - 01/06/2026", cAporte.titulo)
+        assertEquals(ModelosDoTermo.TITULO_APORTE, cAporte.titulo)
+        assertEquals(
+            "APORTE Nº1 - JUN/2026\nDATA: 01/06/2026\nTIPO DE APORTE: OBRIGATÓRIO\n\nFINANCEIRO -\n" +
+                "SALDO ATUAL:   R$ 10,00\nAPORTES....: + R$ 30,00\nSALDO FINAL: = R$ 40,00",
+            cAporte.texto,
+        )
         assertTrue(cAporte.envioDispensado)
 
         val (e1, a1) = aposta(e, 1, Modalidade.LOTOFACIL, 350, sorteio = 3, premio = 200_000_000); e = e1
@@ -109,7 +114,13 @@ class OperacoesTest {
         e = Operacoes.registrarRateio(e, d(14), 2400, pix, agora())
         assertEquals(1500L, Operacoes.saldo(e))
         assertEquals(800L, e.rateios.single().cota)
-        assertEquals("RATEIO - 14/06/26", e.comprovantes.last().titulo)
+        assertEquals(ModelosDoTermo.TITULO_RATEIO, e.comprovantes.last().titulo)
+        assertEquals(
+            "RATEIO Nº1 - JUN/2026\nDATA: 14/06/2026\n\nFINANCEIRO -\n" +
+                "SALDO ATUAL:   R$ 39,00\nRATEIO.....: - R$ 24,00\nSALDO FINAL: = R$ 15,00",
+            e.comprovantes.last().texto,
+        )
+        assertEquals(1, e.rateios.single().numeroNoMes)
         // Sem extra, não há o que ratear.
         assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarRateio(e, d(14), 1, pix, agora()) }
 
@@ -188,7 +199,7 @@ class OperacoesTest {
         val e = Operacoes.registrarAporteAdicional(inicial(), d(15), 1500, agora())
         val c = e.comprovantes.single()
         assertFalse(c.envioDispensado)
-        assertEquals("APORTE - 15/06/2026", c.titulo)
+        assertEquals("APORTE Nº 1 - 15/06/2026", c.titulo)
         assertEquals(1, Operacoes.comprovantesPendentesDeEnvio(e).size)
         val enviado = Operacoes.registrarEnvio(e, c.id, agora())
         assertTrue(Operacoes.comprovantesPendentesDeEnvio(enviado).isEmpty())
@@ -242,39 +253,38 @@ class OperacoesTest {
     }
 
     @Test
-    fun extincaoForcada() {
-        var e = inicial()
-        // Aposta sem apuração e comprovante não enviado: a extinção normal não começa.
-        val (e1, _) = aposta(e.copy(lancamentos = e.lancamentos + Lancamento("x", d(1), 1, TipoLancamento.APORTE, 300)), 4, Modalidade.QUINA, 300)
-        e = e1
-        assertTrue(Operacoes.impedimentosDaExtincao(e).isNotEmpty())
-        assertThrows(IllegalArgumentException::class.java) { Operacoes.iniciarExtincao(e, agora()) }
-
-        // A forçada começa assim mesmo, e as pendências ficam como estavam.
-        val forcada = Operacoes.iniciarExtincao(e, agora(), forcada = true)
-        assertTrue(forcada.extincao!!.forcada)
-        assertEquals(e.apostas, forcada.apostas)
-        assertEquals(e.envios, forcada.envios)
-        // Com saldo, segue a divisão final de sempre.
-        assertThrows(IllegalArgumentException::class.java) { Operacoes.encerrarSemDivisao(forcada, agora()) }
-    }
-
-    @Test
-    fun extincaoForcadaSemSaldo() {
-        var e = inicial().copy(lancamentos = listOf(Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 300)))
-        val (e1, _) = aposta(e, 4, Modalidade.QUINA, 300)
-        e = e1
-        assertEquals(0L, Operacoes.saldo(e))
-        assertTrue(Operacoes.impedimentosDaExtincao(e).any { it.contains("saldo remanescente") })
-
-        e = Operacoes.iniciarExtincao(e, agora(), forcada = true)
-        // Sem saldo não há divisão: a extinção vai direto para o PDF, sem lançamento nem comprovante.
-        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarExtincao(e, d(7), agora()) }
-        val antes = e.comprovantes.size
-        e = Operacoes.encerrarSemDivisao(e, agora())
-        assertNotNull(e.extincao!!.registradaEm)
-        assertEquals(antes, e.comprovantes.size)
-        assertEquals(0L, Operacoes.saldo(e))
-        assertThrows(IllegalArgumentException::class.java) { Operacoes.encerrarSemDivisao(e, agora()) }
+    fun numeracaoDeAporteERateioRecomecaNoMes() {
+        var e = inicial().copy(lancamentos = listOf(Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 10_000)))
+        val pix = pessoas.map { anexo("pix-${it.apelido}.png") }
+        // Junho: aporte mensal (Nº1) e um adicional (Nº2); dois rateios (Nº1 e Nº2).
+        e = Operacoes.registrarAporteMensal(e, d(1), agora())
+        e = Operacoes.registrarAporteAdicional(e, d(10), 900, agora())
+        assertEquals("APORTE Nº 2 - 10/06/2026", e.comprovantes.last().titulo)
+        assertEquals("APORTE Nº2 - JUN/2026", e.comprovantes.last().texto.lines().first())
+        assertEquals("TIPO DE APORTE: ADICIONAL", e.comprovantes.last().texto.lines()[2])
+        e = Operacoes.registrarRateio(e, d(20), 300, pix, agora())
+        e = Operacoes.registrarRateio(e, d(20), 300, pix, agora())
+        assertEquals("RATEIO Nº2 - 20/06/26", e.comprovantes.last().titulo)
+        assertEquals("RATEIO Nº2 - JUN/2026", e.comprovantes.last().texto.lines().first())
+        // Julho: tudo volta ao Nº1 (a chave interna do rateio continua corrida).
+        val julho = LocalDate.of(2026, 7, 1)
+        assertEquals("APORTE Nº 1 - 01/07/2026", Operacoes.tituloAporte(e, julho))
+        assertEquals("RATEIO Nº1 - 01/07/26", Operacoes.tituloRateio(e, julho))
+        e = Operacoes.registrarAporteMensal(e, julho, agora())
+        assertEquals("APORTE Nº 1 - 01/07/2026", e.comprovantes.last().titulo)
+        e = Operacoes.registrarRateio(e, julho, 300, pix, agora())
+        assertEquals("RATEIO Nº1 - 01/07/26", e.comprovantes.last().titulo)
+        assertEquals(listOf(1, 2, 3), e.rateios.map { it.numero })
+        assertEquals(listOf(1, 2, 1), e.rateios.map { it.numeroNoMes })
+        // Nº de cada lançamento nas listas do app.
+        val aportes = e.lancamentos.filter { it.tipo == TipoLancamento.APORTE }
+        assertEquals(listOf(1, 2, 1), aportes.map { Operacoes.numeroNoMes(e, it) })
+        val rateios = e.lancamentos.filter { it.tipo == TipoLancamento.RATEIO }
+        assertEquals(listOf(1, 2, 1), rateios.map { Operacoes.numeroNoMes(e, it) })
+        assertNull(Operacoes.numeroNoMes(e, e.lancamentos.first()))
+        // Rateios de antes da 0.7 (sem o número do mês) também ganham o Nº pela ordem do mês.
+        val antigo = e.copy(rateios = e.rateios.map { it.copy(numeroNoMes = 0) })
+        assertEquals(listOf(1, 2, 1), rateios.map { Operacoes.numeroNoMes(antigo, it) })
+        assertNull(Operacoes.primeiraAutenticacaoQuebrada(e))
     }
 }

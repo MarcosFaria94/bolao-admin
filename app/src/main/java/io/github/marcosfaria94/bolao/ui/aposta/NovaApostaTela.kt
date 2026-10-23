@@ -33,7 +33,7 @@ import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
-import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
+import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
 import io.github.marcosfaria94.bolao.ui.comum.TituloSecao
 import io.github.marcosfaria94.bolao.ui.jogos.CartaoIndice
 import java.time.LocalDate
@@ -62,6 +62,7 @@ fun NovaApostaTela(estado: Estado, abrir: (String) -> Unit) {
     val falhou by indices.falhou.collectAsStateWithLifecycle()
     val rascunhos = Operacoes.rascunhos(estado)
     LaunchedEffect(Unit) { indices.atualizar() }
+    val destaque = indices.destaque(itens)?.modalidade
 
     LazyColumn(
         contentPadding = PaddingTela,
@@ -77,7 +78,7 @@ fun NovaApostaTela(estado: Estado, abrir: (String) -> Unit) {
                     modifier = Modifier.fillMaxWidth().clickable { abrir("aposta/${r.id}") },
                 ) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        SeloModalidade(r.modalidade, tamanho = 36)
+                        EmblemaModalidade(r.modalidade, r.concurso, tamanho = 44.dp)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
@@ -111,7 +112,7 @@ fun NovaApostaTela(estado: Estado, abrir: (String) -> Unit) {
             }
         }
         items(indices.ordenados(itens), key = { it.modalidade.name }) { item ->
-            CartaoIndice(item, estado, aoTocar = { abrir(rotaDaAposta(estado, item.modalidade)) })
+            CartaoIndice(item, estado, destaque = item.modalidade == destaque, aoTocar = { abrir(rotaDaAposta(estado, item.modalidade)) })
         }
         item { Spacer(Modifier.height(8.dp)) }
     }

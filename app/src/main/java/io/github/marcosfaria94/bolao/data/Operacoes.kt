@@ -47,6 +47,33 @@ object Operacoes {
     /** Número da aposta: o registrado, ou o que um rascunho receberia se fosse registrado em [hoje]. */
     fun numeroDe(e: Estado, a: Aposta, hoje: LocalDate): Int = if (a.registrada) a.numero else proximoNumero(e, hoje)
 
+    /** Número do próximo aporte com data em [data] (Nº1 = primeiro aporte do mês; recomeça a cada mês). */
+    fun proximoNumeroAporte(e: Estado, data: LocalDate): Int =
+        e.lancamentos.count { it.tipo == TipoLancamento.APORTE && YearMonth.from(it.data) == YearMonth.from(data) } + 1
+
+    /** Número do próximo rateio registrado em [hoje] (Nº1 = primeiro rateio do mês; recomeça a cada mês). */
+    fun proximoNumeroRateio(e: Estado, hoje: LocalDate): Int =
+        e.lancamentos.count { it.tipo == TipoLancamento.RATEIO && YearMonth.from(it.data) == YearMonth.from(hoje) } + 1
+
+    /**
+     * Nº do lançamento no mês, como nos comprovantes: o da aposta (aposta e prêmio), o do aporte e o
+     * do rateio, na ordem em que foram registrados no mês. null nos outros lançamentos.
+     */
+    fun numeroNoMes(e: Estado, l: Lancamento): Int? {
+        fun posicao(tipo: TipoLancamento): Int? {
+            val doMes = e.lancamentos.filter { it.tipo == tipo && YearMonth.from(it.data) == YearMonth.from(l.data) }
+            return doMes.indexOfFirst { it.id == l.id }.takeIf { it >= 0 }?.plus(1)
+        }
+        return when (l.tipo) {
+            TipoLancamento.APOSTA, TipoLancamento.PREMIO ->
+                l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }?.numero?.takeIf { it > 0 }
+            TipoLancamento.APORTE -> posicao(TipoLancamento.APORTE)
+            TipoLancamento.RATEIO ->
+                e.rateios.firstOrNull { it.numero == l.rateioNumero }?.numeroNoMes?.takeIf { it > 0 } ?: posicao(TipoLancamento.RATEIO)
+            else -> null
+        }
+    }
+
     fun aportesDoMes(e: Estado, mes: YearMonth): Long =
         e.lancamentos.filter { it.tipo == TipoLancamento.APORTE && YearMonth.from(it.data) == mes }.sumOf { it.valor }
 
@@ -245,9 +272,12 @@ object Operacoes {
 
     // ---------- aporte ----------
 
-    /** Prévia do bloco APORTE (o saldo atual é o de agora). */
+    /** Prévia do bloco APORTE (o saldo atual é o de agora; o número é o que o aporte vai receber). */
     fun textoAporte(e: Estado, data: LocalDate, valor: Long, adicional: Boolean): String =
-        Mensagens.aporte(data, saldo(e), valor, adicional)
+        Mensagens.aporte(proximoNumeroAporte(e, data), data, saldo(e), valor, adicional)
+
+    /** Título do próximo aporte com data em [data] ("APORTE Nº 1 - 01/06/2026"). */
+    fun tituloAporte(e: Estado, data: LocalDate): String = Mensagens.tituloAporte(proximoNumeroAporte(e, data), data)
 
     /** Aporte mensal: valor de Ajustes, no dia 1º do mês, só registrado (sem mensagem). */
     fun registrarAporteMensal(e: Estado, hoje: LocalDate, agora: Long): Estado {
@@ -263,10 +293,12 @@ object Operacoes {
     private fun registrarAporte(e: Estado, data: LocalDate, valor: Long, eventual: Boolean, agora: Long): Estado {
         require(valor > 0) { "Informe o valor do aporte." }
         require(!mesFechado(e, YearMonth.from(data))) { "O extrato de ${Datas.mesAno(YearMonth.from(data))} já foi fechado." }
-        val texto = Mensagens.aporte(data, saldo(e), valor, adicional = eventual)
+        // Nº do aporte no mês (recomeça a cada mês), como no termo.
+        val numero = proximoNumeroAporte(e, data)
+        val texto = Mensagens.aporte(numero, data, saldo(e), valor, adicional = eventual)
         val lanc = Lancamento(id = novoId(), data = data, criadoEm = agora, tipo = TipoLancamento.APORTE, valor = valor, eventual = eventual)
         val c = novoComprovante(
-            e, TipoComprovante.APORTE, Mensagens.tituloAporte(data), texto, data, agora,
+            e, TipoComprovante.APORTE, Mensagens.tituloAporte(numero, data), texto, data, agora,
             envioDispensado = !eventual,
         )
         return e.copy(lancamentos = e.lancamentos + lanc, comprovantes = e.comprovantes + c)
@@ -458,7 +490,12 @@ object Operacoes {
         return CalculoDoRateio(extra(e, hoje), pedido, cota, total, pedido - total, saldo(e) - total)
     }
 
-    fun textoRateio(e: Estado, total: Long): String = Mensagens.rateio(saldo(e), total)
+    /** Prévia do bloco RATEIO de [total] em [hoje] (o número é o que o rateio vai receber no mês). */
+    fun textoRateio(e: Estado, hoje: LocalDate, total: Long): String =
+        Mensagens.rateio(proximoNumeroRateio(e, hoje), hoje, saldo(e), total)
+
+    /** Título do próximo rateio em [hoje] ("RATEIO Nº1 - 14/06/26"). */
+    fun tituloRateio(e: Estado, hoje: LocalDate): String = Mensagens.tituloRateio(proximoNumeroRateio(e, hoje), hoje)
 
     fun registrarRateio(e: Estado, hoje: LocalDate, pedido: Long, comprovantes: List<Arquivo>, agora: Long): Estado {
         val extra = extra(e, hoje)
@@ -467,15 +504,17 @@ object Operacoes {
         val calc = calcularRateio(e, hoje, pedido)
         require(calc.cota > 0) { "O valor é pequeno demais para dividir entre ${e.pessoas.size}." }
         require(comprovantes.size == e.pessoas.size) { "Anexe os comprovantes dos ${e.pessoas.size} Pix." }
+        // [numero] é só a chave interna (corrida); no comprovante vai o número do rateio no mês.
         val numero = e.proximoRateio
+        val noMes = proximoNumeroRateio(e, hoje)
         val saldoAntes = saldo(e)
-        val rateio = Rateio(numero, hoje, saldoAntes, provisao(e, hoje).provisionado, calc.cota, comprovantes, agora)
+        val rateio = Rateio(numero, hoje, saldoAntes, provisao(e, hoje).provisionado, calc.cota, comprovantes, agora, numeroNoMes = noMes)
         val lanc = Lancamento(
             id = novoId(), data = hoje, criadoEm = agora, tipo = TipoLancamento.RATEIO,
             valor = -calc.total, rateioNumero = numero,
         )
         val c = novoComprovante(
-            e, TipoComprovante.RATEIO, Mensagens.tituloRateio(hoje), Mensagens.rateio(saldoAntes, calc.total), hoje, agora,
+            e, TipoComprovante.RATEIO, Mensagens.tituloRateio(noMes, hoje), Mensagens.rateio(noMes, hoje, saldoAntes, calc.total), hoje, agora,
             anexos = comprovantes, rateioNumero = numero,
         )
         return e.copy(
@@ -602,24 +641,13 @@ object Operacoes {
     }
 
     /**
-     * Começa a extinção. A [forcada] (opção escondida em Ajustes) não espera as pendências:
-     * apostas sem apuração, rascunhos e comprovantes não enviados ficam como estão.
+     * Começa a extinção (Parte 5 do termo), depois de resolvidas todas as pendências.
+     * A extinção forçada não passa por aqui: é a formatação do app (Repositorio.formatar).
      */
-    fun iniciarExtincao(e: Estado, agora: Long, forcada: Boolean = false): Estado {
+    fun iniciarExtincao(e: Estado, agora: Long): Estado {
         require(e.extincao == null) { "A extinção já começou." }
-        if (!forcada) impedimentosDaExtincao(e).firstOrNull()?.let { throw IllegalArgumentException(it) }
-        return e.copy(extincao = Extincao(iniciadaEm = agora, forcada = forcada))
-    }
-
-    /**
-     * Extinção forçada sem saldo para dividir: não há Pix nem lançamento; a extinção segue
-     * direto para o PDF da auditoria.
-     */
-    fun encerrarSemDivisao(e: Estado, agora: Long): Estado {
-        val x = requireNotNull(e.extincao) { "A extinção não começou." }
-        require(x.registradaEm == null) { "A divisão final já foi registrada." }
-        require(saldo(e) <= 0) { "Há saldo para dividir: registre a divisão final." }
-        return e.copy(extincao = x.copy(registradaEm = agora))
+        impedimentosDaExtincao(e).firstOrNull()?.let { throw IllegalArgumentException(it) }
+        return e.copy(extincao = Extincao(iniciadaEm = agora))
     }
 
     fun anexarNaExtincao(e: Estado, pessoaId: String, arquivo: Arquivo): Estado {

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.automirrored.outlined.FactCheck
+import androidx.compose.material.icons.outlined.QueryStats
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,6 +55,7 @@ private fun icone(t: Pendencia.Tipo): ImageVector = when (t) {
     Pendencia.Tipo.ENVIO -> Icons.AutoMirrored.Outlined.Send
     Pendencia.Tipo.APURACAO -> Icons.AutoMirrored.Outlined.FactCheck
     Pendencia.Tipo.EXTRATO -> Icons.AutoMirrored.Outlined.ReceiptLong
+    Pendencia.Tipo.INDICES -> Icons.Outlined.QueryStats
 }
 
 /**

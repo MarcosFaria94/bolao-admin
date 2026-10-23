@@ -1,0 +1,682 @@
+{
+ "descricao": "Rateios pagos pela Caixa (valorPremio por faixa) para conferir a auditoria das regras dos índices.",
+ "casos": [
+  {
+   "id": "megasena_3072",
+   "chave": "megasena",
+   "fonte": "API da Caixa, 20/10/2026",
+   "ultimo": {
+    "numero": 3072,
+    "valorArrecadado": 134543238.0,
+    "valorAcumuladoProximoConcurso": 187648868.43,
+    "valorAcumuladoConcurso_0_5": 27350349.65,
+    "numeroConcursoFinal_0_5": 3075,
+    "valorAcumuladoConcursoEspecial": 106119095.67,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 0,
+      "valorPremio": 0.0
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 140,
+      "valorPremio": 38295.72
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 9261,
+      "valorPremio": 954.26
+     }
+    ]
+   },
+   "anterior": {
+    "numero": 3071,
+    "numeroConcursoProximo": 3072,
+    "dataProximoConcurso": "20/10/2026",
+    "valorArrecadado": 150525762,
+    "valorEstimadoProximoConcurso": 185000000,
+    "valorAcumuladoProximoConcurso": 171152252.94,
+    "valorAcumuladoConcurso_0_5": 18277211.13,
+    "numeroConcursoFinal_0_5": 3075,
+    "valorAcumuladoConcursoEspecial": 101994941.78,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 0
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 102
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 7381
+     }
+    ]
+   },
+   "faixas_conferidas": [
+    2,
+    3
+   ]
+  },
+  {
+   "id": "lotofacil_3809",
+   "chave": "lotofacil",
+   "fonte": "API da Caixa, 20/10/2026",
+   "ultimo": {
+    "numero": 3809,
+    "valorArrecadado": 19228268.5,
+    "valorAcumuladoProximoConcurso": 3794569.46,
+    "valorAcumuladoConcurso_0_5": 3794569.46,
+    "numeroConcursoFinal_0_5": 3810,
+    "valorAcumuladoConcursoEspecial": 13018871.88,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 0,
+      "valorPremio": 0.0
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 154,
+      "valorPremio": 1924.65
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 6939,
+      "valorPremio": 35.0
+     },
+     {
+      "faixa": 4,
+      "numeroDeGanhadores": 94823,
+      "valorPremio": 14.0
+     },
+     {
+      "faixa": 5,
+      "numeroDeGanhadores": 513223,
+      "valorPremio": 7.0
+     }
+    ]
+   },
+   "anterior": null,
+   "faixas_conferidas": [
+    2,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "id": "quina_7148",
+   "chave": "quina",
+   "fonte": "API da Caixa, 21/10/2026",
+   "ultimo": {
+    "numero": 7148,
+    "valorArrecadado": 18516543.0,
+    "valorAcumuladoProximoConcurso": 54359545.4,
+    "valorAcumuladoConcurso_0_5": 3512433.26,
+    "numeroConcursoFinal_0_5": 7155,
+    "valorAcumuladoConcursoEspecial": 47425146.85,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 0,
+      "valorPremio": 0.0
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 59,
+      "valorPremio": 14430.2
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 6563,
+      "valorPremio": 123.54
+     },
+     {
+      "faixa": 4,
+      "numeroDeGanhadores": 174449,
+      "valorPremio": 4.64
+     }
+    ]
+   },
+   "anterior": null,
+   "faixas_conferidas": [
+    2,
+    3,
+    4
+   ]
+  },
+  {
+   "id": "lotomania_2989",
+   "chave": "lotomania",
+   "fonte": "API da Caixa, 19/10/2026",
+   "ultimo": {
+    "numero": 2989,
+    "valorArrecadado": 6766578.0,
+    "valorAcumuladoProximoConcurso": 0.0,
+    "valorAcumuladoConcurso_0_5": 0.0,
+    "numeroConcursoFinal_0_5": 0,
+    "valorAcumuladoConcursoEspecial": 0.0,
+    "acumulado": false,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 1,
+      "valorPremio": 13862738.85
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 2,
+      "valorPremio": 165932.74
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 78,
+      "valorPremio": 2659.18
+     },
+     {
+      "faixa": 4,
+      "numeroDeGanhadores": 797,
+      "valorPremio": 260.24
+     },
+     {
+      "faixa": 5,
+      "numeroDeGanhadores": 4774,
+      "valorPremio": 43.44
+     },
+     {
+      "faixa": 6,
+      "numeroDeGanhadores": 19423,
+      "valorPremio": 10.67
+     },
+     {
+      "faixa": 7,
+      "numeroDeGanhadores": 1,
+      "valorPremio": 165932.75
+     }
+    ]
+   },
+   "anterior": {
+    "numero": 2988,
+    "numeroConcursoProximo": 2989,
+    "dataProximoConcurso": "19/10/2026",
+    "valorArrecadado": 7064586,
+    "valorEstimadoProximoConcurso": 14000000,
+    "valorAcumuladoProximoConcurso": 12929367.23,
+    "valorAcumuladoConcurso_0_5": 0,
+    "numeroConcursoFinal_0_5": 0,
+    "valorAcumuladoConcursoEspecial": 0,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 0
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 11
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 87
+     },
+     {
+      "faixa": 4,
+      "numeroDeGanhadores": 781
+     },
+     {
+      "faixa": 5,
+      "numeroDeGanhadores": 4720
+     },
+     {
+      "faixa": 6,
+      "numeroDeGanhadores": 20777
+     },
+     {
+      "faixa": 7,
+      "numeroDeGanhadores": 0
+     }
+    ]
+   },
+   "faixas_conferidas": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ]
+  },
+  {
+   "id": "lotomania_2818_heranca",
+   "chave": "lotomania",
+   "fonte": "API da Caixa, 03/09/2025",
+   "ultimo": {
+    "numero": 2818,
+    "valorArrecadado": 5297631.0,
+    "valorAcumuladoProximoConcurso": 0.0,
+    "valorAcumuladoConcurso_0_5": 0.0,
+    "numeroConcursoFinal_0_5": 0,
+    "valorAcumuladoConcursoEspecial": 0.0,
+    "acumulado": false,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 1,
+      "valorPremio": 3914644.89
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 9,
+      "valorPremio": 57033.69
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 72,
+      "valorPremio": 2255.39
+     },
+     {
+      "faixa": 4,
+      "numeroDeGanhadores": 658,
+      "valorPremio": 246.79
+     },
+     {
+      "faixa": 5,
+      "numeroDeGanhadores": 3890,
+      "valorPremio": 41.74
+     },
+     {
+      "faixa": 6,
+      "numeroDeGanhadores": 16601,
+      "valorPremio": 9.78
+     },
+     {
+      "faixa": 7,
+      "numeroDeGanhadores": 1,
+      "valorPremio": 129910.65
+     }
+    ]
+   },
+   "anterior": {
+    "numero": 2817,
+    "numeroConcursoProximo": 2818,
+    "dataProximoConcurso": "03/09/2025",
+    "valorArrecadado": 5168376.0,
+    "valorEstimadoProximoConcurso": 4000000.0,
+    "valorAcumuladoProximoConcurso": 3183897.62,
+    "valorAcumuladoConcurso_0_5": 0.0,
+    "numeroConcursoFinal_0_5": 0,
+    "valorAcumuladoConcursoEspecial": 0.0,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 0
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 0
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 55
+     },
+     {
+      "faixa": 4,
+      "numeroDeGanhadores": 524
+     },
+     {
+      "faixa": 5,
+      "numeroDeGanhadores": 3210
+     },
+     {
+      "faixa": 6,
+      "numeroDeGanhadores": 14130
+     },
+     {
+      "faixa": 7,
+      "numeroDeGanhadores": 0
+     }
+    ]
+   },
+   "faixas_conferidas": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ]
+  },
+  {
+   "id": "maismilionaria_400_cascata",
+   "chave": "maismilionaria",
+   "fonte": "API da Caixa, 21/10/2026",
+   "ultimo": {
+    "numero": 400,
+    "valorArrecadado": 8925186.0,
+    "valorAcumuladoProximoConcurso": 106455956.74,
+    "valorAcumuladoConcurso_0_5": 0.0,
+    "numeroConcursoFinal_0_5": 0,
+    "valorAcumuladoConcursoEspecial": 0.0,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 0,
+      "valorPremio": 0.0
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 0,
+      "valorPremio": 0.0
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 3,
+      "valorPremio": 101913.42
+     },
+     {
+      "faixa": 4,
+      "numeroDeGanhadores": 31,
+      "valorPremio": 4383.38
+     },
+     {
+      "faixa": 5,
+      "numeroDeGanhadores": 82,
+      "valorPremio": 1775.49
+     },
+     {
+      "faixa": 6,
+      "numeroDeGanhadores": 1280,
+      "valorPremio": 113.74
+     },
+     {
+      "faixa": 7,
+      "numeroDeGanhadores": 1704,
+      "valorPremio": 50.0
+     },
+     {
+      "faixa": 8,
+      "numeroDeGanhadores": 14921,
+      "valorPremio": 24.0
+     },
+     {
+      "faixa": 9,
+      "numeroDeGanhadores": 13153,
+      "valorPremio": 12.0
+     },
+     {
+      "faixa": 10,
+      "numeroDeGanhadores": 114212,
+      "valorPremio": 6.0
+     }
+    ]
+   },
+   "anterior": {
+    "numero": 399,
+    "numeroConcursoProximo": 400,
+    "dataProximoConcurso": "21/10/2026",
+    "valorArrecadado": 9832326,
+    "valorEstimadoProximoConcurso": 107000000,
+    "valorAcumuladoProximoConcurso": 105402848.7,
+    "valorAcumuladoConcurso_0_5": 0,
+    "numeroConcursoFinal_0_5": 0,
+    "valorAcumuladoConcursoEspecial": 0,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": []
+   },
+   "faixas_conferidas": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+   ]
+  },
+  {
+   "id": "timemania_2457",
+   "chave": "timemania",
+   "fonte": "API da Caixa, 20/10/2026",
+   "ultimo": {
+    "numero": 2457,
+    "valorArrecadado": 2620317.0,
+    "valorAcumuladoProximoConcurso": 21208413.69,
+    "valorAcumuladoConcurso_0_5": 250390.45,
+    "numeroConcursoFinal_0_5": 2460,
+    "valorAcumuladoConcursoEspecial": 0.0,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 0,
+      "valorPremio": 0.0
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 5,
+      "valorPremio": 32116.73
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 132,
+      "valorPremio": 1737.91
+     },
+     {
+      "faixa": 4,
+      "numeroDeGanhadores": 2723,
+      "valorPremio": 10.5
+     },
+     {
+      "faixa": 5,
+      "numeroDeGanhadores": 24816,
+      "valorPremio": 3.5
+     },
+     {
+      "faixa": 6,
+      "numeroDeGanhadores": 5610,
+      "valorPremio": 8.5
+     }
+    ]
+   },
+   "anterior": {
+    "numero": 2456,
+    "numeroConcursoProximo": 2457,
+    "dataProximoConcurso": "20/10/2026",
+    "valorArrecadado": 2757667.5,
+    "valorEstimadoProximoConcurso": 21300000,
+    "valorAcumuladoProximoConcurso": 20806954.59,
+    "valorAcumuladoConcurso_0_5": 170098.63,
+    "numeroConcursoFinal_0_5": 2460,
+    "valorAcumuladoConcursoEspecial": 0,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": []
+   },
+   "faixas_conferidas": [
+    2,
+    3,
+    4,
+    5,
+    6
+   ]
+  },
+  {
+   "id": "duplasena_3023",
+   "chave": "duplasena",
+   "fonte": "API da Caixa, 21/10/2026",
+   "ultimo": {
+    "numero": 3023,
+    "valorArrecadado": 2662341.0,
+    "valorAcumuladoProximoConcurso": 8801144.34,
+    "valorAcumuladoConcurso_0_5": 0.0,
+    "numeroConcursoFinal_0_5": 0,
+    "valorAcumuladoConcursoEspecial": 7810882.46,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 0,
+      "valorPremio": 0.0
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 11,
+      "valorPremio": 7418.98
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 702,
+      "valorPremio": 132.85
+     },
+     {
+      "faixa": 4,
+      "numeroDeGanhadores": 13996,
+      "valorPremio": 3.33
+     },
+     {
+      "faixa": 5,
+      "numeroDeGanhadores": 0,
+      "valorPremio": 0.0
+     },
+     {
+      "faixa": 6,
+      "numeroDeGanhadores": 9,
+      "valorPremio": 8160.88
+     },
+     {
+      "faixa": 7,
+      "numeroDeGanhadores": 598,
+      "valorPremio": 155.96
+     },
+     {
+      "faixa": 8,
+      "numeroDeGanhadores": 13606,
+      "valorPremio": 3.42
+     }
+    ]
+   },
+   "anterior": null,
+   "faixas_conferidas": [
+    2,
+    3,
+    4,
+    6,
+    7,
+    8
+   ]
+  },
+  {
+   "id": "diadesorte_1327",
+   "chave": "diadesorte",
+   "fonte": "API da Caixa, 20/10/2026",
+   "ultimo": {
+    "numero": 1327,
+    "valorArrecadado": 1337975.0,
+    "valorAcumuladoProximoConcurso": 0.0,
+    "valorAcumuladoConcurso_0_5": 0.0,
+    "numeroConcursoFinal_0_5": 0,
+    "valorAcumuladoConcursoEspecial": 0.0,
+    "acumulado": false,
+    "indicadorConcursoEspecial": 1,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 1,
+      "valorPremio": 622191.22
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 21,
+      "valorPremio": 3820.07
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 970,
+      "valorPremio": 25.0
+     },
+     {
+      "faixa": 4,
+      "numeroDeGanhadores": 13315,
+      "valorPremio": 5.0
+     },
+     {
+      "faixa": 5,
+      "numeroDeGanhadores": 45227,
+      "valorPremio": 2.5
+     }
+    ]
+   },
+   "anterior": {
+    "numero": 1326,
+    "valorArrecadado": 1121532.5,
+    "valorAcumuladoProximoConcurso": 435007.92,
+    "valorAcumuladoConcurso_0_5": 0.0,
+    "numeroConcursoFinal_0_5": 0,
+    "valorAcumuladoConcursoEspecial": 0.0,
+    "acumulado": true,
+    "indicadorConcursoEspecial": 1,
+    "numeroConcursoProximo": 1327,
+    "dataProximoConcurso": "20/10/2026",
+    "valorEstimadoProximoConcurso": 600000.0,
+    "listaRateioPremio": [
+     {
+      "faixa": 1,
+      "numeroDeGanhadores": 0,
+      "valorPremio": 0.0
+     },
+     {
+      "faixa": 2,
+      "numeroDeGanhadores": 18,
+      "valorPremio": 3718.19
+     },
+     {
+      "faixa": 3,
+      "numeroDeGanhadores": 737,
+      "valorPremio": 25.0
+     },
+     {
+      "faixa": 4,
+      "numeroDeGanhadores": 10308,
+      "valorPremio": 5.0
+     },
+     {
+      "faixa": 5,
+      "numeroDeGanhadores": 40981,
+      "valorPremio": 2.5
+     }
+    ]
+   },
+   "faixas_conferidas": [
+    1,
+    2,
+    3,
+    4,
+    5
+   ]
+  }
+ ]
+}

@@ -39,7 +39,6 @@ object DadosDeExemplo {
     const val PREFIXO = "exemplo-"
     const val SALDO_INICIAL = 1002L
     const val RENDIMENTO_ANTERIOR = 3L
-    const val NOME_GRUPO = "Bolão de exemplo"
 
     /** Integrantes fictícios, usados enquanto não houver cadastro real. */
     val PESSOAS = listOf(
@@ -207,7 +206,6 @@ object DadosDeExemplo {
         var e = Estado(
             cadastroConcluido = true,
             cadastradoEm = anterior.atDay(1),
-            nomeGrupo = NOME_GRUPO,
             pessoas = integrantes,
             config = Config(),
             proximoRateio = 1,

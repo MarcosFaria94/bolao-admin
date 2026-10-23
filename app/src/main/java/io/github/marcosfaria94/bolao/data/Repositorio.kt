@@ -292,6 +292,28 @@ class Repositorio(private val context: Context) {
         }
     }
 
+    /**
+     * Extinção forçada = formatação do app: apaga todos os dados do bolão, os anexos, o modo de
+     * teste e os arquivos temporários, sem divisão do saldo e sem auditoria. O app volta ao cadastro
+     * inicial, como recém-instalado. No modo de teste, apaga só os dados de exemplo e volta aos reais.
+     * Os backups e PDFs salvos em Downloads/Bolao ficam (estão fora do app).
+     */
+    suspend fun formatar() {
+        naFila {
+            if (espaco == Espaco.TESTE) {
+                mudarPara(Espaco.REAL, lerDoDisco(Espaco.REAL))
+                apagarTeste()
+            } else {
+                File(context.filesDir, "dados").deleteRecursively()
+                File(context.filesDir, "arquivos").deleteRecursively()
+                apagarTeste()
+                context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+                _estado.value = Estado()
+                _aviso.value = null
+            }
+        }
+    }
+
     /** Dados e pasta de anexos do mesmo espaço, lidos juntos (para o backup). */
     class Retrato(val estado: Estado, val pastaArquivos: File, val teste: Boolean)
 

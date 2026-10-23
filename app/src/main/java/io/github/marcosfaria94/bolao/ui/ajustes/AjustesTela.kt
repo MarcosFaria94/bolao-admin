@@ -8,11 +8,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -50,7 +52,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Estado
-import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
@@ -62,7 +63,7 @@ import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
-import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
+import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
 import io.github.marcosfaria94.bolao.ui.comum.TituloSecao
 import io.github.marcosfaria94.bolao.ui.comum.copiar
 import io.github.marcosfaria94.bolao.ui.teste.CartaoModoTeste
@@ -173,7 +174,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         Modalidade.entries.filter { !it.precoVariavel }.forEach { m ->
             item(key = "preco-${m.name}") {
                 ListItem(
-                    leadingContent = { SeloModalidade(m, tamanho = 32) },
+                    leadingContent = { EmblemaModalidade(m, concurso = null, tamanho = 38.dp) },
                     headlineContent = { Text(m.nome) },
                     trailingContent = { Text(Dinheiro.rs(estado.config.preco(m))) },
                     modifier = Modifier.clickable { editandoPreco = m },
@@ -250,19 +251,21 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
                         }
                     },
                     modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 ) {
-                    Icon(Icons.Outlined.Backup, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Fazer backup")
+                    Icon(Icons.Outlined.Backup, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Fazer backup", maxLines = 1)
                 }
                 OutlinedButton(
                     enabled = !trabalhando,
                     onClick = { confirmandoRestauracao = true },
                     modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 ) {
-                    Icon(Icons.Outlined.Restore, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Restaurar")
+                    Icon(Icons.Outlined.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Restaurar", maxLines = 1)
                 }
             }
         }
@@ -346,7 +349,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
     if (pedindoExtincao) {
         DialogoExtincao(
             estado,
-            forcada = forcadaLiberada && Operacoes.impedimentosDaExtincao(estado).isNotEmpty(),
+            forcada = forcadaLiberada,
             aoFechar = { pedindoExtincao = false },
         )
     }

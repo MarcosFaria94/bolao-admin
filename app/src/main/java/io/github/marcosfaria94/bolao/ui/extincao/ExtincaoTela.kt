@@ -54,6 +54,7 @@ import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Mensagens
 import io.github.marcosfaria94.bolao.imagem.Recibos
+import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.pdf.PdfsDoApp
 import io.github.marcosfaria94.bolao.seguranca.Biometria
 import io.github.marcosfaria94.bolao.seguranca.atividade
@@ -88,11 +89,13 @@ fun ExtincaoTela(estado: Estado) {
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
     val x = estado.extincao ?: return
+    // Extinção forçada começada na 0.6: desde a 0.7 a forçada é a formatação do app.
+    if (x.forcada) {
+        FormatacaoPendente(estado)
+        return
+    }
     val hoje = LocalDate.now()
     val divisao = Operacoes.divisaoFinal(estado)
-    // Só na extinção forçada: sem saldo, não há divisão nem Pix (vai direto para o PDF).
-    // Depois de registrada, a divisão deixa o saldo zerado: aí vale se houve o comprovante dela.
-    val semDivisao = if (x.registradaEm == null) divisao.saldo <= 0 else estado.comprovantes.none { it.tipo == TipoComprovante.EXTINCAO }
 
     var paraQuem by remember { mutableStateOf<String?>(null) }
     var confirmar by remember { mutableStateOf(false) }
@@ -100,7 +103,6 @@ fun ExtincaoTela(estado: Estado) {
     var trabalhando by remember { mutableStateOf(false) }
     var perguntarSeEnviou by remember { mutableStateOf(false) }
     var confirmarApagar by remember { mutableStateOf(false) }
-    var confirmarSemDivisao by remember { mutableStateOf(false) }
 
     // Não há como voltar: a extinção vai até o fim.
     BackHandler(enabled = true) {}
@@ -159,10 +161,7 @@ fun ExtincaoTela(estado: Estado) {
                 style = MaterialTheme.typography.bodyMedium,
             )
 
-            if (x.forcada) {
-                Aviso("Extinção forçada: as pendências do bolão ficaram como estavam.")
-            }
-            if (!semDivisao) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                 Column(Modifier.padding(12.dp)) {
                     Text("Divisão final do saldo", style = MaterialTheme.typography.titleMedium)
                     LinhaValor("Saldo líquido", Dinheiro.rs(divisao.saldo))
@@ -172,14 +171,7 @@ fun ExtincaoTela(estado: Estado) {
                 }
             }
 
-            if (x.registradaEm == null && semDivisao) {
-                Aviso("Não há saldo para dividir: não há Pix a fazer. A extinção segue direto para o PDF da auditoria.")
-                Button(
-                    onClick = { confirmarSemDivisao = true },
-                    enabled = !trabalhando,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Gerar o PDF da auditoria") }
-            } else if (x.registradaEm == null) {
+            if (x.registradaEm == null) {
                 if (estado.exemplo) {
                     TextButton(onClick = {
                         escopo.launch {
@@ -233,7 +225,7 @@ fun ExtincaoTela(estado: Estado) {
                 )
             } else {
                 val quando = Instant.ofEpochMilli(x.registradaEm).atZone(ZoneId.systemDefault()).toLocalDate()
-                Aviso(if (semDivisao) "Extinção registrada ${Datas.quando(quando, hoje)}, sem saldo para dividir." else "Divisão final registrada ${Datas.quando(quando, hoje)}.")
+                Aviso("Divisão final registrada ${Datas.quando(quando, hoje)}.")
                 val pdf = x.auditoria
                 if (pdf == null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -305,25 +297,6 @@ fun ExtincaoTela(estado: Estado) {
         )
     }
 
-    if (confirmarSemDivisao) {
-        DialogoConfirmar(
-            titulo = "Encerrar sem divisão?",
-            texto = "Não há saldo para dividir. O app gera agora o PDF da auditoria completa, para enviar ao grupo.\n\n$AVISO_DEFINITIVO",
-            confirmar = "Confirmar",
-            aoConfirmar = {
-                confirmarSemDivisao = false
-                escopo.launch {
-                    try {
-                        repo.atualizar { Operacoes.encerrarSemDivisao(it, System.currentTimeMillis()) }
-                    } catch (t: Throwable) {
-                        avisos.showSnackbar("Não foi possível encerrar: ${t.message}")
-                    }
-                }
-            },
-            aoFechar = { confirmarSemDivisao = false },
-        )
-    }
-
     if (perguntarSeEnviou && !confirmarApagar) {
         DialogoConfirmar(
             titulo = "O PDF foi enviado ao grupo?",
@@ -362,6 +335,63 @@ fun ExtincaoTela(estado: Estado) {
                 }
             },
             aoFechar = { confirmarApagar = false },
+        )
+    }
+}
+
+/**
+ * Extinção forçada que ficou pela metade (começada na 0.6). Desde a 0.7 a forçada é a formatação
+ * do app: aqui só dá para concluir apagando tudo (com a biometria).
+ */
+@Composable
+private fun FormatacaoPendente(estado: Estado) {
+    val ctx = LocalContext.current
+    val avisos = LocalAvisos.current
+    val escopo = rememberCoroutineScope()
+    var confirmar by remember { mutableStateOf(false) }
+    BackHandler(enabled = true) {}
+    Surface(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Extinção forçada", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+            Text(
+                "A extinção forçada agora é a formatação do app: apaga todos os dados deste celular, sem divisão do saldo e sem o PDF da auditoria, " +
+                    "e volta ao cadastro inicial. Os backups em Downloads/Bolao não são apagados.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(
+                onClick = { confirmar = true },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Formatar o app") }
+            SnackbarHost(avisos)
+        }
+    }
+    if (confirmar) {
+        DialogoConfirmar(
+            titulo = "Formatar o app?",
+            texto = "Todos os registros, comprovantes e anexos serão apagados do celular. Não há como desfazer.",
+            confirmar = "Confirmar",
+            aoConfirmar = {
+                confirmar = false
+                escopo.launch {
+                    val atividade = ctx.atividade()
+                    if (Biometria.disponivel(ctx) && (atividade == null || !Biometria.autorizar(atividade, "Extinção forçada", "Confirme para apagar os dados"))) {
+                        avisos.showSnackbar("Os dados não foram apagados: a biometria não foi confirmada.")
+                        return@launch
+                    }
+                    val teste = estado.exemplo
+                    ctx.bolao.repo.formatar()
+                    if (teste) Vigia.esquecerAvisosDeTeste(ctx) else Vigia.esquecerTodosOsAvisos(ctx)
+                    ctx.bolao.repo.avisar(if (teste) "Os dados de exemplo foram apagados." else "App formatado. Cadastre o grupo de novo.")
+                }
+            },
+            aoFechar = { confirmar = false },
         )
     }
 }

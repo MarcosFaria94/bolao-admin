@@ -26,7 +26,7 @@ data class Pendencia(
     /** Tela que resolve a pendência (rota da navegação). */
     val destino: String,
 ) {
-    enum class Tipo { APORTE, APOSTA_DO_DIA, RASCUNHO, ENVIO, APURACAO, EXTRATO }
+    enum class Tipo { APORTE, APOSTA_DO_DIA, RASCUNHO, ENVIO, APURACAO, EXTRATO, INDICES }
 }
 
 /** Aviso de aposta premiada (o outro aviso que vai para o celular), sem o valor: ele é surpresa no app. */
@@ -156,6 +156,20 @@ object Pendencias {
             )
         }
         return lista.sortedWith(compareByDescending<Pendencia> { it.desde }.thenBy { it.chave })
+    }
+
+    /**
+     * As pendências do bolão mais os avisos dos índices (preço de Ajustes diferente do dos
+     * parâmetros, regras da Caixa que mudaram), a mais recente primeiro. Os avisos dos índices
+     * ficam só na aba Notificações (não vão para o celular).
+     */
+    fun comAvisosDosIndices(pendencias: List<Pendencia>, avisos: List<Indices.Aviso>, fuso: ZoneId = ZoneId.systemDefault()): List<Pendencia> {
+        if (avisos.isEmpty()) return pendencias
+        val extras = avisos.map { a ->
+            val desde = instante(a.desde, fuso)
+            Pendencia(a.chave, Pendencia.Tipo.INDICES, a.titulo, a.texto, desde, desde, a.destino)
+        }
+        return (pendencias + extras).sortedWith(compareByDescending<Pendencia> { it.desde }.thenBy { it.chave })
     }
 
     /** Pendências que já podem ter o aviso "Ação necessária" (e ainda não tiveram). */

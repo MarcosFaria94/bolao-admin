@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,11 +21,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -57,10 +62,14 @@ import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Probabilidades
 import io.github.marcosfaria94.bolao.domain.indices.IndiceK
 import io.github.marcosfaria94.bolao.ui.aposta.rotaDaAposta
+import io.github.marcosfaria94.bolao.ui.comum.Aviso
+import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
+import io.github.marcosfaria94.bolao.ui.comum.FitaDestaque
 import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
-import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
+import io.github.marcosfaria94.bolao.ui.tema.Dourado
+import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import java.time.LocalDate
 
@@ -73,7 +82,9 @@ fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit) {
     val itens by indices.itens.collectAsStateWithLifecycle()
     val atualizando by indices.atualizando.collectAsStateWithLifecycle()
     val falhou by indices.falhou.collectAsStateWithLifecycle()
+    val avisos by indices.avisos.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { indices.atualizar() }
+    val destaque = indices.destaque(itens)?.modalidade
 
     PullToRefreshBox(
         isRefreshing = atualizando,
@@ -85,9 +96,11 @@ fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            item {
-                Legenda()
-                if (falhou && itens.values.all { it.ultimo == null }) {
+            item { Legenda() }
+            // Preço de Ajustes diferente do dos parâmetros ou regras da Caixa que mudaram.
+            items(avisos, key = { it.chave }) { a -> Aviso(a.titulo, alerta = true) }
+            if (falhou && itens.values.all { it.ultimo == null }) {
+                item {
                     Text(
                         "Não foi possível consultar a Caixa agora. Puxe a lista para baixo para tentar de novo.",
                         style = MaterialTheme.typography.bodySmall,
@@ -96,7 +109,7 @@ fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit) {
                 }
             }
             items(indices.ordenados(itens), key = { it.modalidade.name }) { item ->
-                CartaoIndice(item, estado, aoTocar = { abrirModalidade(item.modalidade) })
+                CartaoIndice(item, estado, destaque = item.modalidade == destaque, aoTocar = { abrirModalidade(item.modalidade) })
             }
         }
     }
@@ -104,27 +117,39 @@ fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit) {
 
 /** O que querem dizer os índices dos cartões (a lista vem em ordem de k1). */
 private val LEGENDA = listOf(
-    "k1" to "Melhor retorno",
-    "k2" to "Melhor retorno a curto prazo",
-    "odds" to "Chance de algum prêmio",
+    "k1" to "Retorno médio",
+    "k2" to "Retorno médio frequente",
+    "odds" to "Chance de prêmio",
 )
 
 /**
- * Legenda dos índices, com os dois-pontos alinhados:
- * · k1  : Melhor retorno
- * · k2  : Melhor retorno a curto prazo
- * · odds: Chance de algum prêmio
+ * Legenda dos índices num quadro, com os dois-pontos alinhados:
+ * · k1   : Retorno médio
+ * · k2   : Retorno médio frequente
+ * · odds : Chance de prêmio
  */
 @Composable
 private fun Legenda() {
-    val estilo = MaterialTheme.typography.bodyMedium
-    val cor = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)) {
-        LEGENDA.forEach { (sigla, texto) ->
-            Row {
-                Text("·", style = estilo, color = cor, modifier = Modifier.width(14.dp))
-                Text(sigla, style = estilo, color = cor, modifier = Modifier.width(38.dp))
-                Text(": $texto", style = estilo, color = cor)
+    val estilo = MaterialTheme.typography.bodyLarge
+    val cor = MaterialTheme.colorScheme.onSurface
+    val suave = MaterialTheme.colorScheme.onSurfaceVariant
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Info, contentDescription = null, tint = Dourado, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Legenda", style = MaterialTheme.typography.titleMedium, color = cor)
+            }
+            LEGENDA.forEach { (sigla, texto) ->
+                Row {
+                    Text("·", style = estilo, color = suave, modifier = Modifier.width(16.dp))
+                    Text(sigla, style = estilo, fontWeight = FontWeight.SemiBold, color = cor, modifier = Modifier.width(46.dp))
+                    Text(": $texto", style = estilo, color = suave)
+                }
             }
         }
     }
@@ -166,7 +191,11 @@ private fun premiacao(m: Modalidade): String = when (m) {
     Modalidade.FEDERAL -> "5 prêmios, aproximações e finais"
 }
 
-/** Detalhe de uma modalidade: próximo concurso, último resultado, premiação, regras e probabilidades. */
+/**
+ * Página do jogo: o emblema (sigla e próximo concurso), o nome e a chance do prêmio principal com
+ * o botão "Apostar" ao lado; o prêmio do próximo concurso e o dia do sorteio num quadro (com a fita
+ * do concurso em destaque); depois o último resultado, a premiação, as regras e as probabilidades.
+ */
 @Composable
 fun ModalidadeTela(estado: Estado, m: Modalidade, abrir: (String) -> Unit) {
     val ctx = LocalContext.current
@@ -178,6 +207,7 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrir: (String) -> Unit) {
     val u = item?.ultimo
     val cor = corModalidade(m.cor)
     val hoje = LocalDate.now()
+    val emDestaque = indices.destaque(itens)?.modalidade == m
 
     Column(
         Modifier
@@ -186,29 +216,54 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrir: (String) -> Unit) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Nome (sem a cor da modalidade no texto: o selo leva a cor) e a chance do prêmio principal.
+        // Emblema, nome e chance do prêmio principal, com o "Apostar" ao lado do nome.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            SeloModalidade(m, tamanho = 56)
-            Spacer(Modifier.width(14.dp))
-            Column {
-                Text(m.nome, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+            EmblemaModalidade(m, item?.proximoNumero, tamanho = 68.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                TextoQueCabe(
+                    m.nome,
+                    MaterialTheme.typography.displaySmall.copy(fontSize = 34.sp, lineHeight = 40.sp),
+                    peso = FontWeight.Bold,
+                    menor = 16.sp,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Probabilidades.faixas(m).firstOrNull()?.let {
                     Text(Probabilidades.texto(it.umEm), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            Spacer(Modifier.width(10.dp))
+            Button(
+                // A aposta em andamento da modalidade, ou uma nova (com o volante vazio).
+                onClick = { abrir(rotaDaAposta(estado, m)) },
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+            ) { Text("Apostar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         }
 
-        // Próximo concurso: o número, o prêmio numa linha só ao lado do botão de apostar e o dia do sorteio.
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
-            if (u == null) {
-                Text("Próximo concurso", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                RotuloValor("Próximo concurso", item?.proximoNumero?.toString() ?: "a confirmar")
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) {
-                    if (u == null) {
+        // O prêmio do próximo concurso (de ponta a ponta) e o dia do sorteio, juntos num quadro.
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+            border = if (emDestaque) BorderStroke(2.dp, Dourado) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Box(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (emDestaque) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Star, contentDescription = null, tint = Dourado, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "CONCURSO EM DESTAQUE",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp,
+                                color = corDestaque(),
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                    }
+                    if (u == null) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(56.dp)) {
                             if (atualizando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                             Text(
                                 if (atualizando) "  Consultando a Caixa..." else "Sem dados da Caixa agora.",
@@ -218,21 +273,16 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrir: (String) -> Unit) {
                     } else {
                         TextoQueCabe(
                             u.premioEstimadoProximo?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) } ?: "Prêmio a confirmar",
-                            MaterialTheme.typography.headlineLarge,
+                            MaterialTheme.typography.displayLarge.copy(fontSize = 64.sp, lineHeight = 70.sp),
                             peso = FontWeight.Bold,
-                            menor = 20.sp,
+                            menor = 24.sp,
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        u.proximaData?.let { RotuloValor("Sorteio", Datas.relativa(it, hoje)) }
                     }
                 }
-                Spacer(Modifier.width(16.dp))
-                Button(
-                    // A aposta em andamento da modalidade, ou uma nova (com o volante vazio).
-                    onClick = { abrir(rotaDaAposta(estado, m)) },
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
-                ) { Text("APOSTAR", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                if (emDestaque) FitaDestaque()
             }
-            u?.proximaData?.let { RotuloValor("Sorteio", Datas.relativa(it, hoje)) }
         }
 
         // Último resultado.
@@ -298,7 +348,7 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrir: (String) -> Unit) {
     }
 }
 
-/** "Próximo concurso: 7147" e "Sorteio: Hoje": rótulo discreto e o valor em destaque. */
+/** "Sorteio: Hoje": rótulo discreto e o valor em destaque. */
 @Composable
 private fun RotuloValor(rotulo: String, valor: String) {
     Text(

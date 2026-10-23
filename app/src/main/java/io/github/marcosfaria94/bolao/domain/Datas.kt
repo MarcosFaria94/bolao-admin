@@ -8,6 +8,7 @@ import java.time.temporal.ChronoUnit
 
 object Datas {
     private val MESES = listOf("JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ")
+    private val MESES_CURTOS = listOf("Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez")
     private val MESES_EXTENSO = listOf(
         "janeiro", "fevereiro", "março", "abril", "maio", "junho",
         "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
@@ -31,6 +32,9 @@ object Datas {
 
     /** 2026-06 -> "JUN/2026". */
     fun mesAno(m: YearMonth): String = "${MESES[m.monthValue - 1]}/${m.year}"
+
+    /** 2026-10 -> "Out/2026" (parâmetro de mês das listas). */
+    fun mesAnoCurto(m: YearMonth): String = "${MESES_CURTOS[m.monthValue - 1]}/${m.year}"
 
     /** 2026-06 -> "junho de 2026". */
     fun mesAnoExtenso(m: YearMonth): String = "${MESES_EXTENSO[m.monthValue - 1]} de ${m.year}"

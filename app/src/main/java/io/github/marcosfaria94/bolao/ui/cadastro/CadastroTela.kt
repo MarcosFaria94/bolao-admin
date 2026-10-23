@@ -37,7 +37,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -69,6 +68,7 @@ import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
+import io.github.marcosfaria94.bolao.ui.comum.BarraTitulo
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.CampoInteiro
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
@@ -91,7 +91,6 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
     var passo by mutableIntStateOf(0)
     val pessoas = mutableStateListOf(FormPessoa(), FormPessoa(), FormPessoa())
     var administrador by mutableIntStateOf(0)
-    var nomeGrupo by mutableStateOf("")
     var saldoInicial by mutableLongStateOf(0L)
     /** Mês do primeiro aporte mensal (null = o padrão, ver [inicioAportes]). */
     var inicioEscolhido by mutableStateOf<YearMonth?>(null)
@@ -192,7 +191,6 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
                         cadastroConcluido = true,
                         cadastradoEm = hoje,
                         inicioAportes = inicioAportes(hoje).toString(),
-                        nomeGrupo = nomeGrupo.trim(),
                         pessoas = lista,
                         config = it.config.copy(aporteMensal = aporteMensal),
                         lancamentos = it.lancamentos + lancamentos,
@@ -245,18 +243,7 @@ fun CadastroTela(vm: CadastroViewModel = viewModel()) {
 
     Scaffold(
         topBar = {
-            TopAppBar(title = {
-                Column {
-                    Text("Cadastro inicial")
-                    if (vm.passo > 0) {
-                        Text(
-                            "Passo ${vm.passo} de $TOTAL_PASSOS",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            })
+            BarraTitulo("Cadastro inicial", subtitulo = if (vm.passo > 0) "Passo ${vm.passo} de $TOTAL_PASSOS" else null)
         },
         snackbarHost = { SnackbarHost(avisos) },
     ) { padding ->
@@ -401,15 +388,6 @@ private fun PassoIntegrantes(vm: CadastroViewModel) {
         "O nome curto aparece nas mensagens, ex.: \"APORTE (Fulano)\". Marque quem é o Administrador.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    OutlinedTextField(
-        value = vm.nomeGrupo,
-        onValueChange = { vm.nomeGrupo = it },
-        label = { Text("Nome do grupo (opcional)") },
-        placeholder = { Text("Ex.: Bolão dos Amigos") },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
-        modifier = Modifier.fillMaxWidth(),
     )
     vm.pessoas.forEachIndexed { i, p ->
         val marcarErro = vm.tentouAvancar

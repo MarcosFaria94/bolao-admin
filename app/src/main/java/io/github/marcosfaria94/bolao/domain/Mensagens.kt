@@ -25,16 +25,16 @@ object Mensagens {
     /** Cabeçalho da parte do dinheiro nos blocos. */
     const val FINANCEIRO = "FINANCEIRO -"
 
-    /** Onde o dinheiro do bolão fica guardado (termo, Parte 2). */
-    const val LOCAL_DO_CAIXA = "CAIXINHA NUBANK 100% CDI"
+    /** Banco da caixinha do bolão, em nome do Administrador (termo, Parte 2: caixinha Nubank). */
+    const val BANCO_DO_CAIXA = "NUBANK"
 
     /** Linha RESULTADO da apuração: o resultado vai na imagem anexada. */
     const val VIDE_ANEXO = "(VIDE ANEXO)"
 
     // ---------- títulos (o texto enviado no WhatsApp) ----------
 
-    /** "APORTE - 01/06/2026". */
-    fun tituloAporte(data: LocalDate): String = "APORTE - ${Datas.longa(data)}"
+    /** "APORTE Nº 1 - 01/06/2026": número do aporte no mês (recomeça a cada mês) e a data. */
+    fun tituloAporte(numero: Int, data: LocalDate): String = "APORTE Nº $numero - ${Datas.longa(data)}"
 
     /** "APOSTA Nº 1 -  01/06/2026" (com dois espaços antes da data, como no termo). */
     fun tituloAposta(numero: Int, dataAposta: LocalDate): String = "APOSTA Nº $numero -  ${Datas.longa(dataAposta)}"
@@ -42,8 +42,8 @@ object Mensagens {
     /** "APURAÇÃO Nº 1 - 04/06/26": número da aposta e data da apuração. */
     fun tituloApuracao(numero: Int, dataApuracao: LocalDate): String = "APURAÇÃO Nº $numero - ${Datas.curta(dataApuracao)}"
 
-    /** "RATEIO - 14/06/26". */
-    fun tituloRateio(data: LocalDate): String = "RATEIO - ${Datas.curta(data)}"
+    /** "RATEIO Nº1 - 14/06/26" (sem espaço depois do Nº, como no termo): número do rateio no mês e a data. */
+    fun tituloRateio(numero: Int, data: LocalDate): String = "RATEIO Nº$numero - ${Datas.curta(data)}"
 
     /** "EXTRATO - 30/06/26". */
     fun tituloExtrato(data: LocalDate): String = "EXTRATO - ${Datas.curta(data)}"
@@ -65,8 +65,11 @@ object Mensagens {
             "SALDO FINAL: = R$ $c"
     }
 
-    /** "Nº1 - JUN/2026": número da aposta no mês, o mês e o ano da aposta. */
-    fun numeroNoMes(numero: Int, dataAposta: LocalDate): String = "Nº$numero - ${Datas.mesAno(YearMonth.from(dataAposta))}"
+    /**
+     * "Nº1 - JUN/2026": número no mês (da aposta, do aporte ou do rateio), o mês e o ano.
+     * A numeração recomeça a cada mês: a primeira aposta (ou aporte, ou rateio) do mês é a Nº1.
+     */
+    fun numeroNoMes(numero: Int, data: LocalDate): String = "Nº$numero - ${Datas.mesAno(YearMonth.from(data))}"
 
     /** "2 MILHÕES", "1,7 MILHÃO", "450 MIL" (prêmio principal dos blocos da aposta e da apuração). */
     fun premioPrincipal(centavos: Long?): String = when {
@@ -135,16 +138,23 @@ object Mensagens {
 
     // ---------- blocos ----------
 
-    /** Saldo atual: o caixa do bolão, onde fica e em nome de quem. Não é registro nem tem título. */
+    /**
+     * Saldo atual: o caixa do bolão, o banco e o titular. Não é registro nem tem título.
+     * No termo, banco e titular aparecem como "(ADMINISTRADOR)": são os dados dele.
+     */
     fun saldo(saldoLiquido: Long, titular: String): String =
         "CAIXA DO BOLÃO: ${Dinheiro.rs(saldoLiquido)}\n" +
-            "LOCAL: $LOCAL_DO_CAIXA\n" +
+            "BANCO: $BANCO_DO_CAIXA\n" +
             "TITULAR: ${titular.trim().uppercase()}"
 
-    /** 1. Registro de aporte. [adicional] = aporte fora do mensal (com a concordância dos 3). */
-    fun aporte(data: LocalDate, saldoAtual: Long, aportes: Long, adicional: Boolean = false): String =
-        "TIPO DE APORTE: ${if (adicional) "ADICIONAL" else "OBRIGATÓRIO"}\n" +
+    /**
+     * 1. Registro de aporte: "APORTE Nº1 - JUN/2026" ([numero] = aporte do mês, recomeça a cada mês).
+     * [adicional] = aporte fora do mensal (com a concordância dos 3).
+     */
+    fun aporte(numero: Int, data: LocalDate, saldoAtual: Long, aportes: Long, adicional: Boolean = false): String =
+        "APORTE ${numeroNoMes(numero, data)}\n" +
             "DATA: ${Datas.longa(data)}\n" +
+            "TIPO DE APORTE: ${if (adicional) "ADICIONAL" else "OBRIGATÓRIO"}\n" +
             "\n" +
             financeiro("APORTES", '+', saldoAtual, aportes, saldoAtual + aportes)
 
@@ -191,9 +201,12 @@ object Mensagens {
             "\n" +
             financeiro("PRÊMIO", '+', saldoAtual, premio, saldoAtual + premio)
 
-    /** 4. Rateio. [total] = soma das 3 cotas. */
-    fun rateio(saldoAtual: Long, total: Long): String =
-        financeiro("RATEIO", '-', saldoAtual, total, saldoAtual - total)
+    /** 4. Rateio: "RATEIO Nº1 - JUN/2026" ([numero] = rateio do mês) e a data. [total] = soma das 3 cotas. */
+    fun rateio(numero: Int, data: LocalDate, saldoAtual: Long, total: Long): String =
+        "RATEIO ${numeroNoMes(numero, data)}\n" +
+            "DATA: ${Datas.longa(data)}\n" +
+            "\n" +
+            financeiro("RATEIO", '-', saldoAtual, total, saldoAtual - total)
 
     /**
      * Divisão final do saldo na extinção (Parte 5): cada um recebe o saldo ÷ 3 arredondado

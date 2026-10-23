@@ -127,6 +127,36 @@ class IndiceKTest {
     }
 
     @Test
+    fun precoDeAjustesEntraNoCalculo() {
+        val casos = testes["casos"]!!.jsonArray.map { it.jsonObject }
+        fun caso(id: String) = casos.first { it["id"]!!.jsonPrimitive.content == id }
+        fun calcular(id: String, preco: Double?): ResultadoK {
+            val c = caso(id)
+            return IndiceK.calcular(
+                parametros, c["chave"]!!.jsonPrimitive.content,
+                RegistroK.deJson(c["ultimo"]!!.jsonObject), RegistroK.deJson(c["anterior"]!!.jsonObject), preco = preco,
+            )
+        }
+        // Com o preço do arquivo (ou sem informar), o resultado é exatamente o de sempre.
+        val mega = calcular("ao_vivo_megasena", null)
+        assertEquals(mega, calcular("ao_vivo_megasena", 6.0))
+        // Mega-Sena a R$ 7,00: as vendas do concurso anterior são a arrecadação ÷ 7.
+        val sete = calcular("ao_vivo_megasena", 7.0)
+        val u = RegistroK.deJson(caso("ao_vivo_megasena")["ultimo"]!!.jsonObject)
+        assertEquals(u.valorArrecadado / 7.0, sete.nAnterior, 1e-6)
+        assertTrue(sete.k1!! < mega.k1!!)
+        // Prêmio fixo não depende das vendas: o retorno dele cai na proporção do preço (3,50 -> 7,00).
+        val lf = calcular("ao_vivo_lotofacil", null)
+        val lfDobro = calcular("ao_vivo_lotofacil", 7.0)
+        for (fx in listOf(3, 4, 5)) {
+            assertEquals("faixa $fx", lf.k1PorFaixa.getValue(fx) / 2, lfDobro.k1PorFaixa.getValue(fx), 1e-12)
+        }
+        // O arquivo não muda: o próximo cálculo sem preço volta ao do arquivo.
+        assertEquals(lf, calcular("ao_vivo_lotofacil", null))
+        assertEquals(3.5, parametros.modalidades.getValue("lotofacil").preco, 0.0)
+    }
+
+    @Test
     fun dadosIncompletosFicamSemK1() {
         val u = RegistroK(numero = 10, numeroConcursoProximo = 11, dataProximoConcurso = "20/10/2026")
         val r = IndiceK.calcular(parametros, "megasena", u, RegistroK(numero = 9))

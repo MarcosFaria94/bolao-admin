@@ -161,7 +161,7 @@ fun AporteTela(estado: Estado, abrir: (String) -> Unit) {
     if (vendo) {
         VisualizadorComprovante(
             estado,
-            Mensagens.tituloAporte(dataAporte),
+            Operacoes.tituloAporte(estado, dataAporte),
             aoFechar = { vendo = false },
             previa = Recibos.previa(estado, TipoComprovante.APORTE, texto, 0),
         )

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.Notifications
@@ -26,9 +25,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -36,7 +33,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -75,6 +71,7 @@ import io.github.marcosfaria94.bolao.ui.aposta.NovaApostaTela
 import io.github.marcosfaria94.bolao.ui.atualizacao.AtualizacaoViewModel
 import io.github.marcosfaria94.bolao.ui.atualizacao.DialogosAtualizacao
 import io.github.marcosfaria94.bolao.ui.cadastro.CadastroTela
+import io.github.marcosfaria94.bolao.ui.comum.BarraTitulo
 import io.github.marcosfaria94.bolao.ui.comum.ComprovanteTela
 import io.github.marcosfaria94.bolao.ui.comum.Icones
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
@@ -134,7 +131,6 @@ fun AppRaiz() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: Boolean) {
     val nav = rememberNavController()
@@ -147,7 +143,9 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             value = LocalDateTime.now()
         }
     }
-    val pendencias = Pendencias.de(estado, agora)
+    // Pendências do bolão + avisos dos índices (preço diferente, regras da Caixa que mudaram).
+    val avisosIndices by ctx.bolao.indices.avisos.collectAsStateWithLifecycle()
+    val pendencias = Pendencias.comAvisosDosIndices(Pendencias.de(estado, agora), avisosIndices)
 
     // Ao abrir: confere os sorteios e os índices na hora (sem esperar a próxima hora).
     LaunchedEffect(Unit) {
@@ -197,7 +195,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     val rota = entrada?.destination?.route ?: Aba.FINANCEIRO.rota
     val ehAba = Aba.entries.any { it.rota == rota }
     val titulo = when (rota) {
-        Aba.FINANCEIRO.rota -> estado.nomeExibicao
+        Aba.FINANCEIRO.rota -> "Financeiro"
         Aba.APOSTAS.rota -> "Apostas"
         Aba.JOGOS.rota -> "Jogos"
         Aba.NOTIFICACOES.rota -> "Notificações"
@@ -218,16 +216,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     Scaffold(
         topBar = {
             Column {
-                TopAppBar(
-                    title = { Text(titulo) },
-                    navigationIcon = {
-                        if (!ehAba) {
-                            IconButton(onClick = { nav.popBackStack() }) {
-                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Voltar")
-                            }
-                        }
-                    },
-                )
+                BarraTitulo(titulo, aoVoltar = if (ehAba) null else ({ nav.popBackStack() }))
                 if (teste) FaixaModoTeste(aoSair = { sairDoTeste = true })
             }
         },

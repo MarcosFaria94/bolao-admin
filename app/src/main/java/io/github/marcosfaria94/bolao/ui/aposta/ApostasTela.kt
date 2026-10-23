@@ -1,9 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.aposta
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Star
@@ -38,8 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -53,19 +47,19 @@ import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.ui.comum.CabecalhoDia
-import io.github.marcosfaria94.bolao.ui.comum.EtiquetaNumero
+import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
+import io.github.marcosfaria94.bolao.ui.comum.ItemHistorico
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
-import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
+import io.github.marcosfaria94.bolao.ui.comum.TextoBrilhante
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
+import io.github.marcosfaria94.bolao.ui.comum.descricaoDaAposta
 import io.github.marcosfaria94.bolao.ui.comum.TextoVazio
 import io.github.marcosfaria94.bolao.ui.comum.TituloComMes
 import io.github.marcosfaria94.bolao.ui.comum.mesesComDados
 import io.github.marcosfaria94.bolao.ui.tema.AzulMarinho
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
-import io.github.marcosfaria94.bolao.ui.tema.Tarja
 import io.github.marcosfaria94.bolao.ui.tema.corAguardando
 import io.github.marcosfaria94.bolao.ui.tema.corApuracao
-import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import io.github.marcosfaria94.bolao.ui.tema.corPremiada
 import java.time.LocalDate
 import java.time.YearMonth
@@ -106,9 +100,8 @@ fun corDaSituacao(s: Situacao): Color = when (s) {
     Situacao.NAO_PREMIADA -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
-/** "Mega-Sena · 3073" (o Nº da aposta vai na etiqueta embaixo do selo). */
-fun tituloDaAposta(a: Aposta): String =
-    a.modalidade.nome + if (a.concurso > 0) " · ${a.concurso}" else ""
+/** "Aposta Nº8": o título da aposta (na tarja). O Nº recomeça a cada mês. */
+fun tituloDaAposta(a: Aposta): String = "Aposta Nº${a.numero}"
 
 @Composable
 fun ApostasTela(estado: Estado, abrir: (String) -> Unit) {
@@ -136,14 +129,14 @@ fun ApostasTela(estado: Estado, abrir: (String) -> Unit) {
         item { CartaoProximaAposta(hoje, Operacoes.apostaFeitaEm(estado, hoje), aoApostar = { abrir("apostar") }) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TituloComMes("Apostas do mês", meses, mes) { mes = it }
+                TituloComMes("Histórico", meses, mes) { mes = it }
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                         if (lista.isEmpty()) {
-                            TextoVazio("Nenhuma aposta registrada em ${Datas.mesAnoExtenso(mes)}.", Modifier.padding(vertical = 10.dp))
+                            TextoVazio("Nenhuma aposta registrada em ${Datas.mesAnoCurto(mes)}.", Modifier.padding(vertical = 10.dp))
                         } else {
                             var dia: LocalDate? = null
                             lista.forEach { a ->
@@ -153,7 +146,7 @@ fun ApostasTela(estado: Estado, abrir: (String) -> Unit) {
                                     dia = a.dataAposta
                                     CabecalhoDia(a.dataAposta, hoje)
                                 } else {
-                                    HorizontalDivider(Modifier.padding(start = 66.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                                    HorizontalDivider(Modifier.padding(start = 70.dp), color = MaterialTheme.colorScheme.outlineVariant)
                                 }
                                 ItemAposta(a, situacaoDe(a, hoje), hoje) { abrir("aposta/${a.id}") }
                             }
@@ -167,8 +160,9 @@ fun ApostasTela(estado: Estado, abrir: (String) -> Unit) {
 }
 
 /**
- * Concurso em destaque (o de maior k1): azul-noite com dourado. Selo com "Quina · 7147",
- * o prêmio grande e "Sorteio: Hoje". O cartão inteiro abre a página do jogo.
+ * Concurso em destaque (o de maior k1): azul-noite com dourado. O emblema da modalidade (sigla e
+ * concurso), o nome, o prêmio grande e "Sorteio: Hoje" (com brilho, só quando é hoje mesmo).
+ * O cartão inteiro abre a página do jogo.
  */
 @Composable
 private fun CartaoDestaque(item: Indices.Item?, hoje: LocalDate, aoTocar: (Modalidade) -> Unit) {
@@ -212,18 +206,18 @@ private fun CartaoDestaque(item: Indices.Item?, hoje: LocalDate, aoTocar: (Modal
             }
             val u = item.ultimo
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SeloModalidade(item.modalidade, tamanho = 48)
-                Spacer(Modifier.width(14.dp))
+                EmblemaModalidade(item.modalidade, item.proximoNumero, tamanho = 68.dp, contorno = Color.White.copy(alpha = 0.85f))
+                Spacer(Modifier.width(16.dp))
                 TextoQueCabe(
-                    item.modalidade.nome + (item.proximoNumero?.let { " · $it" } ?: ""),
-                    MaterialTheme.typography.headlineMedium,
-                    cor = suave,
-                    peso = FontWeight.SemiBold,
-                    menor = 18.sp,
+                    item.modalidade.nome,
+                    MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 40.sp),
+                    cor = Color.White,
+                    peso = FontWeight.Bold,
+                    menor = 20.sp,
                     modifier = Modifier.weight(1f),
                 )
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
             TextoQueCabe(
                 u?.premioEstimadoProximo?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) } ?: "Prêmio a confirmar",
                 MaterialTheme.typography.displaySmall.copy(fontSize = 40.sp, lineHeight = 48.sp),
@@ -231,13 +225,13 @@ private fun CartaoDestaque(item: Indices.Item?, hoje: LocalDate, aoTocar: (Modal
                 menor = 24.sp,
                 modifier = Modifier.fillMaxWidth(),
             )
-            u?.proximaData?.let {
+            u?.proximaData?.let { data ->
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    "Sorteio: ${Datas.relativa(it, hoje)}",
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
-                    color = suave,
-                )
+                val estilo = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp)
+                val texto = "Sorteio: ${Datas.relativa(data, hoje)}"
+                // O brilho só quando o sorteio é hoje mesmo.
+                if (data == hoje) TextoBrilhante(texto, estilo, cor = Color(0xFFFFE08A))
+                else Text(texto, style = estilo, color = suave)
             }
         }
     }
@@ -265,58 +259,19 @@ private fun CartaoProximaAposta(hoje: LocalDate, apostaDeHojeFeita: Boolean, aoA
     }
 }
 
-/** Tarja com o prêmio principal do concurso, no formato "R$ 52.000.000,00", em tom discreto. */
-@Composable
-private fun TarjaPremio(centavos: Long) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .background(Tarja.fundo(), RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        TextoQueCabe(
-            Dinheiro.rs(centavos),
-            MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, textAlign = TextAlign.Center),
-            cor = Tarja.texto(),
-            peso = FontWeight.Bold,
-            menor = 13.sp,
-        )
-    }
-}
-
 /**
- * Uma aposta: o selo com a etiqueta "Nº8" embaixo (na cor da modalidade), a tarja com o prêmio,
- * "Mega-Sena · 3073" e a situação.
+ * Uma aposta do Histórico: o emblema da modalidade (sigla e concurso), a tarja "Aposta Nº1",
+ * "Quina · 55M" e a situação, na cor dela.
  */
 @Composable
 private fun ItemAposta(a: Aposta, s: Situacao, hoje: LocalDate, aoTocar: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = aoTocar).padding(vertical = 12.dp),
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            SeloModalidade(a.modalidade, tamanho = 52)
-            Spacer(Modifier.height(4.dp))
-            EtiquetaNumero("Nº${a.numero}", fundo = corModalidade(a.modalidade.cor), cor = Color.White, largura = 52.dp)
-        }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            a.premioEstimado?.takeIf { it > 0 }?.let { TarjaPremio(it) }
-            Text(
-                tituloDaAposta(a),
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                textoSituacao(a, s, hoje),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = corDaSituacao(s),
-            )
-        }
-        Spacer(Modifier.width(4.dp))
-        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+    ItemHistorico(
+        emblema = { EmblemaModalidade(a.modalidade, a.concurso, tamanho = 56.dp) },
+        tarja = tituloDaAposta(a),
+        descricao = descricaoDaAposta(a),
+        linha = textoSituacao(a, s, hoje),
+        corLinha = corDaSituacao(s),
+        pesoLinha = FontWeight.SemiBold,
+        aoTocar = aoTocar,
+    )
 }

@@ -93,8 +93,9 @@ private sealed interface Vendo {
 }
 
 /**
- * Aposta registrada, com a apuração na mesma tela: aposta, sorteio, situação e, depois do
- * sorteio, se acumulou; os números (com os acertos, quando o resultado sai); a apuração
+ * Aposta registrada, com a apuração na mesma tela: o cabeçalho (emblema, "Aposta Nº1" e a
+ * modalidade), prêmio, registro, situação ("Sorteio hoje"...) e, depois do sorteio, se acumulou;
+ * os números (com os acertos, quando o resultado sai); a apuração
  * quando ela ainda falta; e, embaixo, os dois comprovantes (aposta e apuração) para ver e enviar.
  * O valor do prêmio aparece aqui (o aviso do celular não traz o valor).
  */
@@ -170,8 +171,8 @@ internal fun DetalheAposta(estado: Estado, a: Aposta) {
     ) {
         CabecalhoAposta(a, a.numero)
         Column {
-            LinhaInfo("Aposta", Datas.relativa(a.dataAposta, hoje))
-            LinhaInfo("Sorteio", a.dataSorteio?.let { Datas.relativa(it, hoje) } ?: "a confirmar")
+            textoPremio(a)?.let { (rotulo, valor) -> LinhaInfo(rotulo, valor) }
+            LinhaInfo("Registro", Datas.relativa(a.dataAposta, hoje))
             LinhaInfo("Situação", situacao, destaque = true, cor = corDaSituacao(s))
             acumulou?.let { LinhaInfo("Acumulou", if (it) "Sim" else "Não") }
         }

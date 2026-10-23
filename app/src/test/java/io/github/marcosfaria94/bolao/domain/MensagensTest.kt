@@ -19,11 +19,13 @@ class MensagensTest {
 
     @Test
     fun aporteIgualAoTermo() {
-        assertEquals(ModelosDoTermo.TITULO_APORTE, Mensagens.tituloAporte(d(1)))
-        assertEquals(ModelosDoTermo.APORTE, Mensagens.aporte(d(1), saldoAtual = 1002, aportes = 3000))
-        val adicional = Mensagens.aporte(d(15), saldoAtual = 1002, aportes = 1500, adicional = true)
-        assertEquals("TIPO DE APORTE: ADICIONAL", adicional.lines()[0])
+        assertEquals(ModelosDoTermo.TITULO_APORTE, Mensagens.tituloAporte(1, d(1)))
+        assertEquals(ModelosDoTermo.APORTE, Mensagens.aporte(1, d(1), saldoAtual = 1002, aportes = 3000))
+        val adicional = Mensagens.aporte(2, d(15), saldoAtual = 1002, aportes = 1500, adicional = true)
+        assertEquals("APORTE Nº2 - JUN/2026", adicional.lines()[0])
         assertEquals("DATA: 15/06/2026", adicional.lines()[1])
+        assertEquals("TIPO DE APORTE: ADICIONAL", adicional.lines()[2])
+        assertEquals("APORTE Nº 2 - 15/06/2026", Mensagens.tituloAporte(2, d(15)))
     }
 
     @Test
@@ -101,8 +103,8 @@ class MensagensTest {
         assertEquals(2400, r.total)
         assertEquals(2, r.sobra)
         assertEquals(1502, r.saldoFinal)
-        assertEquals(ModelosDoTermo.TITULO_RATEIO, Mensagens.tituloRateio(d(14)))
-        assertEquals(ModelosDoTermo.RATEIO, Mensagens.rateio(r.saldoLiquido, r.total))
+        assertEquals(ModelosDoTermo.TITULO_RATEIO, Mensagens.tituloRateio(1, d(14)))
+        assertEquals(ModelosDoTermo.RATEIO, Mensagens.rateio(1, d(14), r.saldoLiquido, r.total))
     }
 
     @Test
@@ -138,12 +140,12 @@ class MensagensTest {
 
     @Test
     fun valoresMaioresContinuamAlinhados() {
-        val msg = Mensagens.aporte(d(1), saldoAtual = 123456, aportes = 600)
+        val msg = Mensagens.aporte(1, d(1), saldoAtual = 123456, aportes = 600)
         val linhas = msg.lines()
-        assertEquals("FINANCEIRO -", linhas[3])
-        assertEquals("SALDO ATUAL:   R$ 1.234,56", linhas[4])
-        assertEquals("APORTES....: + R$     6,00", linhas[5])
-        assertEquals("SALDO FINAL: = R$ 1.240,56", linhas[6])
+        assertEquals("FINANCEIRO -", linhas[4])
+        assertEquals("SALDO ATUAL:   R$ 1.234,56", linhas[5])
+        assertEquals("APORTES....: + R$     6,00", linhas[6])
+        assertEquals("SALDO FINAL: = R$ 1.240,56", linhas[7])
     }
 
     @Test
@@ -211,6 +213,9 @@ class MensagensTest {
         assertEquals("Sorteio em 3 dias", Datas.sorteioEm(hoje.plusDays(3), hoje))
         // Virada do ano.
         assertEquals("Amanhã", Datas.relativa(LocalDate.of(2027, 1, 1), LocalDate.of(2026, 12, 31)))
+        // Parâmetro de mês das listas.
+        assertEquals("Out/2026", Datas.mesAnoCurto(YearMonth.of(2026, 10)))
+        assertEquals("Mar/2027", Datas.mesAnoCurto(YearMonth.of(2027, 3)))
     }
 
     @Test

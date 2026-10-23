@@ -66,13 +66,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.marcosfaria94.bolao.bolao
@@ -95,16 +93,19 @@ import io.github.marcosfaria94.bolao.domain.Volante
 import io.github.marcosfaria94.bolao.imagem.LeitorComprovante
 import io.github.marcosfaria94.bolao.imagem.Recibos
 import io.github.marcosfaria94.bolao.net.CaixaApi
-import io.github.marcosfaria94.bolao.ui.comum.AVISO_DEFINITIVO
+import io.github.marcosfaria94.bolao.ui.comum.Animacoes
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
 import io.github.marcosfaria94.bolao.ui.comum.BotoesDeRegistro
 import io.github.marcosfaria94.bolao.ui.comum.CampoData
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.CampoInteiro
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
+import io.github.marcosfaria94.bolao.ui.comum.DialogoSimNao
+import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
 import io.github.marcosfaria94.bolao.ui.comum.LinhaAnexo
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
-import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
+import io.github.marcosfaria94.bolao.ui.comum.TarjaTitulo
+import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
@@ -193,43 +194,35 @@ private fun gravarRascunho(repo: Repositorio, novo: Aposta) {
     repo.enfileirar { e -> if (e.apostas.any { it.id == novo.id && !it.registrada }) Operacoes.salvarRascunho(e, novo) else e }
 }
 
-/** "Prêmio: 170 Milhões" (ou o 1º prêmio, na Federal). */
-fun textoPremio(a: Aposta): String? = a.premioEstimado?.takeIf { it > 0 }?.let {
-    (if (a.modalidade == Modalidade.FEDERAL) "1º prêmio: " else "Prêmio: ") + Dinheiro.porExtenso(it, comRs = false)
+/** "Prêmio" (ou "1º prêmio", na Federal) e o valor por extenso: "R$ 200 Milhões". null = sem estimativa. */
+fun textoPremio(a: Aposta): Pair<String, String>? = a.premioEstimado?.takeIf { it > 0 }?.let {
+    (if (a.modalidade == Modalidade.FEDERAL) "1º prêmio" else "Prêmio") to Dinheiro.porExtenso(it)
 }
 
 /**
- * Cabeçalho da tela da aposta: "Nº5 | Mega-Sena · 3071" e, embaixo, "Prêmio: 170 Milhões".
- * No rascunho vêm também "Sorteio: Hoje" ([sorteio]) e o lápis discreto ([aoEditar]) que abre
- * os dados do concurso.
+ * Cabeçalho da tela da aposta: o emblema da modalidade (sigla e concurso), a tarja "Aposta Nº1"
+ * e o nome da modalidade bem grande. No rascunho vem também o lápis discreto ([aoEditar]) que
+ * abre os dados do concurso.
  */
 @Composable
 fun CabecalhoAposta(
     a: Aposta,
     numero: Int,
-    sorteio: String? = null,
     aoEditar: (() -> Unit)? = null,
     carregando: Boolean = false,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        SeloModalidade(a.modalidade, tamanho = 48)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                "Nº$numero | ${a.modalidade.nome}" + if (a.concurso > 0) " · ${a.concurso}" else "",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
+        EmblemaModalidade(a.modalidade, a.concurso.takeIf { it > 0 }, tamanho = 66.dp)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            TarjaTitulo("Aposta Nº$numero")
+            TextoQueCabe(
+                a.modalidade.nome,
+                MaterialTheme.typography.displaySmall.copy(fontSize = 36.sp, lineHeight = 42.sp),
+                peso = FontWeight.Bold,
+                menor = 22.sp,
+                modifier = Modifier.fillMaxWidth(),
             )
-            textoPremio(a)?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
-            sorteio?.let {
-                Text(
-                    buildAnnotatedString {
-                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("Sorteio: ") }
-                        append(it)
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
         }
         if (carregando) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -251,8 +244,13 @@ fun CabecalhoAposta(
 @Composable
 fun LinhaInfo(rotulo: String, valor: String, destaque: Boolean = false, cor: Color = Color.Unspecified) {
     Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
-        Text("$rotulo: ", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(valor, style = MaterialTheme.typography.bodyLarge, fontWeight = if (destaque) FontWeight.Bold else FontWeight.Normal, color = cor)
+        Text("$rotulo: ", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            valor,
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp),
+            fontWeight = if (destaque) FontWeight.Bold else FontWeight.SemiBold,
+            color = cor,
+        )
     }
 }
 
@@ -376,10 +374,13 @@ private fun EditorAposta(
         CabecalhoAposta(
             r,
             numero,
-            sorteio = r.dataSorteio?.let { Datas.relativa(it, hoje) } ?: "a confirmar",
             aoEditar = { editando = true },
             carregando = consulta == Consulta.Carregando,
         )
+        Column {
+            textoPremio(r)?.let { (rotulo, valor) -> LinhaInfo(rotulo, valor) }
+            LinhaInfo("Sorteio", r.dataSorteio?.let { Datas.relativa(it, hoje) } ?: "a confirmar")
+        }
         (consulta as? Consulta.Erro)?.let { Aviso(it.texto, alerta = true) }
 
         // Volante
@@ -474,51 +475,35 @@ private fun EditorAposta(
 
     conferencia?.let { conf ->
         val pronta = (conf as? ConferenciaCaixa.Diverge)?.ajustada ?: r
-        AlertDialog(
-            onDismissRequest = { conferencia = null },
-            title = { Text("Registrar a aposta Nº$numero?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    when (conf) {
-                        is ConferenciaCaixa.Confere -> Text(
-                            "O comprovante da Caixa confere com a aposta (${conf.conferidos.joinToString()})." +
-                                (conf.faltou?.let { "\n\nNão deu para ler $it: confira antes de registrar." } ?: ""),
-                        )
-                        is ConferenciaCaixa.Diverge -> {
-                            Text("O comprovante da Caixa tem outra aposta:", fontWeight = FontWeight.Bold)
-                            conf.diferencas.forEach { d ->
-                                Text("• ${d.campo}: no app ${d.noApp}; na Caixa ${d.naCaixa}.")
-                            }
-                            Text("A aposta e o comprovante do bolão vão ficar como na Caixa.")
-                        }
-                        is ConferenciaCaixa.NaoLida -> Text(
-                            "Não deu para conferir o comprovante da Caixa automaticamente (${conf.motivo}). " +
-                                "Confira os números antes de registrar.",
-                        )
+        // Pergunta curta; só o que foge do normal na conferência com a Caixa entra antes.
+        val antes = when (conf) {
+            is ConferenciaCaixa.Confere -> conf.faltou?.let { "Não deu para ler $it no comprovante da Caixa: confira antes." }
+            is ConferenciaCaixa.Diverge ->
+                "O comprovante da Caixa tem outra aposta:\n" +
+                    conf.diferencas.joinToString("\n") { d -> "• ${d.campo}: no app ${d.noApp}; na Caixa ${d.naCaixa}." } +
+                    "\nA aposta vai ficar como na Caixa."
+            is ConferenciaCaixa.NaoLida -> "Não deu para conferir o comprovante da Caixa (${conf.motivo}): confira os números antes."
+        }
+        DialogoSimNao(
+            titulo = "Deseja registrar aposta?",
+            texto = listOfNotNull(antes, "A ação é irreversível.").joinToString("\n\n"),
+            aoNao = { conferencia = null },
+            aoSim = {
+                conferencia = null
+                registrando = true
+                escopo.launch {
+                    try {
+                        val agora = System.currentTimeMillis()
+                        val final = comDadosDoConcurso(pronta, r)
+                        mudarAtual(final)
+                        registrarComprovante(ctx, { e -> Operacoes.registrarAposta(Operacoes.salvarRascunho(e, final), final.id, hoje, agora) })
+                    } catch (t: Throwable) {
+                        avisos.showSnackbar("Não foi possível registrar: ${t.message}")
+                    } finally {
+                        registrando = false
                     }
-                    Text("Sai ${Dinheiro.rs(pronta.valor)} do saldo. Em seguida o WhatsApp abre com o comprovante e o da Caixa.")
-                    Text(AVISO_DEFINITIVO)
                 }
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    conferencia = null
-                    registrando = true
-                    escopo.launch {
-                        try {
-                            val agora = System.currentTimeMillis()
-                            val final = comDadosDoConcurso(pronta, r)
-                            mudarAtual(final)
-                            registrarComprovante(ctx, { e -> Operacoes.registrarAposta(Operacoes.salvarRascunho(e, final), final.id, hoje, agora) })
-                        } catch (t: Throwable) {
-                            avisos.showSnackbar("Não foi possível registrar: ${t.message}")
-                        } finally {
-                            registrando = false
-                        }
-                    }
-                }) { Text("Confirmar") }
-            },
-            dismissButton = { TextButton(onClick = { conferencia = null }) { Text("Cancelar") } },
         )
     }
     if (confirmarExclusao) {
@@ -654,7 +639,7 @@ private fun BotaoCompletar(destacar: Boolean, modifier: Modifier, aoTocar: () ->
         Spacer(Modifier.width(6.dp))
         Text("Completar")
     }
-    if (!destacar) {
+    if (!destacar || !Animacoes.ligadas) {
         FilledTonalButton(onClick = aoTocar, modifier = modifier) { conteudo() }
         return
     }

@@ -137,6 +137,7 @@ data class Aposta(
 
 @Serializable
 data class Rateio(
+    /** Chave interna do rateio (corrida, nunca se repete). O número do comprovante é [numeroNoMes]. */
     val numero: Int,
     val data: Data,
     val saldoLiquido: Long,
@@ -144,6 +145,8 @@ data class Rateio(
     val cota: Long,
     val comprovantes: List<Arquivo> = emptyList(),
     val criadoEm: Long,
+    /** Nº do rateio no mês (Nº1 = primeiro rateio do mês), como no termo. 0 = registrado antes da 0.7. */
+    val numeroNoMes: Int = 0,
 )
 
 @Serializable
@@ -195,7 +198,10 @@ data class Envio(val comprovanteId: String, val em: Long)
 @Serializable
 data class Extincao(
     val iniciadaEm: Long,
-    /** Extinção forçada (opção escondida em Ajustes): começou com pendências, que ficaram como estavam. */
+    /**
+     * Extinção forçada começada na 0.6 (com pendências). Desde a 0.7 a forçada é a formatação do
+     * app e não cria extinção: uma dessas que ficou pela metade só pode ser concluída apagando tudo.
+     */
     val forcada: Boolean = false,
     /** Comprovantes da divisão final (Pix de cada integrante), na ordem dos integrantes. */
     val comprovantes: Map<String, Arquivo> = emptyMap(),
@@ -207,18 +213,22 @@ data class Extincao(
     val auditoriaEnviadaEm: Long? = null,
 )
 
+/** Nome do app (cabeçalho dos comprovantes, PDFs e lembretes). */
+const val NOME_DO_APP = "Bolão dos Amigos"
+
 @Serializable
 data class Estado(
     val versao: Int = 2,
     val cadastroConcluido: Boolean = false,
     /** Dia do cadastro inicial (o aporte de um mês já começado não é cobrado). */
     val cadastradoEm: Data? = null,
+    /** Nome do grupo (até a 0.6, no cadastro). Não é mais usado: o bolão não precisa de nome. */
     val nomeGrupo: String = "",
     /** ID do grupo no WhatsApp (só aparece no termo). */
     val grupoWhatsapp: String = "",
     val pessoas: List<Pessoa> = emptyList(),
     val config: Config = Config(),
-    /** Próximo número de rateio (controle interno). */
+    /** Próximo número interno de rateio (chave corrida; o comprovante usa o número no mês). */
     val proximoRateio: Int = 1,
     val lancamentos: List<Lancamento> = emptyList(),
     val apostas: List<Aposta> = emptyList(),
@@ -246,5 +256,6 @@ data class Estado(
     fun pessoa(id: String?): Pessoa? = pessoas.firstOrNull { it.id == id }
     fun comprovante(id: String?): Comprovante? = comprovantes.firstOrNull { it.id == id }
     fun enviado(c: Comprovante): Boolean = envios.any { it.comprovanteId == c.id }
-    val nomeExibicao: String get() = nomeGrupo.ifBlank { "Bolão dos Amigos" }
+    /** Nome que vai no cabeçalho dos comprovantes e dos PDFs: o nome do app. */
+    val nomeExibicao: String get() = NOME_DO_APP
 }

@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -48,7 +47,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -56,9 +54,7 @@ import androidx.compose.ui.unit.isUnspecified
 import androidx.compose.ui.unit.sp
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
-import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.ui.tema.CoresAlerta
-import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -188,50 +184,6 @@ fun TextoVazio(texto: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** Selo com a sigla e a cor da modalidade (LF, MS...). */
-@Composable
-fun SeloModalidade(m: Modalidade, modifier: Modifier = Modifier, tamanho: Int = 40) {
-    Box(
-        modifier = modifier
-            .size(tamanho.dp)
-            .background(corModalidade(m.cor), RoundedCornerShape((tamanho / 4).dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            m.sigla,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = (tamanho * 0.36f).sp,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-/**
- * Etiqueta pequena de canto arredondado com o número da aposta ("Nº8"), logo embaixo do selo
- * da modalidade (na cor dela) ou do ícone de uma movimentação (na cor do ícone).
- */
-@Composable
-fun EtiquetaNumero(texto: String, fundo: Color, cor: Color, largura: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .width(largura)
-            .background(fundo, RoundedCornerShape(6.dp))
-            .padding(horizontal = 2.dp, vertical = 2.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            texto,
-            color = cor,
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            lineHeight = 14.sp,
-            maxLines = 1,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
 /** Uma linha "rótulo ......... valor". */
 @Composable
 fun LinhaValor(rotulo: String, valor: String, modifier: Modifier = Modifier, destaque: Boolean = false) {
@@ -275,8 +227,8 @@ fun Aviso(texto: String, modifier: Modifier = Modifier, alerta: Boolean = false)
 }
 
 /**
- * Parâmetro de data: botão com a lista dos meses possíveis (os que têm dados, até o atual),
- * o mais recente primeiro. Começa no mês atual.
+ * Parâmetro de data ("Out/2026"): botão com a lista dos meses possíveis (os que têm dados, até o
+ * atual), o mais recente primeiro. Começa no mês atual.
  */
 @Composable
 fun SeletorMes(
@@ -294,7 +246,7 @@ fun SeletorMes(
             contentPadding = PaddingValues(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
         ) {
-            Text(Datas.mesAnoTitulo(escolhido), style = MaterialTheme.typography.labelLarge)
+            Text(Datas.mesAnoCurto(escolhido), style = MaterialTheme.typography.labelLarge)
             Icon(Icons.Outlined.ArrowDropDown, contentDescription = "Escolher o mês")
         }
         DropdownMenu(expanded = aberto, onDismissRequest = { aberto = false }) {
@@ -302,7 +254,7 @@ fun SeletorMes(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            Datas.mesAnoTitulo(m) + (detalhe(m)?.let { " · $it" } ?: ""),
+                            Datas.mesAnoCurto(m) + (detalhe(m)?.let { " · $it" } ?: ""),
                             fontWeight = if (m == escolhido) FontWeight.Bold else FontWeight.Normal,
                         )
                     },

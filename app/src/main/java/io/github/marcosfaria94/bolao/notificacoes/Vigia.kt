@@ -124,6 +124,12 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             return registrarComprovante(context, { Operacoes.confirmarApuracao(it, id, ap, hoje, agora, imagem) }, enviar = false)
         }
 
+        /** Formatação do app: esquece todos os avisos já dados e tira os que estão na tela. */
+        fun esquecerTodosOsAvisos(context: Context) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+            Notificador.limparAcoes(context)
+        }
+
         /** Esquece os avisos já dados no modo de teste (um exemplo novo pode avisar de novo). */
         fun esquecerAvisosDeTeste(context: Context) {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

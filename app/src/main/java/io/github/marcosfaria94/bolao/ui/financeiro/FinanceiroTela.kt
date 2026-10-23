@@ -1,7 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.financeiro
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,16 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
-import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,6 +35,9 @@ import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
+import io.github.marcosfaria94.bolao.ui.comum.CoresEmblema
+import io.github.marcosfaria94.bolao.ui.comum.Desenhos
+import io.github.marcosfaria94.bolao.ui.comum.EmblemaDesenho
 import io.github.marcosfaria94.bolao.ui.comum.ListaLancamentos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
@@ -83,21 +79,21 @@ fun FinanceiroTela(estado: Estado, abrir: (String) -> Unit) {
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Bloco("Aporte", Icons.Outlined.Savings, Modifier.weight(1f)) { abrir("aporte") }
-                Bloco("Rateio", Icons.Outlined.Groups, Modifier.weight(1f)) { abrir("rateio") }
-                Bloco("Extrato", Icons.AutoMirrored.Outlined.ReceiptLong, Modifier.weight(1f)) { abrir("extrato") }
+                Bloco("Aporte", Desenhos.Cofrinho, CoresEmblema.APORTE, Modifier.weight(1f)) { abrir("aporte") }
+                Bloco("Rateio", Desenhos.Moedas, CoresEmblema.RATEIO, Modifier.weight(1f)) { abrir("rateio") }
+                Bloco("Extrato", Desenhos.Extrato, CoresEmblema.EXTRATO, Modifier.weight(1f)) { abrir("extrato") }
             }
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TituloComMes("Movimentações", meses, mes) { mes = it }
+                TituloComMes("Histórico", meses, mes) { mes = it }
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                         if (movimentos.isEmpty()) {
-                            TextoVazio("Nenhuma movimentação em ${Datas.mesAnoExtenso(mes)}.", Modifier.padding(vertical = 10.dp))
+                            TextoVazio("Nada registrado em ${Datas.mesAnoCurto(mes)}.", Modifier.padding(vertical = 10.dp))
                         } else {
                             ListaLancamentos(estado, movimentos, aoTocar = ::abrirLancamento)
                             Spacer(Modifier.height(4.dp))
@@ -111,7 +107,7 @@ fun FinanceiroTela(estado: Estado, abrir: (String) -> Unit) {
 
 /**
  * Saldo no estilo dos apps de banco, num quadro que dá para tocar: "Saldo líquido", o valor
- * grande e, embaixo, o provisionado e o extra. Tocar gera o "Saldo atual" para o grupo.
+ * grande e, embaixo, o provisionado e o extra (sem fundo próprio). Tocar gera o "Saldo atual".
  */
 @Composable
 private fun Saldo(saldo: Long, provisionado: Long, extra: Long, aoTocar: () -> Unit) {
@@ -145,32 +141,27 @@ private fun Saldo(saldo: Long, provisionado: Long, extra: Long, aoTocar: () -> U
 
 @Composable
 private fun Indicador(rotulo: String, valor: String, modifier: Modifier) {
-    Box(
-        modifier
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp))
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-    ) {
-        Column {
-            Text(rotulo, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextoQueCabe(
-                valor,
-                MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
-                menor = 14.sp,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+    Column(modifier) {
+        Text(rotulo, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextoQueCabe(
+            valor,
+            MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
+            menor = 14.sp,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
+/** Atalho do Financeiro (Aporte, Rateio, Extrato): o desenho colorido num círculo e o nome. */
 @Composable
-private fun Bloco(rotulo: String, icone: ImageVector, modifier: Modifier, aoTocar: () -> Unit) {
+private fun Bloco(rotulo: String, desenho: ImageVector, cor: Color, modifier: Modifier, aoTocar: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        modifier = modifier.aspectRatio(1.15f).clickable(onClick = aoTocar),
+        modifier = modifier.aspectRatio(1.05f).clickable(onClick = aoTocar),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(icone, contentDescription = null, modifier = Modifier.size(30.dp))
+                EmblemaDesenho(desenho, cor, tamanho = 54.dp)
                 Spacer(Modifier.height(8.dp))
                 Text(rotulo, style = MaterialTheme.typography.titleMedium)
             }

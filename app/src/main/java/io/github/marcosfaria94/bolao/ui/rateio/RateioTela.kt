@@ -45,7 +45,6 @@ import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.TipoComprovante
 import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Dinheiro
-import io.github.marcosfaria94.bolao.domain.Mensagens
 import io.github.marcosfaria94.bolao.imagem.Recibos
 import io.github.marcosfaria94.bolao.ui.comum.AVISO_DEFINITIVO
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
@@ -195,9 +194,9 @@ fun RateioTela(estado: Estado, abrir: (String) -> Unit) {
     if (vendo) {
         VisualizadorComprovante(
             estado,
-            Mensagens.tituloRateio(hoje),
+            Operacoes.tituloRateio(estado, hoje),
             aoFechar = { vendo = false },
-            previa = Recibos.previa(estado, TipoComprovante.RATEIO, Operacoes.textoRateio(estado, calculo.total), estado.pessoas.size),
+            previa = Recibos.previa(estado, TipoComprovante.RATEIO, Operacoes.textoRateio(estado, hoje, calculo.total), estado.pessoas.size),
             anexos = estado.pessoas.mapNotNull { comprovantes[it.id] },
         )
     }
