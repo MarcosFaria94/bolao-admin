@@ -6,12 +6,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -30,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +49,7 @@ import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.seguranca.Biometria
 import io.github.marcosfaria94.bolao.seguranca.atividade
+import io.github.marcosfaria94.bolao.ui.comum.EmblemaIcone
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import kotlinx.coroutines.launch
 
@@ -94,11 +101,19 @@ fun CartaoExtincao(estado: Estado, forcadaLiberada: Boolean, aoLiberarForcada: (
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp)
             // Botão invisível: sem efeito de toque, só conta os toques.
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = tocar),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                EmblemaIcone(Icons.Outlined.WarningAmber, MaterialTheme.colorScheme.error, 44.dp, corIcone = MaterialTheme.colorScheme.onError)
+                Spacer(Modifier.width(14.dp))
+                Text(
+                    if (forcar) "Formatar o app" else "Encerrar o bolão",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
             Text(
                 if (forcar) {
                     "Extinção forçada: formata o app. Apaga todos os dados deste celular, sem dividir o saldo e sem o PDF " +

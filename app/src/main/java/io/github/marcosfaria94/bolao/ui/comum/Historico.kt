@@ -29,7 +29,6 @@ import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
-import io.github.marcosfaria94.bolao.ui.tema.corDataLista
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -77,14 +76,14 @@ fun valorDoLancamento(l: Lancamento): String =
 /** "+ R$ 30,00" ou "- R$ 3,00". */
 fun valorComSinal(centavos: Long): String = (if (centavos < 0) "- " else "+ ") + Dinheiro.rs(kotlin.math.abs(centavos))
 
-/** Data que separa os grupos da lista: "Hoje", "Ontem" ou "13/10/2026", em destaque. */
+/** Data que separa os grupos da lista: "Hoje", "Ontem" ou "13/10/2026", em negrito, na cor do texto. */
 @Composable
 fun CabecalhoDia(data: LocalDate, hoje: LocalDate = LocalDate.now(), modifier: Modifier = Modifier) {
     Text(
         Datas.relativa(data, hoje),
         style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
         fontWeight = FontWeight.Bold,
-        color = corDataLista(),
+        color = MaterialTheme.colorScheme.onSurface,
         modifier = modifier.padding(top = 14.dp, bottom = 2.dp),
     )
 }

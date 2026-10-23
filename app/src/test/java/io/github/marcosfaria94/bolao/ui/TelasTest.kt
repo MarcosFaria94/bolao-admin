@@ -1,6 +1,7 @@
 package io.github.marcosfaria94.bolao.ui
 
 import io.github.marcosfaria94.bolao.data.Aposta
+import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Config
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Indices
@@ -11,8 +12,11 @@ import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.indices.ResultadoK
+import io.github.marcosfaria94.bolao.ui.aposta.Saida
+import io.github.marcosfaria94.bolao.ui.aposta.ficaEmAndamento
 import io.github.marcosfaria94.bolao.ui.aposta.novaAposta
 import io.github.marcosfaria94.bolao.ui.aposta.rotaDaAposta
+import io.github.marcosfaria94.bolao.ui.aposta.saidaDaTela
 import io.github.marcosfaria94.bolao.ui.aposta.tituloDaAposta
 import io.github.marcosfaria94.bolao.ui.comum.descricaoDaAposta
 import io.github.marcosfaria94.bolao.ui.comum.descricaoLancamento
@@ -20,8 +24,11 @@ import io.github.marcosfaria94.bolao.ui.comum.tarjaLancamento
 import io.github.marcosfaria94.bolao.ui.comum.valorDoLancamento
 import io.github.marcosfaria94.bolao.ui.jogos.indicesDoCartao
 import io.github.marcosfaria94.bolao.ui.jogos.linhaIndices
+import io.github.marcosfaria94.bolao.ui.jogos.precoDoCartao
 import io.github.marcosfaria94.bolao.ui.jogos.tituloDoCartao
+import io.github.marcosfaria94.bolao.ui.notificacoes.textoQuantas
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -128,5 +135,74 @@ class TelasTest {
         val e = Estado(apostas = listOf(rascunho))
         assertEquals("aposta/${rascunho.id}", rotaDaAposta(e, Modalidade.QUINA))
         assertEquals("nova/MEGA_SENA", rotaDaAposta(e, Modalidade.MEGA_SENA))
+    }
+
+    @Test
+    fun precoEmbaixoDaBola() {
+        val e = Estado(config = Config(precos = mapOf(Modalidade.QUINA.name to 320)))
+        assertEquals("R$ 3,20", precoDoCartao(Modalidade.QUINA, e))
+        assertEquals("R$ 6,00", precoDoCartao(Modalidade.MEGA_SENA, e))
+        assertEquals("Variável", precoDoCartao(Modalidade.FEDERAL, e))
+    }
+
+    @Test
+    fun rascunhoSoFicaComOVolanteCompletoOuOComprovante() {
+        val comprovante = Arquivo("c.pdf", "c.pdf", "application/pdf", 0)
+        val quina = aposta(Modalidade.QUINA, 0, 7148, registrada = false)
+        assertTrue(ficaEmAndamento(quina.copy(numeros = listOf(1, 2, 3, 4, 5))))
+        assertFalse(ficaEmAndamento(quina.copy(numeros = listOf(1, 2, 3))))
+        assertFalse(ficaEmAndamento(quina))
+        // Com o comprovante da Caixa, fica mesmo faltando dezena.
+        assertTrue(ficaEmAndamento(quina.copy(numeros = listOf(1, 2), comprovante = comprovante)))
+        // Timemania: as 10 dezenas e o Time do Coração.
+        val time = aposta(Modalidade.TIMEMANIA, 0, 2300, registrada = false).copy(numeros = (1..10).toList())
+        assertFalse(ficaEmAndamento(time))
+        assertTrue(ficaEmAndamento(time.copy(extra = "FLAMENGO/RJ")))
+        // Super Sete: um número em cada uma das 7 colunas.
+        val sete = aposta(Modalidade.SUPER_SETE, 0, 750, registrada = false)
+        assertFalse(ficaEmAndamento(sete.copy(numeros = List(7) { -1 })))
+        assertTrue(ficaEmAndamento(sete.copy(numeros = listOf(1, 2, 3, 4, 5, 6, 7))))
+        // Federal: o bilhete e as frações.
+        val federal = aposta(Modalidade.FEDERAL, 0, 6000, registrada = false).copy(fracoesFederal = 10)
+        assertFalse(ficaEmAndamento(federal))
+        assertTrue(ficaEmAndamento(federal.copy(bilheteFederal = "12345")))
+    }
+
+    @Test
+    fun saidaDaTelaDaAposta() {
+        val comprovante = Arquivo("c.pdf", "c.pdf", "application/pdf", 0)
+        val vazia = aposta(Modalidade.QUINA, 0, 7148, registrada = false)
+        val completa = vazia.copy(numeros = listOf(1, 2, 3, 4, 5))
+        val metade = vazia.copy(numeros = listOf(1, 2))
+        val descartada = Saida.Descartada("Aposta descartada: o volante ficou incompleto e sem o comprovante da Caixa.")
+
+        // Aposta nova.
+        assertEquals(Saida.EmAndamento("Aposta em andamento: falta anexar o comprovante da Caixa."), saidaDaTela(completa, null, nova = true))
+        assertEquals(Saida.EmAndamento("Aposta em andamento: pronta para registrar."), saidaDaTela(completa.copy(comprovante = comprovante), completa, nova = true))
+        assertEquals(Saida.EmAndamento("Aposta em andamento: falta completar o volante."), saidaDaTela(metade.copy(comprovante = comprovante), null, nova = true))
+        assertEquals(descartada, saidaDaTela(metade, null, nova = true))
+        // Nada escolhido: descarta sem aviso.
+        assertEquals(Saida.Descartada(null), saidaDaTela(vazia, null, nova = true))
+
+        // Aposta que já estava em andamento.
+        assertEquals(Saida.EmAndamento(null), saidaDaTela(completa, completa, nova = false))
+        assertEquals(descartada, saidaDaTela(metade, completa, nova = false))
+        assertEquals(descartada, saidaDaTela(vazia, completa, nova = false))
+
+        // Registrada: nada a fazer.
+        assertEquals(Saida.Nada, saidaDaTela(metade, completa.copy(registrada = true), nova = true))
+
+        // Federal fala do bilhete.
+        val federal = aposta(Modalidade.FEDERAL, 0, 6000, registrada = false).copy(bilheteFederal = "123", fracoesFederal = null)
+        assertEquals(
+            Saida.Descartada("Aposta descartada: o bilhete ficou incompleto e sem o comprovante da Caixa."),
+            saidaDaTela(federal, null, nova = true),
+        )
+    }
+
+    @Test
+    fun quantasPendencias() {
+        assertEquals("1 pendência", textoQuantas(1))
+        assertEquals("3 pendências", textoQuantas(3))
     }
 }

@@ -3,6 +3,7 @@ package io.github.marcosfaria94.bolao.data
 import io.github.marcosfaria94.bolao.domain.Calendario
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
+import io.github.marcosfaria94.bolao.domain.Modalidade
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDateTime
@@ -25,6 +26,12 @@ data class Pendencia(
     val avisarDesde: LocalDateTime,
     /** Tela que resolve a pendência (rota da navegação). */
     val destino: String,
+    /** Modalidade da aposta (ou dos índices) da pendência, para o emblema da lista. */
+    val modalidade: Modalidade? = null,
+    /** Concurso da aposta (0 = sem número). */
+    val concurso: Int = 0,
+    /** Tipo do comprovante a enviar (pendência de envio). */
+    val comprovante: TipoComprovante? = null,
 ) {
     enum class Tipo { APORTE, APOSTA_DO_DIA, RASCUNHO, ENVIO, APURACAO, EXTRATO, INDICES }
 }
@@ -88,6 +95,7 @@ object Pendencias {
                     "Anexar o comprovante da Caixa",
                     "$jogo: sem o comprovante publicado no grupo, a aposta não vale para o bolão.",
                     criada, criada.plusMinutes(MINUTOS_RASCUNHO), "aposta/${r.id}",
+                    modalidade = r.modalidade, concurso = r.concurso,
                 )
             } else {
                 Pendencia(
@@ -95,6 +103,7 @@ object Pendencias {
                     "Registrar a aposta",
                     "$jogo: o comprovante da Caixa já está anexado.",
                     criada, criada.plusMinutes(MINUTOS_RASCUNHO), "aposta/${r.id}",
+                    modalidade = r.modalidade, concurso = r.concurso,
                 )
             }
         }
@@ -114,11 +123,13 @@ object Pendencias {
             val criado = instante(c.criadoEm, fuso)
             // A apuração é feita sozinha: o aviso vai na hora. Nos outros, o WhatsApp já abre no registro.
             val aviso = if (c.tipo == TipoComprovante.APURACAO) criado else criado.plusMinutes(10)
+            val a = c.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }
             lista += Pendencia(
                 "envio-${c.id}", Pendencia.Tipo.ENVIO,
                 "Enviar o comprovante ao grupo",
                 c.titulo,
                 criado, aviso, "comprovante/${c.id}",
+                modalidade = a?.modalidade, concurso = a?.concurso ?: 0, comprovante = c.tipo,
             )
         }
 
@@ -133,6 +144,7 @@ object Pendencias {
                     "Confirmar a apuração",
                     "${nome(a)}: confira o resultado e o prêmio no app da Caixa.",
                     conferida, conferida, "aposta/${a.id}",
+                    modalidade = a.modalidade, concurso = a.concurso,
                 )
             } else if (!hoje.isBefore(sorteio.plusDays(DIAS_PARA_APURAR_A_MAO))) {
                 val desde = sorteio.plusDays(DIAS_PARA_APURAR_A_MAO).atStartOfDay()
@@ -141,6 +153,7 @@ object Pendencias {
                     "Apurar a aposta",
                     "${nome(a)}: a apuração automática não conseguiu o resultado da Caixa.",
                     desde, desde.withHour(HORA_APURACAO), "aposta/${a.id}",
+                    modalidade = a.modalidade, concurso = a.concurso,
                 )
             }
         }
@@ -167,7 +180,7 @@ object Pendencias {
         if (avisos.isEmpty()) return pendencias
         val extras = avisos.map { a ->
             val desde = instante(a.desde, fuso)
-            Pendencia(a.chave, Pendencia.Tipo.INDICES, a.titulo, a.texto, desde, desde, a.destino)
+            Pendencia(a.chave, Pendencia.Tipo.INDICES, a.titulo, a.texto, desde, desde, a.destino, modalidade = a.modalidade)
         }
         return (pendencias + extras).sortedWith(compareByDescending<Pendencia> { it.desde }.thenBy { it.chave })
     }

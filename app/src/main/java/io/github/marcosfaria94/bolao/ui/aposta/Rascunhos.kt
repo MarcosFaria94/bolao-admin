@@ -9,15 +9,18 @@ import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.Repositorio
 import io.github.marcosfaria94.bolao.data.novoId
+import io.github.marcosfaria94.bolao.data.palpite
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Formato
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Volante
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
  * Para onde vai o "Apostar" de uma modalidade: a aposta em andamento dela ("aposta/{id}")
- * ou uma aposta nova ("nova/{modalidade}"), que só é gravada quando confirmada.
+ * ou uma aposta nova ("nova/{modalidade}").
  */
 fun rotaDaAposta(estado: Estado, m: Modalidade): String =
     Operacoes.rascunhos(estado).firstOrNull { it.modalidade == m }?.let { "aposta/${it.id}" } ?: "nova/${m.name}"
@@ -45,17 +48,116 @@ fun novaAposta(estado: Estado, m: Modalidade, ultimo: Concurso?, hoje: LocalDate
     )
 }
 
+/** O volante está completo: todas as dezenas (e os trevos, o time ou o mês); na Federal, o bilhete e as frações. */
+fun volanteCompleto(a: Aposta): Boolean =
+    if (a.modalidade.formato == Formato.FEDERAL) !a.bilheteFederal.isNullOrBlank() && (a.fracoesFederal ?: 0) in 1..10
+    else Volante.pendencias(a.modalidade, a.palpite).isEmpty()
+
 /**
- * Aposta nova ainda não confirmada: só existe nesta tela (e sobrevive a girar o celular).
- * Confirmada, ela vai para "Em andamento" e cada mudança passa a ser gravada. Se a tela fecha
- * sem a confirmação, a aposta é descartada, junto com o comprovante da Caixa que tiver sido
- * anexado (a não ser que a aposta tenha sido registrada).
+ * Regra do rascunho: ao sair da tela, a aposta só fica em "Em andamento" com o volante completo
+ * ou com o comprovante da Caixa anexado. Faltando dezena e sem o comprovante, é descartada.
  */
-class ApostaNovaModelo(private val repo: Repositorio, inicial: Aposta) : ViewModel() {
+fun ficaEmAndamento(a: Aposta): Boolean = a.comprovante != null || volanteCompleto(a)
+
+/** Já há alguma escolha no volante (descartar uma aposta assim merece um aviso). */
+fun algoEscolhido(a: Aposta): Boolean = when (a.modalidade.formato) {
+    Formato.NUMEROS -> a.numeros.isNotEmpty() || a.trevos.isNotEmpty()
+    Formato.COLUNAS -> a.numeros.any { it >= 0 }
+    Formato.LOTECA -> a.palpitesLoteca.any { it.isNotBlank() }
+    Formato.FEDERAL -> !a.bilheteFederal.isNullOrBlank()
+}
+
+/** Como fica a aposta ao sair da tela (e o aviso para o Administrador, quando há). */
+sealed interface Saida {
+    /** Registrada, ou já descartada pelo botão: nada a fazer. */
+    data object Nada : Saida
+
+    /** Fica (ou continua) em "Em andamento". */
+    data class EmAndamento(val aviso: String?) : Saida
+
+    /** Descartada (sai de "Em andamento", se estava lá). */
+    data class Descartada(val aviso: String?) : Saida
+}
+
+/**
+ * O que acontece com a aposta [a] ao sair da tela. [gravada] = como ela está no app agora (null =
+ * ainda não gravada); [nova] = a tela foi aberta como aposta nova.
+ */
+fun saidaDaTela(a: Aposta, gravada: Aposta?, nova: Boolean): Saida = when {
+    gravada?.registrada == true -> Saida.Nada
+    ficaEmAndamento(a) -> Saida.EmAndamento(
+        if (!nova) null
+        else "Aposta em andamento: " + when {
+            a.comprovante == null -> "falta anexar o comprovante da Caixa."
+            volanteCompleto(a) -> "pronta para registrar."
+            else -> "falta completar o volante."
+        },
+    )
+    else -> Saida.Descartada(
+        if (gravada != null || algoEscolhido(a)) {
+            "Aposta descartada: " + (if (a.modalidade.formato == Formato.FEDERAL) "o bilhete" else "o volante") +
+                " ficou incompleto e sem o comprovante da Caixa."
+        } else {
+            null
+        },
+    )
+}
+
+/**
+ * A aposta aberta na tela (nova ou em andamento). Enquanto a tela está aberta, a aposta fica aqui
+ * (e sobrevive a girar o celular); cada mudança que a deixa valendo (volante completo ou
+ * comprovante anexado) já é gravada em "Em andamento". Ao sair da tela vale a regra
+ * ([saidaDaTela]): fica em andamento com o volante completo ou o comprovante; senão, é descartada.
+ */
+class ApostaEmEdicao(
+    private val repo: Repositorio,
+    private val escopo: CoroutineScope,
+    inicial: Aposta,
+    private val nova: Boolean,
+) : ViewModel() {
     var aposta by mutableStateOf(inicial)
-    var confirmada by mutableStateOf(false)
+        private set
+
+    /** Descartada pelo botão "Descartar rascunho": ao sair, nada mais a fazer. */
+    private var descartada = false
+
+    fun mudar(novo: Aposta) {
+        aposta = novo
+        if (ficaEmAndamento(novo)) {
+            repo.enfileirar { e -> if (e.apostas.any { it.id == novo.id && it.registrada }) e else Operacoes.salvarRascunho(e, novo) }
+        }
+    }
+
+    /** "Descartar rascunho": apaga a aposta e o comprovante anexado (a não ser que já tenha sido registrada). */
+    fun descartar() {
+        descartada = true
+        val a = aposta
+        repo.enfileirar { e -> Operacoes.excluirRascunho(e, a.id) }
+        a.comprovante?.let { repo.apagarSeSolto(it) }
+    }
 
     override fun onCleared() {
-        if (!confirmada) aposta.comprovante?.let { repo.apagarSeSolto(it) }
+        if (descartada) return
+        val a = aposta
+        escopo.launch {
+            runCatching {
+                var aviso: String? = null
+                repo.atualizar { e ->
+                    when (val s = saidaDaTela(a, e.apostas.firstOrNull { it.id == a.id }, nova)) {
+                        Saida.Nada -> e
+                        is Saida.EmAndamento -> {
+                            aviso = s.aviso
+                            Operacoes.salvarRascunho(e, a)
+                        }
+                        is Saida.Descartada -> {
+                            aviso = s.aviso
+                            Operacoes.excluirRascunho(e, a.id)
+                        }
+                    }
+                }
+                // Sem o comprovante não há arquivo a apagar; um comprovante trocado já foi apagado na troca.
+                aviso?.let { repo.avisar(it) }
+            }
+        }
     }
 }

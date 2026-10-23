@@ -25,33 +25,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
-import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
+import io.github.marcosfaria94.bolao.ui.comum.QuadroSaldo
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
 import io.github.marcosfaria94.bolao.ui.comum.TituloSecao
 import io.github.marcosfaria94.bolao.ui.jogos.CartaoIndice
 import java.time.LocalDate
 
-/** Saldo, provisionado e extra (topo da Nova aposta e do Financeiro). */
-@Composable
-fun ResumoSaldo(estado: Estado, hoje: LocalDate) {
-    val saldo = Operacoes.saldo(estado)
-    val provisionado = Operacoes.provisao(estado, hoje).provisionado
-    val extra = saldo - provisionado
-    Column {
-        Text("Saldo líquido", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(Dinheiro.rs(saldo), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-        Text("Provisionado: ${Dinheiro.rs(provisionado)}", style = MaterialTheme.typography.bodyMedium)
-        Text("Extra: " + (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)), style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
+/**
+ * Nova aposta: o saldo (o quadro do Financeiro, menor), as apostas em andamento e as modalidades
+ * em ordem de k1, com o concurso em destaque marcado.
+ */
 @Composable
 fun NovaApostaTela(estado: Estado, abrir: (String) -> Unit) {
     val ctx = LocalContext.current
@@ -69,7 +58,14 @@ fun NovaApostaTela(estado: Estado, abrir: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item { ResumoSaldo(estado, hoje) }
+        item {
+            QuadroSaldo(
+                saldo = Operacoes.saldo(estado),
+                provisionado = Operacoes.provisao(estado, hoje).provisionado,
+                compacto = true,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
         if (rascunhos.isNotEmpty()) {
             item { TituloSecao("Em andamento") }
             items(rascunhos, key = { it.id }) { r ->
@@ -78,7 +74,7 @@ fun NovaApostaTela(estado: Estado, abrir: (String) -> Unit) {
                     modifier = Modifier.fillMaxWidth().clickable { abrir("aposta/${r.id}") },
                 ) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        EmblemaModalidade(r.modalidade, r.concurso, tamanho = 44.dp)
+                        EmblemaModalidade(r.modalidade, r.concurso, tamanho = 48.dp)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
@@ -86,7 +82,11 @@ fun NovaApostaTela(estado: Estado, abrir: (String) -> Unit) {
                                 style = MaterialTheme.typography.titleSmall,
                             )
                             Text(
-                                if (r.comprovante == null) "Sem o comprovante da Caixa" else "Pronta para registrar",
+                                when {
+                                    r.comprovante == null -> "Falta o comprovante da Caixa"
+                                    !volanteCompleto(r) -> "Falta completar o volante"
+                                    else -> "Pronta para registrar"
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

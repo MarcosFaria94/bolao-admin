@@ -28,7 +28,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Casino
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Refresh
@@ -78,7 +77,6 @@ import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
-import io.github.marcosfaria94.bolao.data.Repositorio
 import io.github.marcosfaria94.bolao.data.TipoComprovante
 import io.github.marcosfaria94.bolao.data.palpite
 import io.github.marcosfaria94.bolao.domain.Datas
@@ -128,37 +126,36 @@ fun ApostaTela(estado: Estado, id: String, aoSair: () -> Unit) {
         DetalheAposta(estado, a)
         return
     }
-    // Rascunho em andamento: a tela é a fonte da verdade e cada mudança vai para a fila de gravação.
-    val ctx = LocalContext.current
-    val repo = remember { ctx.bolao.repo }
-    var r by remember(a.id) { mutableStateOf(a) }
+    // Rascunho em andamento: a tela é a fonte da verdade; ao sair, vale a regra do rascunho.
+    val app = LocalContext.current.bolao
+    val vm = viewModel(key = "aposta-${a.id}") { ApostaEmEdicao(app.repo, app.escopo, a, nova = false) }
     EditorAposta(
         estado = estado,
-        r = r,
-        mudar = { novo ->
-            r = novo
-            gravarRascunho(repo, novo)
+        r = vm.aposta,
+        mudar = vm::mudar,
+        aoDescartar = {
+            vm.descartar()
+            aoSair()
         },
-        confirmada = true,
-        aoConfirmar = {},
-        aoSair = aoSair,
     )
 }
 
 /**
- * Aposta nova ("nova/{modalidade}"), com o volante vazio. Fica só nesta tela até o
- * "Confirmar": aí vai para "Em andamento". Se a tela fecha sem confirmar, é descartada.
+ * Aposta nova ("nova/{modalidade}"), com o volante vazio. Ao sair da tela, fica em "Em andamento"
+ * se o volante estiver completo ou se o comprovante da Caixa estiver anexado; senão, é descartada.
  */
 @Composable
 fun ApostaNovaTela(estado: Estado, m: Modalidade, aoSair: () -> Unit) {
-    val ctx = LocalContext.current
-    val app = ctx.bolao
-    val avisos = LocalAvisos.current
-    val escopo = rememberCoroutineScope()
+    val app = LocalContext.current.bolao
     val vm = viewModel {
-        ApostaNovaModelo(app.repo, novaAposta(estado, m, app.indices.itens.value[m]?.ultimo, LocalDate.now(), System.currentTimeMillis()))
+        ApostaEmEdicao(
+            app.repo,
+            app.escopo,
+            novaAposta(estado, m, app.indices.itens.value[m]?.ultimo, LocalDate.now(), System.currentTimeMillis()),
+            nova = true,
+        )
     }
-    // Registrada direto (sem passar por "Em andamento"): a tela vira a da aposta registrada.
+    // Registrada direto daqui: a tela vira a da aposta registrada.
     val gravada = estado.apostas.firstOrNull { it.id == vm.aposta.id }
     if (gravada?.registrada == true) {
         DetalheAposta(estado, gravada)
@@ -167,31 +164,12 @@ fun ApostaNovaTela(estado: Estado, m: Modalidade, aoSair: () -> Unit) {
     EditorAposta(
         estado = estado,
         r = vm.aposta,
-        mudar = { novo ->
-            vm.aposta = novo
-            if (vm.confirmada) gravarRascunho(app.repo, novo)
+        mudar = vm::mudar,
+        aoDescartar = {
+            vm.descartar()
+            aoSair()
         },
-        confirmada = vm.confirmada,
-        aoConfirmar = {
-            // Daqui em diante cada mudança é gravada (na fila, depois desta).
-            vm.confirmada = true
-            escopo.launch {
-                try {
-                    app.repo.atualizar { Operacoes.salvarRascunho(it, vm.aposta) }
-                    avisos.showSnackbar("Aposta em andamento. Faça o jogo no app da Caixa e anexe o comprovante aqui.")
-                } catch (t: Throwable) {
-                    vm.confirmada = false
-                    avisos.showSnackbar("Não foi possível guardar a aposta: ${t.message}")
-                }
-            }
-        },
-        aoSair = aoSair,
     )
-}
-
-/** Grava a mudança de um rascunho que já está em "Em andamento" (nada acontece se ele não existe mais). */
-private fun gravarRascunho(repo: Repositorio, novo: Aposta) {
-    repo.enfileirar { e -> if (e.apostas.any { it.id == novo.id && !it.registrada }) Operacoes.salvarRascunho(e, novo) else e }
 }
 
 /** "Prêmio" (ou "1º prêmio", na Federal) e o valor por extenso: "R$ 200 Milhões". null = sem estimativa. */
@@ -286,17 +264,15 @@ private fun Aposta.com(d: DadosConcurso): Aposta = copy(
 
 /**
  * Editor do rascunho: o cabeçalho (com o lápis dos dados do concurso), o volante com
- * "Completar"/"Confirmar", o comprovante da Caixa e o registro. [confirmada] = a aposta já
- * está em "Em andamento"; antes disso, [aoConfirmar] a coloca lá.
+ * "Completar" e "Limpar", o comprovante da Caixa e o registro. Ao sair, a aposta só fica em
+ * andamento com o volante completo ou com o comprovante anexado ([ficaEmAndamento]).
  */
 @Composable
 private fun EditorAposta(
     estado: Estado,
     r: Aposta,
     mudar: (Aposta) -> Unit,
-    confirmada: Boolean,
-    aoConfirmar: () -> Unit,
-    aoSair: () -> Unit,
+    aoDescartar: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
@@ -386,7 +362,7 @@ private fun EditorAposta(
         // Volante
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                VolanteEditavel(m, r, { mudarAtual(it) }, ::mudarPalpite, confirmada, aoConfirmar)
+                VolanteEditavel(m, r, { mudarAtual(it) }, ::mudarPalpite)
             }
         }
 
@@ -422,6 +398,12 @@ private fun EditorAposta(
         pendencias.firstOrNull()?.let { Aviso(it, alerta = true) }
         if (pendencias.isEmpty() && r.comprovante == null) {
             Aviso("Falta anexar o comprovante da Caixa: sem ele publicado no grupo, a aposta não vale para o bolão.", alerta = true)
+        }
+        if (!ficaEmAndamento(r)) {
+            Aviso(
+                "Se sair agora, a aposta é descartada: complete o " + (if (federal) "bilhete" else "volante") +
+                    " ou anexe o comprovante da Caixa.",
+            )
         }
 
         BotoesDeRegistro(
@@ -513,12 +495,7 @@ private fun EditorAposta(
             confirmar = "Confirmar",
             aoConfirmar = {
                 confirmarExclusao = false
-                escopo.launch {
-                    val a = atual
-                    if (confirmada) repo.atualizar { Operacoes.excluirRascunho(it, a.id) }
-                    a.comprovante?.let { repo.apagarSeSolto(it) }
-                    aoSair()
-                }
+                aoDescartar()
             },
             aoFechar = { confirmarExclusao = false },
         )
@@ -676,9 +653,9 @@ private fun BotaoCompletar(destacar: Boolean, modifier: Modifier, aoTocar: () ->
     ) { conteudo() }
 }
 
-/** Aposta já em "Em andamento": no lugar do "Confirmar", a marca verde de confirmada. */
+/** Volante completo: no lugar do "Completar", a marca verde. */
 @Composable
-private fun MarcaConfirmada(modifier: Modifier) {
+private fun MarcaCompleto(modifier: Modifier) {
     val verde = corEntrada()
     Row(
         modifier = modifier
@@ -690,17 +667,7 @@ private fun MarcaConfirmada(modifier: Modifier) {
     ) {
         Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = verde, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
-        Text("Confirmada", style = MaterialTheme.typography.labelLarge, color = verde)
-    }
-}
-
-/** "Confirmar" (põe a aposta em "Em andamento"). */
-@Composable
-private fun BotaoConfirmar(modifier: Modifier, habilitado: Boolean = true, aoTocar: () -> Unit) {
-    Button(onClick = aoTocar, enabled = habilitado, modifier = modifier) {
-        Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text("Confirmar")
+        Text("Volante completo", style = MaterialTheme.typography.labelLarge, color = verde, maxLines = 1)
     }
 }
 
@@ -710,8 +677,6 @@ private fun VolanteEditavel(
     r: Aposta,
     mudar: (Aposta) -> Unit,
     mudarPalpite: (Palpite) -> Unit,
-    confirmada: Boolean,
-    aoConfirmar: () -> Unit,
 ) {
     when (m.formato) {
         Formato.NUMEROS -> {
@@ -789,20 +754,10 @@ private fun VolanteEditavel(
                 rotulo = "Valor pago",
                 modifier = Modifier.fillMaxWidth(),
             )
-            // Sem números para completar: confirma quando o bilhete e as frações estão preenchidos.
-            if (confirmada) {
-                MarcaConfirmada(Modifier.fillMaxWidth())
-            } else {
-                BotaoConfirmar(
-                    Modifier.fillMaxWidth(),
-                    habilitado = !r.bilheteFederal.isNullOrBlank() && (r.fracoesFederal ?: 0) in 1..10,
-                    aoTocar = aoConfirmar,
-                )
-            }
         }
     }
     if (m.formato != Formato.FEDERAL) {
-        // "Completar" enquanto faltam números; com o volante cheio, "Confirmar"; depois, "Confirmada".
+        // "Completar" enquanto faltam números; com o volante cheio, a marca "Volante completo".
         val completo = Volante.pendencias(m, r.palpite).isEmpty()
         var usouCompletar by rememberSaveable(r.id) { mutableStateOf(false) }
         Row(
@@ -810,13 +765,13 @@ private fun VolanteEditavel(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            when {
-                !completo -> BotaoCompletar(destacar = !usouCompletar, modifier = Modifier.weight(1f)) {
+            if (!completo) {
+                BotaoCompletar(destacar = !usouCompletar, modifier = Modifier.weight(1f)) {
                     usouCompletar = true
                     mudarPalpite(Volante.completar(m, r.palpite))
                 }
-                !confirmada -> BotaoConfirmar(Modifier.weight(1f), aoTocar = aoConfirmar)
-                else -> MarcaConfirmada(Modifier.weight(1f))
+            } else {
+                MarcaCompleto(Modifier.weight(1f))
             }
             OutlinedButton(onClick = {
                 val vazio = Palpite(

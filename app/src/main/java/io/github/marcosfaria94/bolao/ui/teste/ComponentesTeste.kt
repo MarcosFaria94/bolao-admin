@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
+import io.github.marcosfaria94.bolao.ui.comum.EmblemaIcone
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.tema.VermelhoTeste
 import kotlinx.coroutines.launch
@@ -78,45 +79,48 @@ fun DialogoSairDoTeste(aoFechar: () -> Unit) {
     )
 }
 
-/** Seção "Modo de teste" dos Ajustes. */
+/** Conteúdo da seção "Modo de teste" dos Ajustes (vai dentro do cartão da seção). */
 @Composable
 fun CartaoModoTeste(emTeste: Boolean, aoPedirSaida: () -> Unit) {
     val ctx = LocalContext.current
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
     val preparando by ModoTeste.trabalhando.collectAsStateWithLifecycle()
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (emTeste) {
+    Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            EmblemaIcone(Icons.Outlined.Science, VermelhoTeste, 44.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(if (emTeste) "Ligado: dados de exemplo" else "Experimentar sem medo", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Você está vendo dados de exemplo. Aportes, apostas, apurações, rateios e extratos feitos aqui não mexem nos dados reais.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                OutlinedButton(
-                    onClick = {
-                        Vigia.rodarAgora(ctx)
-                        escopo.launch { avisos.showSnackbar("Conferindo: se algum jogo já tiver resultado, o aviso chega em instantes.") }
+                    if (emTeste) {
+                        "Aportes, apostas, apurações, rateios e extratos feitos aqui não mexem nos dados reais."
+                    } else {
+                        "O app abre um mês de exemplo, separado dos dados reais, e apaga tudo ao sair."
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Conferir os sorteios agora") }
-                OutlinedButton(
-                    onClick = { ModoTeste.entrar(ctx) },
-                    enabled = !preparando,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (preparando) "Preparando..." else "Recomeçar com um exemplo novo") }
-                TextButton(onClick = aoPedirSaida, enabled = !preparando, modifier = Modifier.fillMaxWidth()) {
-                    Text("Sair do modo de teste", color = MaterialTheme.colorScheme.error)
-                }
-            } else {
-                Text(
-                    "Para experimentar sem mexer nos dados reais: o app abre um mês de exemplo, separado, e apaga tudo ao sair.",
                     style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                BotaoExperimentar(preparando = preparando, aoTocar = { ModoTeste.entrar(ctx) })
             }
+        }
+        if (emTeste) {
+            OutlinedButton(
+                onClick = {
+                    Vigia.rodarAgora(ctx)
+                    escopo.launch { avisos.showSnackbar("Conferindo: se algum jogo já tiver resultado, o aviso chega em instantes.") }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Conferir os sorteios agora") }
+            OutlinedButton(
+                onClick = { ModoTeste.entrar(ctx) },
+                enabled = !preparando,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (preparando) "Preparando..." else "Recomeçar com um exemplo novo") }
+            TextButton(onClick = aoPedirSaida, enabled = !preparando, modifier = Modifier.fillMaxWidth()) {
+                Text("Sair do modo de teste", color = MaterialTheme.colorScheme.error)
+            }
+        } else {
+            BotaoExperimentar(preparando = preparando, aoTocar = { ModoTeste.entrar(ctx) }, modifier = Modifier.fillMaxWidth())
         }
     }
 }

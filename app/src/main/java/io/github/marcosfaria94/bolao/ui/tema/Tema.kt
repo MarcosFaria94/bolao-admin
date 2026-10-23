@@ -138,13 +138,9 @@ fun corAposta(): Color = if (isSystemInDarkTheme()) Dourado else Color(0xFF9A6A0
 @Composable
 fun corRateio(): Color = if (isSystemInDarkTheme()) Color(0xFF6CB6FF) else Color(0xFF1E63C6)
 
-/** Dourado de destaque sobre o fundo normal das telas ("CONCURSO EM DESTAQUE" na página do jogo). */
+/** Dourado de destaque sobre o fundo normal das telas ("CONCURSO EM DESTAQUE" nos Jogos e na Nova aposta). */
 @Composable
 fun corDestaque(): Color = if (isSystemInDarkTheme()) Dourado else Color(0xFF8A5A00)
-
-/** Data que separa os dias nos Históricos (Hoje, Ontem, 13/10/2026): dourada, para ler bem. */
-@Composable
-fun corDataLista(): Color = if (isSystemInDarkTheme()) Dourado else Color(0xFF8A5A00)
 
 /** Tarja do título dos itens dos Históricos ("Aposta Nº1"): tom discreto, diferente da cor da modalidade. */
 object Tarja {

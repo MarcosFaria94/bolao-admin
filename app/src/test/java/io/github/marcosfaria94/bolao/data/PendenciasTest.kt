@@ -56,6 +56,9 @@ class PendenciasTest {
         val p = Pendencias.de(e, criada.plusMinutes(5), fuso).single { it.chave == "rascunho-r" }
         assertEquals("Anexar o comprovante da Caixa", p.titulo)
         assertEquals("aposta/r", p.destino)
+        // A lista mostra a bola da modalidade (sigla e concurso).
+        assertEquals(Modalidade.MEGA_SENA, p.modalidade)
+        assertEquals(1, p.concurso)
         // O rascunho já é a pendência do dia: não aparece "Fazer a aposta de hoje".
         assertTrue(chaves(e, criada.plusMinutes(5)).none { it.startsWith("aposta-") })
         // O aviso no celular espera uma hora.
@@ -68,6 +71,8 @@ class PendenciasTest {
         val c = e.comprovantes.last()
         assertEquals("comprovante/${c.id}", envio.destino)
         assertEquals("APOSTA Nº 1 -  19/10/2026", envio.texto)
+        assertEquals(TipoComprovante.APOSTA, envio.comprovante)
+        assertEquals(Modalidade.MEGA_SENA, envio.modalidade)
         e = Operacoes.registrarEnvio(e, c.id, 0)
         assertTrue(Pendencias.de(e, criada.plusMinutes(25), fuso).none { it.tipo == Pendencia.Tipo.ENVIO })
     }

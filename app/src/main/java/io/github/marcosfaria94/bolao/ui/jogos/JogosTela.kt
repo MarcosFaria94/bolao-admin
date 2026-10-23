@@ -1,7 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,10 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -64,12 +61,13 @@ import io.github.marcosfaria94.bolao.domain.indices.IndiceK
 import io.github.marcosfaria94.bolao.ui.aposta.rotaDaAposta
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
-import io.github.marcosfaria94.bolao.ui.comum.FitaDestaque
+import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
+import io.github.marcosfaria94.bolao.ui.comum.bola3D
+import io.github.marcosfaria94.bolao.ui.comum.estiloNaBola
 import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
-import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import java.time.LocalDate
 
@@ -193,8 +191,9 @@ private fun premiacao(m: Modalidade): String = when (m) {
 
 /**
  * Página do jogo: o emblema (sigla e próximo concurso), o nome e a chance do prêmio principal com
- * o botão "Apostar" ao lado; o prêmio do próximo concurso e o dia do sorteio num quadro (com a fita
- * do concurso em destaque); depois o último resultado, a premiação, as regras e as probabilidades.
+ * o botão "Apostar" ao lado; o prêmio do próximo concurso e o dia do sorteio num quadro (com a
+ * estrelinha do concurso em destaque); depois o último resultado, a premiação, as regras e as
+ * probabilidades.
  */
 @Composable
 fun ModalidadeTela(estado: Estado, m: Modalidade, abrir: (String) -> Unit) {
@@ -246,42 +245,29 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrir: (String) -> Unit) {
             border = if (emDestaque) BorderStroke(2.dp, Dourado) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Box(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    if (emDestaque) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Star, contentDescription = null, tint = Dourado, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "CONCURSO EM DESTAQUE",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp,
-                                color = corDestaque(),
-                            )
-                        }
-                        Spacer(Modifier.height(4.dp))
-                    }
-                    if (u == null) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(56.dp)) {
-                            if (atualizando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Text(
-                                if (atualizando) "  Consultando a Caixa..." else "Sem dados da Caixa agora.",
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                        }
-                    } else {
-                        TextoQueCabe(
-                            u.premioEstimadoProximo?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) } ?: "Prêmio a confirmar",
-                            MaterialTheme.typography.displayLarge.copy(fontSize = 64.sp, lineHeight = 70.sp),
-                            peso = FontWeight.Bold,
-                            menor = 24.sp,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        u.proximaData?.let { RotuloValor("Sorteio", Datas.relativa(it, hoje)) }
-                    }
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (emDestaque) {
+                    TituloDestaque()
+                    Spacer(Modifier.height(4.dp))
                 }
-                if (emDestaque) FitaDestaque()
+                if (u == null) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(56.dp)) {
+                        if (atualizando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text(
+                            if (atualizando) "  Consultando a Caixa..." else "Sem dados da Caixa agora.",
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                } else {
+                    TextoQueCabe(
+                        u.premioEstimadoProximo?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) } ?: "Prêmio a confirmar",
+                        MaterialTheme.typography.displayLarge.copy(fontSize = 64.sp, lineHeight = 70.sp),
+                        peso = FontWeight.Bold,
+                        menor = 24.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    u.proximaData?.let { RotuloValor("Sorteio", Datas.relativa(it, hoje)) }
+                }
             }
         }
 
@@ -348,15 +334,16 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, abrir: (String) -> Unit) {
     }
 }
 
-/** "Sorteio: Hoje": rótulo discreto e o valor em destaque. */
+/** "Sorteio: Hoje": o rótulo e o valor na mesma cor (o valor em negrito). */
 @Composable
 private fun RotuloValor(rotulo: String, valor: String) {
     Text(
         buildAnnotatedString {
-            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("$rotulo: ") }
+            append("$rotulo: ")
             withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(valor) }
         },
-        style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
+        style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, fontWeight = FontWeight.Normal),
+        color = MaterialTheme.colorScheme.onSurface,
     )
 }
 
@@ -365,11 +352,12 @@ private fun RotuloValor(rotulo: String, valor: String) {
 private fun Bolas(numeros: List<String>, cor: Color) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         numeros.forEach { n ->
+            // As bolas sorteadas no mesmo estilo 3D dos emblemas.
             Box(
-                Modifier.size(38.dp).background(cor, CircleShape),
+                Modifier.size(38.dp).bola3D(cor),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(n, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp, textAlign = TextAlign.Center)
+                Text(n, style = estiloNaBola(38.dp), fontWeight = FontWeight.Bold, fontSize = 16.sp, textAlign = TextAlign.Center)
             }
         }
     }

@@ -2,7 +2,6 @@ package io.github.marcosfaria94.bolao.ui.jogos
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -34,7 +34,7 @@ import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.indices.IndiceK
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
-import io.github.marcosfaria94.bolao.ui.comum.FitaDestaque
+import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
 import io.github.marcosfaria94.bolao.ui.tema.Tarja
@@ -75,11 +75,18 @@ fun linhaIndices(item: Indices.Item): String {
 fun tituloDoCartao(item: Indices.Item): String =
     item.modalidade.nome + (item.ultimo?.premioEstimadoProximo?.takeIf { it > 0 }?.let { " · ${Dinheiro.milhoes(it)}" } ?: "")
 
+/** Preço que vai embaixo da bola: "R$ 3,00"; na Federal, "Variável". */
+fun precoDoCartao(m: Modalidade, estado: Estado): String =
+    if (m.precoVariavel) "Variável" else Dinheiro.rs(estado.config.preco(m))
+
+/** Largura da coluna da bola e do preço (igual em todos os cartões, para as bolas ficarem alinhadas). */
+private val LARGURA_BOLA = 72.dp
+
 /**
- * Uma modalidade na lista ordenada pelo k1 (Jogos e Nova aposta): o emblema (sigla e próximo
- * concurso), "Quina · 57M" bem grande, "Sorteio: Hoje" e os índices com espaço entre eles; o preço
- * fica no canto de baixo, à direita, numa etiqueta. O concurso em destaque tem contorno dourado e
- * a fita "DESTAQUE" no canto.
+ * Uma modalidade na lista ordenada pelo k1 (Jogos e Nova aposta): a bola (sigla e próximo
+ * concurso) no alto, com o preço embaixo dela numa etiqueta; ao lado, "Quina · 57M" bem grande,
+ * "Sorteio: Hoje" e os índices com espaço entre eles. O concurso em destaque tem contorno dourado
+ * e, no alto, a estrelinha com "CONCURSO EM DESTAQUE".
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -87,17 +94,28 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
     val m = item.modalidade
     val u = item.ultimo
     val hoje = LocalDate.now()
-    val preco = if (m.precoVariavel) "Preço variável" else Dinheiro.rs(estado.config.preco(m))
     val suave = MaterialTheme.colorScheme.onSurfaceVariant
     Card(
+        onClick = aoTocar,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = if (destaque) BorderStroke(2.dp, Dourado) else null,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = aoTocar),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Box(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                EmblemaModalidade(m, item.proximoNumero, tamanho = 60.dp)
-                Spacer(Modifier.width(14.dp))
+        Column(Modifier.padding(start = 10.dp, end = 14.dp, top = 12.dp, bottom = 12.dp)) {
+            if (destaque) {
+                TituloDestaque(Modifier.padding(start = 4.dp, bottom = 10.dp))
+            }
+            Row(verticalAlignment = Alignment.Top) {
+                // A bola no alto e o preço embaixo dela.
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                    modifier = Modifier.width(LARGURA_BOLA),
+                ) {
+                    EmblemaModalidade(m, item.proximoNumero, tamanho = 60.dp)
+                    EtiquetaPreco(precoDoCartao(m, estado))
+                }
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     TextoQueCabe(
                         tituloDoCartao(item),
@@ -105,15 +123,14 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
                         cor = MaterialTheme.colorScheme.onSurface,
                         peso = FontWeight.Bold,
                         menor = 15.sp,
-                        // Com a fita, o título não passa por baixo dela.
-                        modifier = Modifier.fillMaxWidth().padding(end = if (destaque) 34.dp else 0.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     )
+                    // "Sorteio:" e a data na mesma cor.
                     Text(
-                        buildAnnotatedString {
-                            withStyle(SpanStyle(color = suave)) { append("Sorteio: ") }
-                            append(u?.proximaData?.let { Datas.relativa(it, hoje) } ?: "a confirmar")
-                        },
+                        "Sorteio: " + (u?.proximaData?.let { Datas.relativa(it, hoje) } ?: "a confirmar"),
                         style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
                     )
                     val lista = indicesDoCartao(item)
                     if (lista == null) {
@@ -135,22 +152,28 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
                             }
                         }
                     }
-                    // Preço no canto de baixo, à direita, com fundo próprio.
-                    Text(
-                        preco,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Tarja.texto(),
-                        maxLines = 1,
-                        modifier = Modifier
-                            .align(Alignment.End)
-                            .padding(top = 2.dp)
-                            .background(Tarja.fundo(), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 10.dp, vertical = 3.dp),
-                    )
                 }
             }
-            if (destaque) FitaDestaque()
         }
+    }
+}
+
+/** Etiqueta do preço, embaixo da bola: letra maior, com fundo próprio (diminui se não couber). */
+@Composable
+private fun EtiquetaPreco(preco: String) {
+    Box(
+        Modifier
+            .widthIn(max = LARGURA_BOLA)
+            .background(Tarja.fundo(), RoundedCornerShape(8.dp))
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        TextoQueCabe(
+            preco,
+            MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, lineHeight = 20.sp),
+            cor = Tarja.texto(),
+            peso = FontWeight.Bold,
+            menor = 11.sp,
+        )
     }
 }

@@ -2,21 +2,25 @@ package io.github.marcosfaria94.bolao.ui.comum
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -46,16 +50,88 @@ private fun Color.escurecer(f: Float): Color = lerp(this, Color.Black, f)
 private fun fundoCirculo(cor: Color): Brush = Brush.verticalGradient(listOf(cor.clarear(0.12f), cor.escurecer(0.10f)))
 
 /**
+ * Bola 3D, como as das loterias: a luz vem do alto, à esquerda (degradê radial da cor clara para
+ * a escura, com a borda mais escura), um brilho pequeno perto da luz, um reflexo fraco na borda de
+ * baixo e uma sombra suave embaixo, fora do círculo.
+ */
+fun Modifier.bola3D(cor: Color): Modifier = drawBehind {
+    val r = size.minDimension / 2f
+    val c = center
+    // Sombra suave embaixo (aparece só fora da bola, mais para baixo).
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to Color.Black.copy(alpha = 0.26f),
+            0.80f to Color.Black.copy(alpha = 0.12f),
+            1f to Color.Transparent,
+            center = Offset(c.x, c.y + r * 0.14f),
+            radius = r * 1.10f,
+        ),
+        radius = r * 1.10f,
+        center = Offset(c.x, c.y + r * 0.14f),
+    )
+    // Corpo da bola.
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to cor.clarear(0.30f),
+            0.45f to cor,
+            0.85f to cor.escurecer(0.30f),
+            1f to cor.escurecer(0.45f),
+            center = Offset(c.x - r * 0.28f, c.y - r * 0.34f),
+            radius = r * 1.45f,
+        ),
+        radius = r,
+        center = c,
+    )
+    // Reflexo fraco na borda de baixo (dá volume).
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to Color.Transparent,
+            0.72f to Color.Transparent,
+            1f to Color.White.copy(alpha = 0.12f),
+            center = Offset(c.x, c.y - r * 0.18f),
+            radius = r,
+        ),
+        radius = r,
+        center = c,
+    )
+    // Brilho perto da luz.
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to Color.White.copy(alpha = 0.72f),
+            0.35f to Color.White.copy(alpha = 0.32f),
+            1f to Color.Transparent,
+            center = Offset(c.x - r * 0.36f, c.y - r * 0.50f),
+            radius = r * 0.46f,
+        ),
+        radius = r * 0.46f,
+        center = Offset(c.x - r * 0.36f, c.y - r * 0.50f),
+    )
+}
+
+/**
  * Tamanho de letra preso ao tamanho do círculo: não cresce com a letra maior do sistema
  * (o texto tem de caber dentro do emblema).
  */
 @Composable
 private fun Dp.emSp(): TextUnit = with(LocalDensity.current) { this@emSp.toSp() }
 
+/** Letra branca com uma sombra leve embaixo, para ler bem sobre a bola 3D. */
+@Composable
+fun estiloNaBola(tamanho: Dp): TextStyle {
+    val d = LocalDensity.current
+    return TextStyle(
+        color = Color.White,
+        shadow = Shadow(
+            color = Color.Black.copy(alpha = 0.40f),
+            offset = Offset(0f, with(d) { (tamanho * 0.025f).toPx() }),
+            blurRadius = with(d) { (tamanho * 0.05f).toPx() },
+        ),
+    )
+}
+
 /**
- * Emblema de uma modalidade: círculo na cor dela com a sigla (ou um [desenho], como o troféu do
+ * Emblema de uma modalidade: bola 3D na cor dela com a sigla (ou um [desenho], como o troféu do
  * prêmio) e, embaixo, o número do concurso. Sem concurso, só a sigla, um pouco maior.
- * [contorno]: anel claro em volta, para destacar o círculo num fundo escuro.
  */
 @Composable
 fun EmblemaModalidade(
@@ -64,16 +140,13 @@ fun EmblemaModalidade(
     tamanho: Dp = 56.dp,
     modifier: Modifier = Modifier,
     desenho: ImageVector? = null,
-    contorno: Color? = null,
 ) {
     val numero = concurso?.takeIf { it > 0 }?.toString()
-    val letraSigla = (tamanho * if (numero != null) 0.33f else 0.40f).emSp()
-    val letraNumero = (tamanho * 0.20f).emSp()
+    val letraSigla = (tamanho * if (numero != null) 0.37f else 0.46f).emSp()
+    val letraNumero = (tamanho * 0.225f).emSp()
+    val estilo = estiloNaBola(tamanho)
     Box(
-        modifier
-            .size(tamanho)
-            .then(if (contorno != null) Modifier.border(2.dp, contorno, CircleShape) else Modifier)
-            .background(fundoCirculo(corModalidade(m.cor)), CircleShape),
+        modifier.size(tamanho).bola3D(corModalidade(m.cor)),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -82,7 +155,7 @@ fun EmblemaModalidade(
             } else {
                 Text(
                     m.sigla,
-                    color = Color.White,
+                    style = estilo,
                     fontWeight = FontWeight.Bold,
                     fontSize = letraSigla,
                     lineHeight = letraSigla * 1.05f,
@@ -94,8 +167,8 @@ fun EmblemaModalidade(
             if (numero != null) {
                 Text(
                     numero,
-                    color = Color.White.copy(alpha = 0.92f),
-                    fontWeight = FontWeight.SemiBold,
+                    style = estilo,
+                    fontWeight = FontWeight.Bold,
                     fontSize = letraNumero,
                     lineHeight = letraNumero * 1.1f,
                     maxLines = 1,
@@ -115,6 +188,41 @@ fun EmblemaDesenho(desenho: ImageVector, cor: Color, tamanho: Dp = 56.dp, modifi
         contentAlignment = Alignment.Center,
     ) {
         Image(desenho, contentDescription = null, modifier = Modifier.size(tamanho * 0.75f))
+    }
+}
+
+/** Emblema com um ícone (branco, ou na [corIcone]) num círculo colorido (Ajustes, Notificações). */
+@Composable
+fun EmblemaIcone(
+    icone: ImageVector,
+    cor: Color,
+    tamanho: Dp = 44.dp,
+    modifier: Modifier = Modifier,
+    corIcone: Color = Color.White,
+) {
+    Box(
+        modifier.size(tamanho).background(fundoCirculo(cor), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icone, contentDescription = null, tint = corIcone, modifier = Modifier.size(tamanho * 0.52f))
+    }
+}
+
+/** Emblema com as iniciais de um nome num círculo colorido (integrantes, em Ajustes). */
+@Composable
+fun EmblemaIniciais(nome: String, cor: Color, tamanho: Dp = 48.dp, modifier: Modifier = Modifier) {
+    val partes = nome.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    val iniciais = when {
+        partes.isEmpty() -> "?"
+        partes.size == 1 -> partes[0].take(1)
+        else -> partes.first().take(1) + partes.last().take(1)
+    }.uppercase()
+    val letra = (tamanho * 0.38f).emSp()
+    Box(
+        modifier.size(tamanho).background(fundoCirculo(cor), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(iniciais, color = Color.White, fontWeight = FontWeight.Bold, fontSize = letra, lineHeight = letra, maxLines = 1)
     }
 }
 

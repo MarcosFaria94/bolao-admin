@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -52,6 +51,7 @@ import io.github.marcosfaria94.bolao.ui.comum.ItemHistorico
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.TextoBrilhante
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
+import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.descricaoDaAposta
 import io.github.marcosfaria94.bolao.ui.comum.TextoVazio
 import io.github.marcosfaria94.bolao.ui.comum.TituloComMes
@@ -181,16 +181,7 @@ private fun CartaoDestaque(item: Indices.Item?, hoje: LocalDate, aoTocar: (Modal
     ) {
         Column(Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Star, contentDescription = null, tint = Dourado, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "CONCURSO EM DESTAQUE",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp,
-                    color = Dourado,
-                    modifier = Modifier.weight(1f),
-                )
+                TituloDestaque(Modifier.weight(1f), cor = Dourado)
                 if (item != null) {
                     Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = "Abrir o jogo", tint = suave)
                 }
@@ -206,7 +197,7 @@ private fun CartaoDestaque(item: Indices.Item?, hoje: LocalDate, aoTocar: (Modal
             }
             val u = item.ultimo
             Row(verticalAlignment = Alignment.CenterVertically) {
-                EmblemaModalidade(item.modalidade, item.proximoNumero, tamanho = 68.dp, contorno = Color.White.copy(alpha = 0.85f))
+                EmblemaModalidade(item.modalidade, item.proximoNumero, tamanho = 68.dp)
                 Spacer(Modifier.width(16.dp))
                 TextoQueCabe(
                     item.modalidade.nome,

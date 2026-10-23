@@ -10,15 +10,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,8 +33,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -45,13 +40,12 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.marcosfaria94.bolao.ui.tema.AzulNoite
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
 import io.github.marcosfaria94.bolao.ui.tema.Tarja
+import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 
 /**
  * Animações que não param (o "Completar" pulsando, o brilho do sorteio de hoje). Desligadas só
@@ -218,33 +212,21 @@ fun TextoBrilhante(texto: String, estilo: TextStyle, cor: Color, modifier: Modif
 }
 
 /**
- * Fita diagonal no canto de cima, à direita, de um cartão: marca o concurso em destaque.
- * Fica dentro de um Box do tamanho do cartão (o cartão corta o que passa da borda).
+ * Marca do concurso em destaque (o de maior k1), no alto do cartão: a estrelinha dourada e
+ * "CONCURSO EM DESTAQUE" (Apostas, Jogos, Nova aposta e a página do jogo).
  */
 @Composable
-fun BoxScope.FitaDestaque(texto: String = "DESTAQUE") {
-    Box(
-        Modifier
-            .align(Alignment.TopEnd)
-            .size(92.dp)
-            .clipToBounds(),
-    ) {
+fun TituloDestaque(modifier: Modifier = Modifier, cor: Color = corDestaque()) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Filled.Star, contentDescription = null, tint = Dourado, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
         Text(
-            texto,
-            color = AzulNoite,
+            "CONCURSO EM DESTAQUE",
+            style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
-            fontSize = 10.sp,
-            lineHeight = 12.sp,
-            letterSpacing = 0.5.sp,
-            textAlign = TextAlign.Center,
+            letterSpacing = 1.2.sp,
+            color = cor,
             maxLines = 1,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = 22.dp, y = (-22).dp)
-                .rotate(45f)
-                .requiredWidth(130.dp)
-                .background(Dourado)
-                .padding(vertical = 3.dp),
         )
     }
 }

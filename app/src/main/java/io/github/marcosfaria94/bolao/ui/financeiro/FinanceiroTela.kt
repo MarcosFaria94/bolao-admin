@@ -1,6 +1,5 @@
 package io.github.marcosfaria94.bolao.ui.financeiro
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,21 +25,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Lancamento
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Datas
-import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.ui.comum.CoresEmblema
 import io.github.marcosfaria94.bolao.ui.comum.Desenhos
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaDesenho
 import io.github.marcosfaria94.bolao.ui.comum.ListaLancamentos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
-import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
+import io.github.marcosfaria94.bolao.ui.comum.QuadroSaldo
 import io.github.marcosfaria94.bolao.ui.comum.TextoVazio
 import io.github.marcosfaria94.bolao.ui.comum.TituloComMes
 import io.github.marcosfaria94.bolao.ui.comum.mesesComDados
@@ -70,12 +66,8 @@ fun FinanceiroTela(estado: Estado, abrir: (String) -> Unit) {
         modifier = Modifier.fillMaxSize(),
     ) {
         item {
-            Saldo(
-                saldo = saldo,
-                provisionado = provisao.provisionado,
-                extra = saldo - provisao.provisionado,
-                aoTocar = { abrir("saldo") },
-            )
+            // Tocar no quadro gera o "Saldo atual".
+            QuadroSaldo(saldo, provisao.provisionado, Modifier.padding(top = 8.dp), aoTocar = { abrir("saldo") })
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -102,53 +94,6 @@ fun FinanceiroTela(estado: Estado, abrir: (String) -> Unit) {
                 }
             }
         }
-    }
-}
-
-/**
- * Saldo no estilo dos apps de banco, num quadro que dá para tocar: "Saldo líquido", o valor
- * grande e, embaixo, o provisionado e o extra (sem fundo próprio). Tocar gera o "Saldo atual".
- */
-@Composable
-private fun Saldo(saldo: Long, provisionado: Long, extra: Long, aoTocar: () -> Unit) {
-    Card(
-        onClick = aoTocar,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-    ) {
-        Column(Modifier.padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 18.dp)) {
-            Text(
-                "Saldo líquido",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            TextoQueCabe(
-                Dinheiro.rs(saldo),
-                MaterialTheme.typography.displayMedium,
-                peso = FontWeight.Bold,
-                menor = 28.sp,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Indicador("Provisionado", Dinheiro.rs(provisionado), Modifier.weight(1f))
-                Indicador("Extra", (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)), Modifier.weight(1f))
-            }
-        }
-    }
-}
-
-@Composable
-private fun Indicador(rotulo: String, valor: String, modifier: Modifier) {
-    Column(modifier) {
-        Text(rotulo, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        TextoQueCabe(
-            valor,
-            MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
-            menor = 14.sp,
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
 
