@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 class BolaoApp : Application() {
     val repo: Repositorio by lazy { Repositorio(this) }
     val backup: Backup by lazy { Backup(this, repo) }
-    /** Índices k1/k2 e odds das modalidades (Jogos, Nova aposta e concurso em destaque). */
+    /** Índices k1/k2 e odds das modalidades (Jogos e concurso em destaque). */
     val indices: Indices by lazy { Indices(this) }
 
     /** O app está na tela (o aviso "Ação necessária" espera o Administrador sair). */

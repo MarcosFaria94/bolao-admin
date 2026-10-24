@@ -13,19 +13,18 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.AccountBalanceWallet
-import androidx.compose.material.icons.outlined.Leaderboard
-import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -38,20 +37,25 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -64,10 +68,6 @@ import io.github.marcosfaria94.bolao.notificacoes.Notificador
 import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.ui.ajustes.AjustesTela
 import io.github.marcosfaria94.bolao.ui.aporte.AporteTela
-import io.github.marcosfaria94.bolao.ui.aposta.ApostaNovaTela
-import io.github.marcosfaria94.bolao.ui.aposta.ApostaTela
-import io.github.marcosfaria94.bolao.ui.aposta.ApostasTela
-import io.github.marcosfaria94.bolao.ui.aposta.NovaApostaTela
 import io.github.marcosfaria94.bolao.ui.atualizacao.AtualizacaoViewModel
 import io.github.marcosfaria94.bolao.ui.atualizacao.DialogosAtualizacao
 import io.github.marcosfaria94.bolao.ui.cadastro.CadastroTela
@@ -77,7 +77,7 @@ import io.github.marcosfaria94.bolao.ui.comum.Icones
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.extincao.ExtincaoTela
 import io.github.marcosfaria94.bolao.ui.extrato.ExtratoTela
-import io.github.marcosfaria94.bolao.ui.financeiro.FinanceiroTela
+import io.github.marcosfaria94.bolao.ui.home.HomeTela
 import io.github.marcosfaria94.bolao.ui.financeiro.SaldoTela
 import io.github.marcosfaria94.bolao.ui.ajustes.IntegridadeTela
 import io.github.marcosfaria94.bolao.ui.jogos.JogosTela
@@ -86,6 +86,7 @@ import io.github.marcosfaria94.bolao.ui.notificacoes.NotificacoesTela
 import io.github.marcosfaria94.bolao.ui.rateio.RateioTela
 import io.github.marcosfaria94.bolao.ui.teste.DialogoSairDoTeste
 import io.github.marcosfaria94.bolao.ui.teste.FaixaModoTeste
+import io.github.marcosfaria94.bolao.ui.tema.AmareloSino
 import io.github.marcosfaria94.bolao.ui.tema.Barra
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -93,12 +94,13 @@ import java.time.LocalDateTime
 import java.time.YearMonth
 
 private enum class Aba(val rota: String, val rotulo: String, val icone: ImageVector, val iconeEscolhido: ImageVector) {
-    FINANCEIRO("financeiro", "Financeiro", Icons.Outlined.AccountBalanceWallet, Icons.Filled.AccountBalanceWallet),
-    APOSTAS("apostas", "Apostas", Icones.Trevo, Icones.TrevoCheio),
-    JOGOS("jogos", "Jogos", Icons.Outlined.Leaderboard, Icons.Filled.Leaderboard),
-    NOTIFICACOES("notificacoes", "Notificações", Icons.Outlined.Notifications, Icons.Filled.Notifications),
+    HOME("home", "Home", Icons.Outlined.Home, Icons.Filled.Home),
+    JOGOS("jogos", "Jogos", Icones.Trevo, Icones.TrevoCheio),
     AJUSTES("ajustes", "Ajustes", Icons.Outlined.Settings, Icons.Filled.Settings),
 }
+
+/** Endereços antigos (avisos de versões anteriores): "financeiro" e "apostas" eram abas; "apostar", a Nova aposta. */
+private val PARA_A_HOME = setOf("painel", "financeiro", "apostas")
 
 @Composable
 fun AppRaiz() {
@@ -124,7 +126,7 @@ fun AppRaiz() {
             // Extinção em andamento: só a tela da extinção, até o fim.
             e.extincao != null -> ExtincaoTela(e)
             !e.cadastroConcluido -> CadastroTela()
-            // Ao entrar ou sair do modo de teste, a navegação recomeça do Financeiro.
+            // Ao entrar ou sair do modo de teste, a navegação recomeça da Home.
             else -> key(teste) { Principal(e, atualizacao, teste) }
         }
         DialogosAtualizacao(atualizacao)
@@ -136,7 +138,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     val nav = rememberNavController()
     val ctx = LocalContext.current
     var sairDoTeste by remember { mutableStateOf(false) }
-    // Contador do sino: todas as pendências de agora (refeitas a cada minuto, ex.: virada do dia).
+    // Contador do sino (no canto da Home): todas as pendências de agora (refeitas a cada minuto, ex.: virada do dia).
     val agora by produceState(LocalDateTime.now()) {
         while (true) {
             delay(60_000)
@@ -169,7 +171,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             ctx.bolao.destinoPendente.value = null
             runCatching {
                 when {
-                    d == "painel" || d == Aba.FINANCEIRO.rota -> Unit
+                    d in PARA_A_HOME -> abrirAba(Aba.HOME.rota)
+                    d == "apostar" -> abrirAba(Aba.JOGOS.rota)
                     Aba.entries.any { it.rota == d } -> abrirAba(d)
                     else -> nav.navigate(d) { launchSingleTop = true }
                 }
@@ -192,31 +195,42 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     }
 
     val entrada by nav.currentBackStackEntryAsState()
-    val rota = entrada?.destination?.route ?: Aba.FINANCEIRO.rota
+    val rota = entrada?.destination?.route ?: Aba.HOME.rota
     val ehAba = Aba.entries.any { it.rota == rota }
     val titulo = when (rota) {
-        Aba.FINANCEIRO.rota -> "Financeiro"
-        Aba.APOSTAS.rota -> "Apostas"
+        Aba.HOME.rota -> "Home"
         Aba.JOGOS.rota -> "Jogos"
-        Aba.NOTIFICACOES.rota -> "Notificações"
         Aba.AJUSTES.rota -> "Ajustes"
+        "notificacoes" -> "Notificações"
         "aporte" -> "Aporte"
         "rateio" -> "Rateio"
         "extrato", "extrato/{mes}" -> "Extrato"
         "comprovante/{id}" -> "Comprovante"
-        "apostar" -> "Nova aposta"
-        "aposta/{id}", "apuracao/{id}", "nova/{nome}" -> "Aposta"
-        "modalidade/{nome}" -> "Jogos"
+        // A página do jogo, com o volante ou a aposta aberta.
+        "modalidade/{nome}", "nova/{nome}", "aposta/{id}", "apuracao/{id}" -> "Jogos"
         "saldo" -> "Saldo"
         "integridade" -> "Verificar integridade"
         else -> ""
     }
-    fun abrir(r: String) = nav.navigate(r) { launchSingleTop = true }
+    // Uma aba (ex.: a pendência "Fazer a aposta de hoje" abre os Jogos) troca de aba; o resto abre por cima.
+    fun abrir(r: String) = if (Aba.entries.any { it.rota == r }) abrirAba(r) else nav.navigate(r) { launchSingleTop = true }
+
+    // Os parâmetros do Histórico da Home recomeçam quando se vai para outra aba; ao voltar de uma
+    // tela aberta a partir da Home (uma aposta, um comprovante, as notificações), ficam como estavam.
+    var visitaDaHome by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(rota) { if (rota == Aba.JOGOS.rota || rota == Aba.AJUSTES.rota) visitaDaHome++ }
 
     Scaffold(
         topBar = {
             Column {
-                BarraTitulo(titulo, aoVoltar = if (ehAba) null else ({ nav.popBackStack() }))
+                BarraTitulo(
+                    titulo,
+                    aoVoltar = if (ehAba) null else ({ nav.popBackStack() }),
+                    acoes = {
+                        // Na Home, o sino das notificações (todo amarelo), com o número de pendências.
+                        if (rota == Aba.HOME.rota) Sino(pendencias.size) { abrir("notificacoes") }
+                    },
+                )
                 if (teste) FaixaModoTeste(aoSair = { sairDoTeste = true })
             }
         },
@@ -229,18 +243,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                         NavigationBarItem(
                             selected = escolhida,
                             onClick = { abrirAba(aba.rota) },
-                            icon = {
-                                val n = if (aba == Aba.NOTIFICACOES) pendencias.size else 0
-                                BadgedBox(badge = {
-                                    if (n > 0) {
-                                        Badge(containerColor = Barra.contador, contentColor = Color.White) {
-                                            Text(if (n > 99) "99+" else n.toString(), fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }) {
-                                    Icon(if (escolhida) aba.iconeEscolhido else aba.icone, contentDescription = null)
-                                }
-                            },
+                            icon = { Icon(if (escolhida) aba.iconeEscolhido else aba.icone, contentDescription = null) },
                             label = {
                                 Text(
                                     aba.rotulo,
@@ -269,51 +272,75 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         // Troca de tela instantânea, sem o esmaecer (fade) padrão da navegação.
         NavHost(
             nav,
-            startDestination = Aba.FINANCEIRO.rota,
+            startDestination = Aba.HOME.rota,
             modifier = Modifier.padding(padding),
             enterTransition = { EnterTransition.None },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
             popExitTransition = { ExitTransition.None },
         ) {
-            composable(Aba.FINANCEIRO.rota) { FinanceiroTela(estado, abrir = ::abrir) }
-            composable(Aba.APOSTAS.rota) { ApostasTela(estado, abrir = ::abrir) }
+            composable(Aba.HOME.rota) { HomeTela(estado, visitaDaHome, abrir = ::abrir, apostar = { abrirAba(Aba.JOGOS.rota) }) }
             composable(Aba.JOGOS.rota) { JogosTela(estado, abrirModalidade = { abrir("modalidade/${it.name}") }) }
-            composable(Aba.NOTIFICACOES.rota) { NotificacoesTela(pendencias, abrir = ::abrir) }
             composable(Aba.AJUSTES.rota) { AjustesTela(estado, atualizacao, abrir = ::abrir) }
+            composable("notificacoes") { NotificacoesTela(pendencias, abrir = ::abrir) }
             composable("saldo") { SaldoTela(estado) }
             composable("integridade") { IntegridadeTela(estado) }
-            composable("aporte") { AporteTela(estado, abrir = ::abrir) }
-            composable("rateio") { RateioTela(estado, abrir = ::abrir) }
+            composable("aporte") { AporteTela(estado) }
+            composable("rateio") { RateioTela(estado) }
             composable("extrato") { ExtratoTela(estado) }
             composable("extrato/{mes}") { e ->
                 val mes = runCatching { YearMonth.parse(e.arguments?.getString("mes").orEmpty()) }.getOrNull()
                 ExtratoTela(estado, mesInicial = mes)
             }
             composable("comprovante/{id}") { e -> ComprovanteTela(estado, e.arguments?.getString("id").orEmpty()) }
-            composable("apostar") {
-                NovaApostaTela(estado, abrir = { r ->
-                    nav.navigate(r) { popUpTo("apostar") { inclusive = true } }
-                })
-            }
-            composable("aposta/{id}") { e ->
-                ApostaTela(estado, id = e.arguments?.getString("id").orEmpty(), aoSair = { nav.popBackStack() })
-            }
-            // Aposta nova: só vai para "Em andamento" quando confirmada (senão, é descartada ao sair).
-            composable("nova/{nome}") { e ->
-                val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
-                if (m != null) ApostaNovaTela(estado, m, aoSair = { nav.popBackStack() })
-            }
-            // A apuração fica na tela da aposta (avisos antigos ainda podem abrir este endereço).
-            composable("apuracao/{id}") { e ->
-                ApostaTela(estado, id = e.arguments?.getString("id").orEmpty(), aoSair = { nav.popBackStack() })
-            }
+            // A página do jogo: o volante (a aposta em andamento da modalidade ou uma nova).
             composable("modalidade/{nome}") { e ->
                 val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
-                if (m != null) ModalidadeTela(estado, m, abrir = ::abrir)
+                if (m != null) ModalidadeTela(estado, m, aoSair = { fechar(nav, e) })
             }
+            // Endereço antigo da aposta nova: a página do jogo.
+            composable("nova/{nome}") { e ->
+                val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
+                if (m != null) ModalidadeTela(estado, m, aoSair = { fechar(nav, e) })
+            }
+            // Uma aposta (do Histórico ou de um aviso): a página do jogo dela, com a aposta no lugar do volante.
+            composable("aposta/{id}") { e -> PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty()) { fechar(nav, e) } }
+            // A apuração fica na aposta (avisos antigos ainda podem abrir este endereço).
+            composable("apuracao/{id}") { e -> PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty()) { fechar(nav, e) } }
         }
     }
 
     if (sairDoTeste) DialogoSairDoTeste(aoFechar = { sairDoTeste = false })
+}
+
+/** Fecha a tela [entrada], só se ela ainda for a de cima (nunca fecha outra por engano). */
+private fun fechar(nav: NavHostController, entrada: NavBackStackEntry) {
+    if (nav.currentBackStackEntry?.id == entrada.id) nav.popBackStack()
+}
+
+/** A página do jogo de uma aposta (registrada ou em andamento). */
+@Composable
+private fun PaginaDaAposta(estado: Estado, id: String, aoSair: () -> Unit) {
+    val a = estado.apostas.firstOrNull { it.id == id }
+    if (a == null) {
+        Box(Modifier.fillMaxSize().padding(24.dp)) { Text("Esta aposta não existe mais.") }
+    } else {
+        ModalidadeTela(estado, a.modalidade, aoSair = aoSair, apostaId = id)
+    }
+}
+
+/** Sino das notificações, no canto de cima da Home: todo amarelo, com o contador vermelho de pendências. */
+@Composable
+private fun Sino(pendencias: Int, aoTocar: () -> Unit) {
+    IconButton(onClick = aoTocar) {
+        BadgedBox(badge = {
+            if (pendencias > 0) {
+                Badge(containerColor = Barra.contador, contentColor = Color.White) {
+                    Text(if (pendencias > 99) "99+" else pendencias.toString(), fontWeight = FontWeight.Bold)
+                }
+            }
+        }) {
+            Icon(Icons.Filled.Notifications, contentDescription = "Notificações", tint = AmareloSino, modifier = Modifier.size(28.dp))
+        }
+    }
 }

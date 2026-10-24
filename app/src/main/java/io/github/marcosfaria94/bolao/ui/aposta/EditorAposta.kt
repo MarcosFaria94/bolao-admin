@@ -15,10 +15,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -71,7 +69,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Arquivo
@@ -79,7 +76,6 @@ import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.TipoComprovante
 import io.github.marcosfaria94.bolao.data.palpite
-import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Extra
 import io.github.marcosfaria94.bolao.domain.Formato
@@ -99,11 +95,8 @@ import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.CampoInteiro
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoSimNao
-import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
 import io.github.marcosfaria94.bolao.ui.comum.LinhaAnexo
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
-import io.github.marcosfaria94.bolao.ui.comum.TarjaTitulo
-import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
@@ -112,108 +105,27 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
- * Tela de uma aposta já gravada: rascunho em andamento (editável) ou registrada, com a
- * apuração na mesma tela (DetalheAposta).
+ * Título do volante: "Aposta Nº1" (o número que a aposta vai receber no mês) e, no lugar do
+ * contador de dezenas, o lápis discreto ([aoEditar]) que abre os dados do concurso.
  */
 @Composable
-fun ApostaTela(estado: Estado, id: String, aoSair: () -> Unit) {
-    val a = estado.apostas.firstOrNull { it.id == id }
-    if (a == null) {
-        Box(Modifier.fillMaxSize().padding(24.dp)) { Text("Esta aposta não existe mais.") }
-        return
-    }
-    if (a.registrada) {
-        DetalheAposta(estado, a)
-        return
-    }
-    // Rascunho em andamento: a tela é a fonte da verdade; ao sair, vale a regra do rascunho.
-    val app = LocalContext.current.bolao
-    val vm = viewModel(key = "aposta-${a.id}") { ApostaEmEdicao(app.repo, app.escopo, a, nova = false) }
-    EditorAposta(
-        estado = estado,
-        r = vm.aposta,
-        mudar = vm::mudar,
-        aoDescartar = {
-            vm.descartar()
-            aoSair()
-        },
-    )
-}
-
-/**
- * Aposta nova ("nova/{modalidade}"), com o volante vazio. Ao sair da tela, fica em "Em andamento"
- * se o volante estiver completo ou se o comprovante da Caixa estiver anexado; senão, é descartada.
- */
-@Composable
-fun ApostaNovaTela(estado: Estado, m: Modalidade, aoSair: () -> Unit) {
-    val app = LocalContext.current.bolao
-    val vm = viewModel {
-        ApostaEmEdicao(
-            app.repo,
-            app.escopo,
-            novaAposta(estado, m, app.indices.itens.value[m]?.ultimo, LocalDate.now(), System.currentTimeMillis()),
-            nova = true,
-        )
-    }
-    // Registrada direto daqui: a tela vira a da aposta registrada.
-    val gravada = estado.apostas.firstOrNull { it.id == vm.aposta.id }
-    if (gravada?.registrada == true) {
-        DetalheAposta(estado, gravada)
-        return
-    }
-    EditorAposta(
-        estado = estado,
-        r = vm.aposta,
-        mudar = vm::mudar,
-        aoDescartar = {
-            vm.descartar()
-            aoSair()
-        },
-    )
-}
-
-/** "Prêmio" (ou "1º prêmio", na Federal) e o valor por extenso: "R$ 200 Milhões". null = sem estimativa. */
-fun textoPremio(a: Aposta): Pair<String, String>? = a.premioEstimado?.takeIf { it > 0 }?.let {
-    (if (a.modalidade == Modalidade.FEDERAL) "1º prêmio" else "Prêmio") to Dinheiro.porExtenso(it)
-}
-
-/**
- * Cabeçalho da tela da aposta: o emblema da modalidade (sigla e concurso), a tarja "Aposta Nº1"
- * e o nome da modalidade bem grande. No rascunho vem também o lápis discreto ([aoEditar]) que
- * abre os dados do concurso.
- */
-@Composable
-fun CabecalhoAposta(
-    a: Aposta,
-    numero: Int,
-    aoEditar: (() -> Unit)? = null,
-    carregando: Boolean = false,
-) {
+private fun TituloDoVolante(numero: Int, aoEditar: () -> Unit, carregando: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        EmblemaModalidade(a.modalidade, a.concurso.takeIf { it > 0 }, tamanho = 66.dp)
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            TarjaTitulo("Aposta Nº$numero")
-            TextoQueCabe(
-                a.modalidade.nome,
-                MaterialTheme.typography.displaySmall.copy(fontSize = 36.sp, lineHeight = 42.sp),
-                peso = FontWeight.Bold,
-                menor = 22.sp,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        Text(
+            "Aposta Nº$numero",
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp),
+            modifier = Modifier.weight(1f),
+        )
         if (carregando) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
         }
-        if (aoEditar != null) {
-            IconButton(onClick = aoEditar, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    Icons.Outlined.Edit,
-                    contentDescription = "Alterar os dados do concurso",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+        IconButton(onClick = aoEditar, modifier = Modifier.size(36.dp)) {
+            Icon(
+                Icons.Outlined.Edit,
+                contentDescription = "Alterar os dados do concurso",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }
@@ -263,12 +175,14 @@ private fun Aposta.com(d: DadosConcurso): Aposta = copy(
 )
 
 /**
- * Editor do rascunho: o cabeçalho (com o lápis dos dados do concurso), o volante com
- * "Completar" e "Limpar", o comprovante da Caixa e o registro. Ao sair, a aposta só fica em
- * andamento com o volante completo ou com o comprovante anexado ([ficaEmAndamento]).
+ * O volante da página da modalidade, da aposta nova ou em andamento: "Aposta Nº1" com o lápis dos
+ * dados do concurso, o volante com "Completar" e "Limpar", o comprovante da Caixa, o registro e,
+ * no fim, "Descartar rascunho". Vai dentro da coluna da página (não tem rolagem própria). Ao sair
+ * da página, a aposta só fica em andamento com o volante completo ou com o comprovante anexado
+ * ([ficaEmAndamento]).
  */
 @Composable
-private fun EditorAposta(
+fun SecaoVolante(
     estado: Estado,
     r: Aposta,
     mudar: (Aposta) -> Unit,
@@ -304,7 +218,7 @@ private fun EditorAposta(
                 mudarAtual(atual.com(d))
                 Consulta.Ok("Dados do concurso ${d.numero} conferidos na Caixa.")
             } catch (t: Throwable) {
-                Consulta.Erro("Não foi possível consultar a Caixa (${t.message}). Toque no lápis para preencher os dados do concurso.")
+                Consulta.Erro("Não foi possível consultar a Caixa (${t.message}). Toque no lápis do volante para preencher os dados do concurso.")
             }
         }
     }
@@ -333,103 +247,87 @@ private fun EditorAposta(
         } else {
             addAll(Volante.pendencias(m, r.palpite))
         }
-        if (r.concurso <= 0) add("Informe o número do concurso (no lápis, no alto da tela).")
-        if (r.valor <= 0) add(if (federal) "Informe o valor pago." else "Informe o preço da aposta (no lápis, no alto da tela).")
+        if (r.concurso <= 0) add("Informe o número do concurso (no lápis do volante).")
+        if (r.valor <= 0) add(if (federal) "Informe o valor pago." else "Informe o preço da aposta (no lápis do volante).")
     }
     val numero = Operacoes.proximoNumero(estado, hoje)
     val titulo = Operacoes.tituloAposta(estado, r, hoje)
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        CabecalhoAposta(
-            r,
-            numero,
-            aoEditar = { editando = true },
-            carregando = consulta == Consulta.Carregando,
-        )
-        Column {
-            textoPremio(r)?.let { (rotulo, valor) -> LinhaInfo(rotulo, valor) }
-            LinhaInfo("Sorteio", r.dataSorteio?.let { Datas.relativa(it, hoje) } ?: "a confirmar")
-        }
-        (consulta as? Consulta.Erro)?.let { Aviso(it.texto, alerta = true) }
+    (consulta as? Consulta.Erro)?.let { Aviso(it.texto, alerta = true) }
 
-        // Volante
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // Volante
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            TituloDoVolante(numero, aoEditar = { editando = true }, carregando = consulta == Consulta.Carregando)
+            Column(Modifier.padding(end = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 VolanteEditavel(m, r, { mudarAtual(it) }, ::mudarPalpite)
             }
         }
+    }
 
-        // Comprovante da Caixa
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    "Faça a aposta no app Loterias CAIXA com estes números e anexe o comprovante aqui.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                LinhaAnexo(
-                    titulo = "Comprovante da Caixa",
-                    nomeArquivo = r.comprovante?.nomeOriginal,
-                    aoAnexar = { escolherComprovante.launch(arrayOf("application/pdf", "image/*")) },
-                    arquivo = r.comprovante?.let { repo.arquivo(it) },
-                    mime = r.comprovante?.mime,
-                )
-                if (teste) {
-                    TextButton(onClick = {
-                        escopo.launch {
-                            try {
-                                trocarComprovante(ModoTeste.comprovante(ctx, atual))
-                            } catch (t: Throwable) {
-                                avisos.showSnackbar("Não foi possível criar o comprovante de exemplo: ${t.message}")
-                            }
-                        }
-                    }) { Text("Usar um comprovante de exemplo") }
-                }
-            }
-        }
-
-        pendencias.firstOrNull()?.let { Aviso(it, alerta = true) }
-        if (pendencias.isEmpty() && r.comprovante == null) {
-            Aviso("Falta anexar o comprovante da Caixa: sem ele publicado no grupo, a aposta não vale para o bolão.", alerta = true)
-        }
-        if (!ficaEmAndamento(r)) {
-            Aviso(
-                "Se sair agora, a aposta é descartada: complete o " + (if (federal) "bilhete" else "volante") +
-                    " ou anexe o comprovante da Caixa.",
-            )
-        }
-
-        BotoesDeRegistro(
-            habilitado = pendencias.isEmpty() && r.comprovante != null,
-            trabalhando = registrando || lendo,
-            aoVisualizar = { vendo = true },
-            aoRegistrar = {
-                // Antes de registrar, confere a aposta com o comprovante da Caixa.
-                val arq = atual.comprovante ?: return@BotoesDeRegistro
-                lendo = true
-                escopo.launch {
-                    conferencia = conferirComCaixa(atual, repo.arquivo(arq), arq.mime)
-                    lendo = false
-                }
-            },
-        )
-        if (lendo) {
+    // Comprovante da Caixa
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                "Conferindo o comprovante da Caixa...",
-                style = MaterialTheme.typography.bodyMedium,
+                "Faça a aposta no app Loterias CAIXA com estes números e anexe o comprovante aqui.",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            LinhaAnexo(
+                titulo = "Comprovante da Caixa",
+                nomeArquivo = r.comprovante?.nomeOriginal,
+                aoAnexar = { escolherComprovante.launch(arrayOf("application/pdf", "image/*")) },
+                arquivo = r.comprovante?.let { repo.arquivo(it) },
+                mime = r.comprovante?.mime,
+            )
+            if (teste) {
+                TextButton(onClick = {
+                    escopo.launch {
+                        try {
+                            trocarComprovante(ModoTeste.comprovante(ctx, atual))
+                        } catch (t: Throwable) {
+                            avisos.showSnackbar("Não foi possível criar o comprovante de exemplo: ${t.message}")
+                        }
+                    }
+                }) { Text("Usar um comprovante de exemplo") }
+            }
         }
-        TextButton(onClick = { confirmarExclusao = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("Descartar rascunho", color = MaterialTheme.colorScheme.error)
-        }
+    }
+
+    pendencias.firstOrNull()?.let { Aviso(it, alerta = true) }
+    if (pendencias.isEmpty() && r.comprovante == null) {
+        Aviso("Falta anexar o comprovante da Caixa: sem ele publicado no grupo, a aposta não vale para o bolão.", alerta = true)
+    }
+    if (!ficaEmAndamento(r)) {
+        Aviso(
+            "Se sair agora, a aposta é descartada: complete o " + (if (federal) "bilhete" else "volante") +
+                " ou anexe o comprovante da Caixa.",
+        )
+    }
+
+    BotoesDeRegistro(
+        habilitado = pendencias.isEmpty() && r.comprovante != null,
+        trabalhando = registrando || lendo,
+        aoVisualizar = { vendo = true },
+        aoRegistrar = {
+            // Antes de registrar, confere a aposta com o comprovante da Caixa.
+            val arq = atual.comprovante ?: return@BotoesDeRegistro
+            lendo = true
+            escopo.launch {
+                conferencia = conferirComCaixa(atual, repo.arquivo(arq), arq.mime)
+                lendo = false
+            }
+        },
+    )
+    if (lendo) {
+        Text(
+            "Conferindo o comprovante da Caixa...",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    TextButton(onClick = { confirmarExclusao = true }, modifier = Modifier.fillMaxWidth()) {
+        Text("Descartar rascunho", color = MaterialTheme.colorScheme.error)
     }
 
     if (editando) {
@@ -680,10 +578,6 @@ private fun VolanteEditavel(
 ) {
     when (m.formato) {
         Formato.NUMEROS -> {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Números", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Text("${r.numeros.size} de ${m.qtdAposta}", style = MaterialTheme.typography.labelLarge)
-            }
             GradeNumeros(
                 m,
                 situacao = { if (it in r.numeros) SituacaoNumero.MARCADO else SituacaoNumero.LIVRE },
@@ -707,7 +601,7 @@ private fun VolanteEditavel(
             }
         }
         Formato.COLUNAS -> {
-            Text("Um número em cada coluna", style = MaterialTheme.typography.titleMedium)
+            Text("Um número em cada coluna", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             GradeColunas(
                 m,
                 situacao = { c, n -> if (r.numeros.getOrNull(c) == n) SituacaoNumero.MARCADO else SituacaoNumero.LIVRE },
@@ -719,7 +613,7 @@ private fun VolanteEditavel(
             )
         }
         Formato.LOTECA -> {
-            Text("Palpites: 1 (time da casa), X (empate) ou 2", style = MaterialTheme.typography.titleMedium)
+            Text("Palpites: 1 (time da casa), X (empate) ou 2", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             GradeLoteca(
                 m,
                 rotulos = r.jogosLoteca,
@@ -732,7 +626,6 @@ private fun VolanteEditavel(
             )
         }
         Formato.FEDERAL -> {
-            Text("Bilhete da Federal", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = r.bilheteFederal.orEmpty(),
                 onValueChange = { t -> mudar(r.copy(bilheteFederal = t.filter(Char::isDigit).take(6))) },

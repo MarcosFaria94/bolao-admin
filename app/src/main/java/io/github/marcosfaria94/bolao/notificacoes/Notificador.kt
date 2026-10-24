@@ -19,8 +19,8 @@ import io.github.marcosfaria94.bolao.data.Premiada
 
 /**
  * Os dois avisos que vão para o celular: "Ação necessária" (há pendência no bolão) e
- * "Aposta premiada" (sem o valor: o prêmio é surpresa ao abrir o app). Todo o resto fica na
- * aba Notificações do app.
+ * "Aposta premiada" (sem o valor: o prêmio é surpresa ao abrir o app). Todo o resto fica
+ * nas Notificações do app (o sino da Home).
  */
 object Notificador {
     private const val CANAL_ACOES = "acoes"
@@ -61,7 +61,7 @@ object Notificador {
 
     /**
      * "Ação necessária": [novas] são as pendências que acabaram de ficar na hora do aviso;
-     * [todas] entram na lista do aviso. Tocar abre a aba Notificações.
+     * [todas] entram na lista do aviso. Tocar abre as Notificações do app.
      */
     @SuppressLint("MissingPermission")
     fun acaoNecessaria(context: Context, novas: List<Pendencia>, todas: List<Pendencia>, prefixo: String = "") {

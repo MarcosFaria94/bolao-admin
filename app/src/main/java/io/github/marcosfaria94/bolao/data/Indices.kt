@@ -34,7 +34,7 @@ import kotlin.math.roundToLong
 
 /**
  * Índices k1 e k2 e odds de cada modalidade (manual dos índices, parâmetros v1.2), para a
- * lista de Jogos, a Nova aposta e o concurso em destaque.
+ * lista de Jogos e o concurso em destaque.
  *
  * Para cada modalidade: o último concurso apurado (u) e o anterior a ele (a), da API da Caixa,
  * no máximo 3 pedidos ao mesmo tempo. As respostas ficam guardadas no celular: a tela abre com
@@ -69,7 +69,7 @@ class Indices(private val context: Context) {
             get() = precoAjustes != null && precoParametros != null && precoAjustes != precoParametros
     }
 
-    /** Aviso dos índices para a aba Notificações (e o topo da lista de Jogos). */
+    /** Aviso dos índices para as Notificações (o sino da Home) e o topo da lista de Jogos. */
     data class Aviso(
         val chave: String,
         val modalidade: Modalidade,

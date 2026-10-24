@@ -138,7 +138,7 @@ fun corAposta(): Color = if (isSystemInDarkTheme()) Dourado else Color(0xFF9A6A0
 @Composable
 fun corRateio(): Color = if (isSystemInDarkTheme()) Color(0xFF6CB6FF) else Color(0xFF1E63C6)
 
-/** Dourado de destaque sobre o fundo normal das telas ("CONCURSO EM DESTAQUE" nos Jogos e na Nova aposta). */
+/** Dourado de destaque sobre o fundo normal das telas ("CONCURSO EM DESTAQUE" nos Jogos e na página do jogo). */
 @Composable
 fun corDestaque(): Color = if (isSystemInDarkTheme()) Dourado else Color(0xFF8A5A00)
 
@@ -151,6 +151,15 @@ object Tarja {
     fun texto(): Color = if (isSystemInDarkTheme()) Color(0xFFE4E9F1) else Color(0xFF13294B)
 }
 
+/** Ouro da aposta premiada (e do prêmio) no Histórico da Home: a tarja em degradê, com a letra escura. */
+object Ouro {
+    @Composable
+    fun degrade(): List<Color> =
+        if (isSystemInDarkTheme()) listOf(Color(0xFFFFD873), Color(0xFFE9A92A)) else listOf(Color(0xFFF9DE8A), Color(0xFFEFB23A))
+
+    val textoTarja: Color = Color(0xFF3D2A00)
+}
+
 /** Barra de baixo: azul-noite do ícone, aba escolhida em dourado. */
 object Barra {
     @Composable
@@ -161,9 +170,12 @@ object Barra {
     @Composable
     fun outras(): Color = if (isSystemInDarkTheme()) Color(0xFF7D8AA3) else Color(0xFFA9B7CF)
 
-    /** Contador de pendências (estilo Facebook). */
+    /** Contador de pendências do sino (estilo Facebook). */
     val contador: Color = Color(0xFFE53935)
 }
+
+/** Sino das notificações, no canto da Home: todo amarelo. */
+val AmareloSino = Color(0xFFFFC21A)
 
 /** Avisos de alerta (falta anexar, extrato só no último dia...): vermelho suave, em negrito. */
 object CoresAlerta {

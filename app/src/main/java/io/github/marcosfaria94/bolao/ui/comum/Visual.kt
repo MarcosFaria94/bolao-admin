@@ -8,19 +8,16 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,11 +55,16 @@ object Animacoes {
 
 /**
  * Barra de título das telas: título maior e um pouco mais abaixo que o padrão, com a seta de
- * voltar nas telas que não são abas.
+ * voltar nas telas que não são abas e, à direita, as [acoes] (o sino da Home).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BarraTitulo(titulo: String, aoVoltar: (() -> Unit)? = null, subtitulo: String? = null) {
+fun BarraTitulo(
+    titulo: String,
+    aoVoltar: (() -> Unit)? = null,
+    subtitulo: String? = null,
+    acoes: @Composable RowScope.() -> Unit = {},
+) {
     TopAppBar(
         title = {
             Column {
@@ -84,6 +86,7 @@ fun BarraTitulo(titulo: String, aoVoltar: (() -> Unit)? = null, subtitulo: Strin
                 IconButton(onClick = aoVoltar) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Voltar") }
             }
         },
+        actions = acoes,
         expandedHeight = 68.dp,
         modifier = Modifier.padding(top = 8.dp),
     )
@@ -102,59 +105,6 @@ fun TarjaTitulo(texto: String, modifier: Modifier = Modifier, fundo: Color = Tar
             .background(fundo, RoundedCornerShape(6.dp))
             .padding(horizontal = 8.dp, vertical = 2.dp),
     )
-}
-
-/**
- * Um item dos Históricos (Financeiro e Apostas): o emblema redondo e, ao lado, a tarja com o
- * título, a descrição ("Quina · 55M", "3 pessoas") e a última linha (o valor ou a situação).
- */
-@Composable
-fun ItemHistorico(
-    emblema: @Composable () -> Unit,
-    tarja: String,
-    descricao: String?,
-    linha: String,
-    aoTocar: (() -> Unit)?,
-    corLinha: Color = MaterialTheme.colorScheme.onSurface,
-    pesoLinha: FontWeight = FontWeight.Normal,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = aoTocar != null) { aoTocar?.invoke() }
-            .padding(vertical = 10.dp),
-    ) {
-        emblema()
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            TarjaTitulo(tarja)
-            if (descricao != null) {
-                Text(
-                    descricao,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                linha,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = pesoLinha,
-                color = corLinha,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (aoTocar != null) {
-            Icon(
-                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
 }
 
 /**
@@ -213,7 +163,7 @@ fun TextoBrilhante(texto: String, estilo: TextStyle, cor: Color, modifier: Modif
 
 /**
  * Marca do concurso em destaque (o de maior k1), no alto do cartão: a estrelinha dourada e
- * "CONCURSO EM DESTAQUE" (Apostas, Jogos, Nova aposta e a página do jogo).
+ * "CONCURSO EM DESTAQUE" (Jogos e a página do jogo).
  */
 @Composable
 fun TituloDestaque(modifier: Modifier = Modifier, cor: Color = corDestaque()) {

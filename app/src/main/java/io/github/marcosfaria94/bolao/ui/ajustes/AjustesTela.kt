@@ -26,20 +26,26 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.HistoryEdu
 import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -64,7 +70,10 @@ import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.net.Atualizador
 import io.github.marcosfaria94.bolao.notificacoes.Notificador
+import io.github.marcosfaria94.bolao.pdf.AuditoriaPdf
+import io.github.marcosfaria94.bolao.pdf.PdfsDoApp
 import io.github.marcosfaria94.bolao.ui.atualizacao.AtualizacaoViewModel
+import io.github.marcosfaria94.bolao.ui.comum.CampoData
 import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.CoresEmblema
 import io.github.marcosfaria94.bolao.ui.comum.Desenhos
@@ -72,7 +81,6 @@ import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaDesenho
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaIcone
-import io.github.marcosfaria94.bolao.ui.comum.EmblemaIniciais
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
@@ -86,6 +94,7 @@ import io.github.marcosfaria94.bolao.ui.teste.CartaoModoTeste
 import io.github.marcosfaria94.bolao.ui.teste.DialogoSairDoTeste
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 
 @Composable
@@ -160,8 +169,9 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         item {
             Secao("Integrantes", Modifier.padding(top = 8.dp)) {
                 estado.pessoas.forEachIndexed { i, p ->
-                    if (i > 0) Divisoria()
-                    ItemIntegrante(p, i) { copiar(ctx, "Chave Pix", p.chavePix) }
+                    // Sem as bolas das iniciais: a linha entre um e outro vai de ponta a ponta.
+                    if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    ItemIntegrante(p) { copiar(ctx, "Chave Pix", p.chavePix) }
                 }
             }
         }
@@ -169,7 +179,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         item {
             Secao("Aporte mensal") {
                 LinhaAjuste(
-                    emblema = { EmblemaDesenho(Desenhos.Cofrinho, CoresEmblema.APORTE, TAMANHO_EMBLEMA) },
+                    emblema = { EmblemaDesenho(Desenhos.Cofrinho, TAMANHO_EMBLEMA) },
                     titulo = "Por integrante",
                     subtitulo = "Total do mês: ${Dinheiro.rs(estado.config.aporteMensal * estado.pessoas.size.coerceAtLeast(1))}",
                     aoTocar = { editandoAporte = true },
@@ -219,6 +229,10 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
                     final = { Seta() },
                 )
             }
+        }
+
+        item {
+            Secao("Auditoria") { Auditoria(estado) }
         }
 
         item {
@@ -423,9 +437,6 @@ private val RECUO_TEXTO = 58.dp
 /** Azul do emblema da atualização (o mesmo nos dois temas, legível no escuro). */
 private val AzulMarinhoEmblema = Color(0xFF2F4A7A)
 
-/** Cores dos círculos das iniciais dos integrantes (o Administrador fica com o dourado). */
-private val CORES_INTEGRANTES = listOf(Color(0xFFB7791F), Color(0xFF2557D6), Color(0xFF0E9F8A), Color(0xFF7C3AED))
-
 @Composable
 private fun Divisoria() {
     HorizontalDivider(Modifier.padding(start = RECUO_TEXTO), color = MaterialTheme.colorScheme.outlineVariant)
@@ -474,13 +485,10 @@ private fun LinhaAjuste(
     }
 }
 
-/** Um integrante: as iniciais num círculo, o apelido (com a marca do Administrador), o nome e a chave Pix. */
+/** Um integrante: o apelido (com a marca do Administrador), o nome e a chave Pix, com o copiar no fim. */
 @Composable
-private fun ItemIntegrante(p: Pessoa, posicao: Int, aoCopiar: () -> Unit) {
-    val cor = if (p.administrador) CORES_INTEGRANTES[0] else CORES_INTEGRANTES[1 + (posicao % (CORES_INTEGRANTES.size - 1))]
+private fun ItemIntegrante(p: Pessoa, aoCopiar: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-        EmblemaIniciais(p.nome.ifBlank { p.apelido }, cor, TAMANHO_EMBLEMA)
-        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -512,6 +520,83 @@ private fun ItemIntegrante(p: Pessoa, posicao: Int, aoCopiar: () -> Unit) {
         IconButton(onClick = aoCopiar) {
             Icon(Icons.Outlined.ContentCopy, contentDescription = "Copiar chave Pix", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+/**
+ * Auditoria (antes ficava no Extrato): o PDF com todos os comprovantes do período e os anexos
+ * originais, em ordem cronológica, salvo em Downloads/Bolao.
+ */
+@Composable
+private fun Auditoria(estado: Estado) {
+    val ctx = LocalContext.current
+    val avisos = LocalAvisos.current
+    val escopo = rememberCoroutineScope()
+    var de by remember { mutableStateOf(PdfsDoApp.inicio(estado)) }
+    var ate by remember { mutableStateOf(LocalDate.now()) }
+    var gerando by remember { mutableStateOf(false) }
+    var progresso by remember { mutableFloatStateOf(0f) }
+    var pronto by remember { mutableStateOf<Pair<Uri, AuditoriaPdf.Resultado>?>(null) }
+
+    LinhaAjuste(
+        emblema = { EmblemaIcone(Icons.Outlined.PictureAsPdf, CoresEmblema.EXTRATO, TAMANHO_EMBLEMA) },
+        titulo = "PDF da auditoria",
+        subtitulo = "Todos os comprovantes (aporte, aposta, apuração, rateio e extrato) e os anexos originais, em ordem cronológica.",
+    )
+    Column(Modifier.padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Um embaixo do outro: lado a lado, a data inteira não cabe no cartão.
+        CampoData(data = de, aoMudar = { de = it }, rotulo = "De", modifier = Modifier.fillMaxWidth())
+        CampoData(data = ate, aoMudar = { ate = it }, rotulo = "Até", modifier = Modifier.fillMaxWidth())
+        if (gerando) LinearProgressIndicator(progress = { progresso }, modifier = Modifier.fillMaxWidth())
+        Button(
+            enabled = !gerando && !de.isAfter(ate),
+            onClick = {
+                gerando = true
+                progresso = 0f
+                escopo.launch {
+                    try {
+                        pronto = PdfsDoApp.auditoriaEmDownloads(ctx, estado, de, ate) { feitos, total ->
+                            progresso = if (total == 0) 1f else feitos / total.toFloat()
+                        }
+                    } catch (t: Throwable) {
+                        avisos.showSnackbar("Não foi possível gerar o PDF: ${t.message}")
+                    } finally {
+                        gerando = false
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (gerando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Gerar PDF")
+        }
+    }
+
+    pronto?.let { (uri, r) ->
+        AlertDialog(
+            onDismissRequest = { pronto = null },
+            title = { Text("Auditoria pronta") },
+            text = {
+                Text(
+                    "Salva em Downloads/Bolao: ${r.comprovantes} comprovante(s), ${r.anexos} anexo(s), ${r.paginas} página(s)." +
+                        if (r.problemas.isEmpty()) "\n\nTudo confere." else "\n\nAtenção:\n" + r.problemas.joinToString("\n") { "• $it" },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pronto = null
+                    Compartilhar.enviarArquivo(ctx, uri, "application/pdf", "Enviar a auditoria")
+                }) { Text("Enviar") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { pronto = null }) { Text("Fechar") }
+                    TextButton(onClick = {
+                        pronto = null
+                        Compartilhar.abrir(ctx, uri, "application/pdf")
+                    }) { Text("Abrir") }
+                }
+            },
+        )
     }
 }
 

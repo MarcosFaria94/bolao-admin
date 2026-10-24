@@ -40,6 +40,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -128,6 +129,17 @@ fun CampoInteiro(
 @Composable
 fun TextoQueCabe(
     texto: String,
+    estilo: TextStyle,
+    modifier: Modifier = Modifier,
+    cor: Color = Color.Unspecified,
+    peso: FontWeight? = null,
+    menor: TextUnit = 14.sp,
+) = TextoQueCabe(AnnotatedString(texto), estilo, modifier, cor, peso, menor)
+
+/** [TextoQueCabe] com partes em estilos diferentes ("Prêmio: " normal e o valor em negrito). */
+@Composable
+fun TextoQueCabe(
+    texto: AnnotatedString,
     estilo: TextStyle,
     modifier: Modifier = Modifier,
     cor: Color = Color.Unspecified,

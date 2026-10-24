@@ -210,7 +210,7 @@ class MensagensTest {
         assertEquals("em 01/11/2026", Datas.quando(LocalDate.of(2026, 11, 1), hoje))
         assertEquals("Sorteio hoje", Datas.sorteioEm(hoje, hoje))
         assertEquals("Sorteio amanhã", Datas.sorteioEm(hoje.plusDays(1), hoje))
-        assertEquals("Sorteio em 3 dias", Datas.sorteioEm(hoje.plusDays(3), hoje))
+        assertEquals("Sorteio daqui 3 dias", Datas.sorteioEm(hoje.plusDays(3), hoje))
         // Virada do ano.
         assertEquals("Amanhã", Datas.relativa(LocalDate.of(2027, 1, 1), LocalDate.of(2026, 12, 31)))
         // Parâmetro de mês das listas.

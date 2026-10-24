@@ -1,6 +1,7 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,21 +28,28 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.data.Estado
-import io.github.marcosfaria94.bolao.data.Lancamento
 import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Modalidade
+import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 
-/** Cores dos círculos dos emblemas dos lançamentos (iguais nos dois temas). */
+/**
+ * Cores dos círculos dos ícones dos Ajustes (integridade, backup, termo, avisos). Os lançamentos
+ * (aporte, rateio, extrato, prêmio) usam o círculo neutro ([corCirculo]).
+ */
 object CoresEmblema {
     val APORTE = Color(0xFF1F8F5F)
     val RATEIO = Color(0xFF2557D6)
     val EXTRATO = Color(0xFF7C3AED)
-    val SALDO_INICIAL = Color(0xFF0E9F8A)
-    val RENDIMENTO = Color(0xFF15803D)
-    val COMPLEMENTO = Color(0xFF9333EA)
     val PREMIO = Color(0xFFB7791F)
 }
+
+/**
+ * Círculo neutro dos lançamentos (aporte, rateio, extrato, prêmio): um só tom para os quatro, sem
+ * cor própria, para não se confundir com as bolas das modalidades.
+ */
+@Composable
+fun corCirculo(): Color = if (isSystemInDarkTheme()) Color(0xFF263140) else Color(0xFFE6EBF1)
 
 private fun Color.clarear(f: Float): Color = lerp(this, Color.White, f)
 private fun Color.escurecer(f: Float): Color = lerp(this, Color.Black, f)
@@ -130,8 +138,8 @@ fun estiloNaBola(tamanho: Dp): TextStyle {
 }
 
 /**
- * Emblema de uma modalidade: bola 3D na cor dela com a sigla (ou um [desenho], como o troféu do
- * prêmio) e, embaixo, o número do concurso. Sem concurso, só a sigla, um pouco maior.
+ * Emblema de uma modalidade: bola 3D na cor dela com a sigla e, embaixo, o número do concurso.
+ * Sem concurso, só a sigla, um pouco maior.
  */
 @Composable
 fun EmblemaModalidade(
@@ -139,7 +147,6 @@ fun EmblemaModalidade(
     concurso: Int?,
     tamanho: Dp = 56.dp,
     modifier: Modifier = Modifier,
-    desenho: ImageVector? = null,
 ) {
     val numero = concurso?.takeIf { it > 0 }?.toString()
     val letraSigla = (tamanho * if (numero != null) 0.37f else 0.46f).emSp()
@@ -150,20 +157,16 @@ fun EmblemaModalidade(
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            if (desenho != null) {
-                Image(desenho, contentDescription = null, modifier = Modifier.size(tamanho * if (numero != null) 0.50f else 0.66f))
-            } else {
-                Text(
-                    m.sigla,
-                    style = estilo,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = letraSigla,
-                    lineHeight = letraSigla * 1.05f,
-                    maxLines = 1,
-                    softWrap = false,
-                    textAlign = TextAlign.Center,
-                )
-            }
+            Text(
+                m.sigla,
+                style = estilo,
+                fontWeight = FontWeight.Bold,
+                fontSize = letraSigla,
+                lineHeight = letraSigla * 1.05f,
+                maxLines = 1,
+                softWrap = false,
+                textAlign = TextAlign.Center,
+            )
             if (numero != null) {
                 Text(
                     numero,
@@ -180,9 +183,9 @@ fun EmblemaModalidade(
     }
 }
 
-/** Emblema de um tipo de lançamento: círculo colorido com o desenho (cofrinho, moedas...). */
+/** Emblema de um tipo de lançamento: o desenho (cofrinho, moedas, extrato, troféu) no círculo neutro. */
 @Composable
-fun EmblemaDesenho(desenho: ImageVector, cor: Color, tamanho: Dp = 56.dp, modifier: Modifier = Modifier) {
+fun EmblemaDesenho(desenho: ImageVector, tamanho: Dp = 56.dp, modifier: Modifier = Modifier, cor: Color = corCirculo()) {
     Box(
         modifier.size(tamanho).background(fundoCirculo(cor), CircleShape),
         contentAlignment = Alignment.Center,
@@ -208,54 +211,40 @@ fun EmblemaIcone(
     }
 }
 
-/** Emblema com as iniciais de um nome num círculo colorido (integrantes, em Ajustes). */
-@Composable
-fun EmblemaIniciais(nome: String, cor: Color, tamanho: Dp = 48.dp, modifier: Modifier = Modifier) {
-    val partes = nome.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
-    val iniciais = when {
-        partes.isEmpty() -> "?"
-        partes.size == 1 -> partes[0].take(1)
-        else -> partes.first().take(1) + partes.last().take(1)
-    }.uppercase()
-    val letra = (tamanho * 0.38f).emSp()
-    Box(
-        modifier.size(tamanho).background(fundoCirculo(cor), CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(iniciais, color = Color.White, fontWeight = FontWeight.Bold, fontSize = letra, lineHeight = letra, maxLines = 1)
-    }
-}
-
-/** Emblema do saldo inicial: o cifrão. */
+/** Emblema do saldo inicial: o cifrão dourado no círculo neutro. */
 @Composable
 fun EmblemaCifrao(tamanho: Dp = 56.dp, modifier: Modifier = Modifier) {
     val letra = (tamanho * 0.52f).emSp()
     Box(
-        modifier.size(tamanho).background(fundoCirculo(CoresEmblema.SALDO_INICIAL), CircleShape),
+        modifier.size(tamanho).background(fundoCirculo(corCirculo()), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Text("$", color = Color.White, fontWeight = FontWeight.Black, fontSize = letra, lineHeight = letra, maxLines = 1)
+        Text("$", color = corDestaque(), fontWeight = FontWeight.Black, fontSize = letra, lineHeight = letra, maxLines = 1)
     }
 }
 
 /**
- * Emblema de um lançamento no Histórico do Financeiro: a modalidade (sigla e concurso) nas
- * apostas, o troféu com o concurso nos prêmios, e um desenho colorido nos outros.
+ * Emblema de um item do Histórico da Home: a bola da modalidade (sigla e concurso) nas apostas e,
+ * nos outros, o desenho no círculo neutro: o troféu no prêmio, o cofrinho no aporte, as moedas no
+ * rateio e o extrato no extrato do mês.
  */
 @Composable
-fun EmblemaLancamento(e: Estado, l: Lancamento, tamanho: Dp = 56.dp) {
+fun EmblemaMovimento(e: Estado, mv: Movimento, tamanho: Dp = 52.dp) {
+    val l = (mv as? Movimento.DeLancamento)?.l
+    if (l == null) {
+        EmblemaDesenho(Desenhos.Extrato, tamanho)
+        return
+    }
     val a = l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }
     when (l.tipo) {
         TipoLancamento.APOSTA ->
             if (a != null) EmblemaModalidade(a.modalidade, a.concurso, tamanho)
-            else EmblemaDesenho(Desenhos.Moedas, CoresEmblema.RATEIO, tamanho)
-        TipoLancamento.PREMIO ->
-            if (a != null) EmblemaModalidade(a.modalidade, a.concurso, tamanho, desenho = Desenhos.Trofeu)
-            else EmblemaDesenho(Desenhos.Trofeu, CoresEmblema.PREMIO, tamanho)
-        TipoLancamento.APORTE -> EmblemaDesenho(Desenhos.Cofrinho, CoresEmblema.APORTE, tamanho)
-        TipoLancamento.RATEIO, TipoLancamento.DIVISAO_FINAL -> EmblemaDesenho(Desenhos.Moedas, CoresEmblema.RATEIO, tamanho)
+            else EmblemaDesenho(Desenhos.Moedas, tamanho)
+        TipoLancamento.PREMIO -> EmblemaDesenho(Desenhos.Trofeu, tamanho)
+        TipoLancamento.APORTE -> EmblemaDesenho(Desenhos.Cofrinho, tamanho)
+        TipoLancamento.RATEIO, TipoLancamento.DIVISAO_FINAL -> EmblemaDesenho(Desenhos.Moedas, tamanho)
         TipoLancamento.SALDO_INICIAL -> EmblemaCifrao(tamanho)
-        TipoLancamento.RENDIMENTO -> EmblemaDesenho(Desenhos.Rendimento, CoresEmblema.RENDIMENTO, tamanho)
-        TipoLancamento.COMPLEMENTO -> EmblemaDesenho(Desenhos.Complemento, CoresEmblema.COMPLEMENTO, tamanho)
+        TipoLancamento.RENDIMENTO -> EmblemaDesenho(Desenhos.Extrato, tamanho)
+        TipoLancamento.COMPLEMENTO -> EmblemaDesenho(Desenhos.Complemento, tamanho)
     }
 }

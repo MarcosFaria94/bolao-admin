@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
 /**
- * Desenhos coloridos dos emblemas (círculos das listas e dos atalhos do Financeiro): cofrinho do
+ * Desenhos coloridos dos emblemas (círculos do Histórico e dos atalhos da Home): cofrinho do
  * aporte, as 3 pilhas de moedas do rateio, o extrato, o troféu do prêmio, o rendimento e o
  * complemento do Administrador. Cada um tem as próprias cores (vão sem tint) numa grade de 48.
  */

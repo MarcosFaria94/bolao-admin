@@ -5,8 +5,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -43,7 +41,6 @@ import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.TipoComprovante
-import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.imagem.Recibos
 import io.github.marcosfaria94.bolao.ui.comum.AVISO_DEFINITIVO
@@ -51,7 +48,6 @@ import io.github.marcosfaria94.bolao.ui.comum.Aviso
 import io.github.marcosfaria94.bolao.ui.comum.BotoesDeRegistro
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
-import io.github.marcosfaria94.bolao.ui.comum.Historico
 import io.github.marcosfaria94.bolao.ui.comum.LinhaAnexo
 import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
@@ -63,7 +59,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 @Composable
-fun RateioTela(estado: Estado, abrir: (String) -> Unit) {
+fun RateioTela(estado: Estado) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
     val avisos = LocalAvisos.current
@@ -181,14 +177,6 @@ fun RateioTela(estado: Estado, abrir: (String) -> Unit) {
                 visualizarHabilitado = !acima && calculo.cota > 0,
             )
         }
-
-        Spacer(Modifier.height(8.dp))
-        Historico(
-            titulo = "Histórico de rateios",
-            estado = estado,
-            filtro = { it.tipo == TipoLancamento.RATEIO },
-            abrir = abrir,
-        )
     }
 
     if (vendo) {

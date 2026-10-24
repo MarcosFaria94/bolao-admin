@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
-/** Ícones próprios do app: o trevo do ícone, para a aba Apostas e as listas. */
+/** Ícones próprios do app: o trevo do ícone, para a aba Jogos. */
 object Icones {
     // As quatro folhas do trevo do ícone (a mesma folha das imagens), centradas em (12; 10,4).
     private const val FOLHAS =

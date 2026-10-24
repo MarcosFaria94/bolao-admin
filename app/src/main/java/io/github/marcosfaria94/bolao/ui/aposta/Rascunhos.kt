@@ -19,11 +19,10 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
- * Para onde vai o "Apostar" de uma modalidade: a aposta em andamento dela ("aposta/{id}")
- * ou uma aposta nova ("nova/{modalidade}").
+ * A aposta em andamento da modalidade (a mais recente), que o volante da página do jogo abre.
+ * Sem nenhuma, o volante começa vazio, numa aposta nova.
  */
-fun rotaDaAposta(estado: Estado, m: Modalidade): String =
-    Operacoes.rascunhos(estado).firstOrNull { it.modalidade == m }?.let { "aposta/${it.id}" } ?: "nova/${m.name}"
+fun rascunhoDa(estado: Estado, m: Modalidade): Aposta? = Operacoes.rascunhos(estado).firstOrNull { it.modalidade == m }
 
 /**
  * Aposta nova da modalidade, com o volante vazio e o preço de Ajustes. Se o [ultimo] concurso
@@ -104,7 +103,8 @@ fun saidaDaTela(a: Aposta, gravada: Aposta?, nova: Boolean): Saida = when {
 }
 
 /**
- * A aposta aberta na tela (nova ou em andamento). Enquanto a tela está aberta, a aposta fica aqui
+ * A aposta do volante da página do jogo (nova ou em andamento). Enquanto a página está aberta (e
+ * também com os Detalhes abertos por cima), a aposta fica aqui
  * (e sobrevive a girar o celular); cada mudança que a deixa valendo (volante completo ou
  * comprovante anexado) já é gravada em "Em andamento". Ao sair da tela vale a regra
  * ([saidaDaTela]): fica em andamento com o volante completo ou o comprovante; senão, é descartada.
@@ -118,14 +118,48 @@ class ApostaEmEdicao(
     var aposta by mutableStateOf(inicial)
         private set
 
-    /** Descartada pelo botão "Descartar rascunho": ao sair, nada mais a fazer. */
+    /** Descartada pelo botão "Descartar rascunho" (ou em outra tela): ao sair, nada mais a fazer. */
     private var descartada = false
+
+    /** As versões que esta página abriu ou gravou: outra versão gravada veio de outra tela. */
+    private val conhecidas = mutableListOf(inicial)
+
+    /** Já foi vista gravada em "Em andamento" (aberta de lá, ou gravada por esta página). */
+    private var vistaGravada = !nova
 
     fun mudar(novo: Aposta) {
         aposta = novo
         if (ficaEmAndamento(novo)) {
+            conhecidas += novo
+            if (conhecidas.size > 50) conhecidas.removeAt(1)
             repo.enfileirar { e -> if (e.apostas.any { it.id == novo.id && it.registrada }) e else Operacoes.salvarRascunho(e, novo) }
         }
+    }
+
+    /**
+     * A mesma aposta pode ser aberta por cima desta página (pelo aviso do celular, por exemplo) e
+     * mudada lá. Quando a página volta, ela confere a aposta gravada ([gravada]): uma versão que não
+     * veio daqui passa a ser a do volante (para não desfazer, ao sair, o que foi feito na outra tela).
+     * Devolve true se a aposta foi descartada na outra tela: a página não tem mais o que mostrar.
+     */
+    fun conferirGravada(gravada: Aposta?): Boolean {
+        // Descartada aqui mesmo (o botão já fecha a página) ou já avisada: nada a fazer.
+        if (descartada) return false
+        when {
+            gravada == null -> if (vistaGravada) {
+                descartada = true
+                return true
+            }
+            gravada.registrada -> Unit
+            else -> {
+                vistaGravada = true
+                if (conhecidas.none { it == gravada }) {
+                    aposta = gravada
+                    conhecidas += gravada
+                }
+            }
+        }
+        return false
     }
 
     /** "Descartar rascunho": apaga a aposta e o comprovante anexado (a não ser que já tenha sido registrada). */

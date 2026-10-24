@@ -1,16 +1,28 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowDropDown
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,34 +31,120 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.marcosfaria94.bolao.data.Aposta
+import io.github.marcosfaria94.bolao.data.Comprovante
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Lancamento
 import io.github.marcosfaria94.bolao.data.Operacoes
+import io.github.marcosfaria94.bolao.data.TipoComprovante
 import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
+import io.github.marcosfaria94.bolao.ui.aposta.premiada
+import io.github.marcosfaria94.bolao.ui.aposta.situacaoCurta
+import io.github.marcosfaria94.bolao.ui.aposta.situacaoDe
+import io.github.marcosfaria94.bolao.ui.tema.Ouro
+import io.github.marcosfaria94.bolao.ui.tema.Tarja
+import io.github.marcosfaria94.bolao.ui.tema.corPremiada
 import java.time.LocalDate
 import java.time.YearMonth
 
-/** "Quina · 55M": a modalidade e o prêmio principal do concurso (em milhões, quando a Caixa informou). */
-fun descricaoDaAposta(a: Aposta): String =
-    a.modalidade.nome + (a.premioEstimado?.takeIf { it > 0 }?.let { " · ${Dinheiro.milhoes(it)}" } ?: "")
+/** O parâmetro de tipo do Histórico da Home (começa em "Tudo"). */
+enum class FiltroHistorico(val rotulo: String) {
+    TUDO("Tudo"),
+    APORTES("Aportes"),
+    APOSTAS("Apostas"),
+    RATEIOS("Rateios"),
+    PREMIOS("Prêmios"),
+    EXTRATO("Extrato"),
+}
+
+/** Um item do Histórico: um lançamento ou o extrato de um mês. */
+sealed interface Movimento {
+    val data: LocalDate
+
+    /** Ordem dentro do dia (o registro mais recente primeiro). */
+    val ordem: Long
+
+    /** Chave única do item na lista. */
+    val chave: String
+
+    data class DeLancamento(val l: Lancamento) : Movimento {
+        override val data: LocalDate get() = l.data
+        override val ordem: Long get() = l.criadoEm
+        override val chave: String get() = l.id
+    }
+
+    /**
+     * O extrato do mês [mes], com o rendimento lançado nele. Fica no dia do registro (se foi no
+     * próprio mês) ou no último dia do mês, como o rendimento.
+     */
+    data class DeExtrato(
+        val mes: YearMonth,
+        val rendimento: Long,
+        override val data: LocalDate,
+        override val ordem: Long,
+        val comprovante: Comprovante?,
+    ) : Movimento {
+        override val chave: String get() = "extrato-$mes"
+    }
+}
+
+/** Em que tipo do parâmetro o item entra (null = só em "Tudo": saldo inicial, complemento, divisão final). */
+fun filtroDe(mv: Movimento): FiltroHistorico? = when (mv) {
+    is Movimento.DeExtrato -> FiltroHistorico.EXTRATO
+    is Movimento.DeLancamento -> when (mv.l.tipo) {
+        TipoLancamento.APORTE -> FiltroHistorico.APORTES
+        TipoLancamento.APOSTA -> FiltroHistorico.APOSTAS
+        TipoLancamento.RATEIO -> FiltroHistorico.RATEIOS
+        TipoLancamento.PREMIO -> FiltroHistorico.PREMIOS
+        TipoLancamento.RENDIMENTO -> FiltroHistorico.EXTRATO
+        TipoLancamento.SALDO_INICIAL, TipoLancamento.COMPLEMENTO, TipoLancamento.DIVISAO_FINAL -> null
+    }
+}
 
 /**
- * Título de um lançamento, na tarja do Histórico: "Aposta Nº1", "Prêmio Nº1", "Aporte Nº1",
- * "Rateio Nº1" (o Nº recomeça a cada mês, como no termo), "Saldo inicial"...
+ * Itens do Histórico do [filtro] e do [mes] (null = todos os meses), o mais recente primeiro.
+ * O rendimento entra no item do extrato do mês (sem extrato registrado, ele aparece sozinho).
  */
-fun tarjaLancamento(e: Estado, l: Lancamento): String {
+fun movimentosDoHistorico(e: Estado, filtro: FiltroHistorico, mes: YearMonth?): List<Movimento> {
+    val extratos = e.extratos.mapNotNull { x ->
+        val m = runCatching { YearMonth.parse(x.mes) }.getOrNull() ?: return@mapNotNull null
+        val c = e.comprovantes.lastOrNull { it.tipo == TipoComprovante.EXTRATO && it.mes == x.mes }
+        val dia = c?.data?.takeIf { YearMonth.from(it) == m } ?: m.atEndOfMonth()
+        Movimento.DeExtrato(m, x.rendimento, dia, x.criadoEm, c)
+    }
+    val comExtrato = extratos.map { it.mes }.toSet()
+    val lancamentos = e.lancamentos
+        .filterNot { it.tipo == TipoLancamento.RENDIMENTO && YearMonth.from(it.data) in comExtrato }
+        .map { Movimento.DeLancamento(it) }
+    return (lancamentos + extratos)
+        .filter { filtro == FiltroHistorico.TUDO || filtroDe(it) == filtro }
+        .filter { mes == null || YearMonth.from(it.data) == mes }
+        .sortedWith(compareByDescending<Movimento> { it.data }.thenByDescending { it.ordem })
+}
+
+/**
+ * Tarja do item: "Aposta Nº8 · Sorteio hoje", "Aporte Nº2 · Mensal", "Rateio Nº1", "Prêmio Nº1",
+ * "Extrato · Out/2026"... O Nº recomeça a cada mês, como nos comprovantes.
+ */
+fun tarjaDoMovimento(e: Estado, mv: Movimento, hoje: LocalDate): String {
+    if (mv is Movimento.DeExtrato) return "Extrato · ${Datas.mesAnoCurto(mv.mes)}"
+    val l = (mv as Movimento.DeLancamento).l
     val n = Operacoes.numeroNoMes(e, l)
     fun comNumero(nome: String) = if (n != null) "$nome Nº$n" else nome
     return when (l.tipo) {
         TipoLancamento.SALDO_INICIAL -> "Saldo inicial"
-        TipoLancamento.APORTE -> comNumero("Aporte")
-        TipoLancamento.APOSTA -> comNumero("Aposta")
+        TipoLancamento.APORTE -> comNumero("Aporte") + if (l.eventual) " · Adicional" else " · Mensal"
+        TipoLancamento.APOSTA -> {
+            val a = l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }
+            comNumero("Aposta") + (a?.let { " · " + situacaoCurta(it, situacaoDe(it, hoje), hoje) } ?: "")
+        }
         TipoLancamento.PREMIO -> comNumero("Prêmio")
         TipoLancamento.RATEIO -> comNumero("Rateio")
         TipoLancamento.RENDIMENTO -> "Rendimento"
@@ -55,23 +153,37 @@ fun tarjaLancamento(e: Estado, l: Lancamento): String {
     }
 }
 
-/** Descrição de um lançamento: "Mensal", "Quina · 55M", "3 pessoas"... (o saldo inicial não tem). */
-fun descricaoLancamento(e: Estado, l: Lancamento): String? {
-    val a = l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }
-    val pessoas = e.pessoas.size.coerceAtLeast(1)
+/** "- R$ 3,50", "+ R$ 30,00"; o extrato, com o rendimento; o saldo inicial, sem sinal ("R$ 12,50"). */
+fun valorDoMovimento(mv: Movimento): String = when (mv) {
+    is Movimento.DeExtrato -> valorComSinal(mv.rendimento)
+    is Movimento.DeLancamento ->
+        if (mv.l.tipo == TipoLancamento.SALDO_INICIAL) Dinheiro.rs(mv.l.valor) else valorComSinal(mv.l.valor)
+}
+
+/** Aposta premiada (já apurada ou esperando a apuração) e o prêmio dela: o item fica todo dourado. */
+fun douradoNoHistorico(e: Estado, mv: Movimento, hoje: LocalDate): Boolean {
+    val l = (mv as? Movimento.DeLancamento)?.l ?: return false
     return when (l.tipo) {
-        TipoLancamento.SALDO_INICIAL -> null
-        TipoLancamento.APORTE -> if (l.eventual) "Adicional" else "Mensal"
-        TipoLancamento.APOSTA, TipoLancamento.PREMIO -> a?.let(::descricaoDaAposta)
-        TipoLancamento.RATEIO, TipoLancamento.DIVISAO_FINAL -> if (pessoas == 1) "1 pessoa" else "$pessoas pessoas"
-        TipoLancamento.RENDIMENTO -> "Caixinha Nubank"
-        TipoLancamento.COMPLEMENTO -> "Administrador"
+        TipoLancamento.PREMIO -> true
+        TipoLancamento.APOSTA -> l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }?.let { premiada(situacaoDe(it, hoje)) } == true
+        else -> false
     }
 }
 
-/** "+ R$ 30,00", "- R$ 3,00"; o saldo inicial, que não é entrada nem saída do mês: "· R$ 12,50". */
-fun valorDoLancamento(l: Lancamento): String =
-    if (l.tipo == TipoLancamento.SALDO_INICIAL) "· " + Dinheiro.rs(l.valor) else valorComSinal(l.valor)
+/** Nome da modalidade, embaixo da bola (só nas apostas). */
+fun nomeDoMovimento(e: Estado, mv: Movimento): String? {
+    val l = (mv as? Movimento.DeLancamento)?.l?.takeIf { it.tipo == TipoLancamento.APOSTA } ?: return null
+    return l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }?.modalidade?.nome
+}
+
+/** Tela que o item abre: a aposta (na página da modalidade), o extrato ou o comprovante. null = nenhuma. */
+fun destinoDoMovimento(e: Estado, mv: Movimento): String? = when (mv) {
+    is Movimento.DeExtrato -> mv.comprovante?.let { "comprovante/${it.id}" } ?: "extrato/${mv.mes}"
+    is Movimento.DeLancamento -> when {
+        (mv.l.tipo == TipoLancamento.APOSTA || mv.l.tipo == TipoLancamento.PREMIO) && mv.l.apostaId != null -> "aposta/${mv.l.apostaId}"
+        else -> Operacoes.comprovanteDoLancamento(e, mv.l)?.let { "comprovante/${it.id}" }
+    }
+}
 
 /** "+ R$ 30,00" ou "- R$ 3,00". */
 fun valorComSinal(centavos: Long): String = (if (centavos < 0) "- " else "+ ") + Dinheiro.rs(kotlin.math.abs(centavos))
@@ -88,73 +200,184 @@ fun CabecalhoDia(data: LocalDate, hoje: LocalDate = LocalDate.now(), modifier: M
     )
 }
 
-/** Lançamentos agrupados por dia (o mais recente primeiro), com uma linha entre um e outro. */
+/**
+ * Parâmetro de lista suspensa ("Tudo", "Out/2026"...): o botão com o escolhido e, ao tocar, a
+ * lista das [opcoes].
+ */
 @Composable
-fun ListaLancamentos(estado: Estado, lista: List<Lancamento>, aoTocar: ((Lancamento) -> Unit)?) {
-    val hoje = LocalDate.now()
-    var dia: LocalDate? = null
-    lista.forEach { l ->
-        if (l.data != dia) {
-            // Divisória inteira entre um dia e outro; dentro do mesmo dia, uma mais curta.
-            if (dia != null) HorizontalDivider(Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
-            dia = l.data
-            CabecalhoDia(l.data, hoje)
-        } else {
-            HorizontalDivider(Modifier.padding(start = 70.dp), color = MaterialTheme.colorScheme.outlineVariant)
+fun <T> SeletorOpcoes(
+    opcoes: List<T>,
+    escolhido: T,
+    rotulo: (T) -> String,
+    aoEscolher: (T) -> Unit,
+    descricao: String,
+    modifier: Modifier = Modifier,
+) {
+    var aberto by remember { mutableStateOf(false) }
+    Box(modifier) {
+        OutlinedButton(
+            onClick = { aberto = true },
+            contentPadding = PaddingValues(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+        ) {
+            Text(rotulo(escolhido), style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
+            Icon(Icons.Outlined.ArrowDropDown, contentDescription = descricao)
         }
-        ItemHistorico(
-            emblema = { EmblemaLancamento(estado, l) },
-            tarja = tarjaLancamento(estado, l),
-            descricao = descricaoLancamento(estado, l),
-            linha = valorDoLancamento(l),
-            aoTocar = aoTocar?.let { { it(l) } },
-        )
+        DropdownMenu(expanded = aberto, onDismissRequest = { aberto = false }) {
+            opcoes.forEach { o ->
+                DropdownMenuItem(
+                    text = { Text(rotulo(o), fontWeight = if (o == escolhido) FontWeight.Bold else FontWeight.Normal) },
+                    onClick = {
+                        aoEscolher(o)
+                        aberto = false
+                    },
+                )
+            }
+        }
     }
 }
 
-/** Título de uma lista com o parâmetro de data (mês e ano) ao lado. */
+/** Raio dos cantos do cartão do Histórico. */
+private val CANTO = 12.dp
+
+/** Um pedaço do cartão do Histórico (cada item da lista é um pedaço; o primeiro e o último arredondam os cantos). */
 @Composable
-fun TituloComMes(titulo: String, meses: List<YearMonth>, mes: YearMonth, aoEscolher: (YearMonth) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Text(titulo, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        SeletorMes(meses, mes, aoEscolher)
-    }
+private fun Modifier.trechoDoCartao(primeiro: Boolean, ultimo: Boolean): Modifier {
+    val forma = RoundedCornerShape(
+        topStart = if (primeiro) CANTO else 0.dp,
+        topEnd = if (primeiro) CANTO else 0.dp,
+        bottomStart = if (ultimo) CANTO else 0.dp,
+        bottomEnd = if (ultimo) CANTO else 0.dp,
+    )
+    return fillMaxWidth().clip(forma).background(MaterialTheme.colorScheme.surfaceContainerLow)
 }
 
 /**
- * Histórico de um tipo de lançamento (aportes, rateios), do mês escolhido (começa no atual).
- * Tocar num item abre o comprovante.
+ * O Histórico num cartão, separado por dia (o mais recente primeiro), com uma linha só entre um
+ * dia e outro. Cada dia e cada item são itens da lista (ela só desenha o que aparece na tela).
  */
-@Composable
-fun Historico(
-    titulo: String,
+fun LazyListScope.itensDoHistorico(
     estado: Estado,
-    filtro: (Lancamento) -> Boolean,
+    movimentos: List<Movimento>,
+    hoje: LocalDate,
+    vazio: String,
     abrir: (String) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    val hoje = LocalDate.now()
-    val todos = estado.lancamentos.filter(filtro)
-    val meses = mesesComDados(todos.map { it.data }, hoje)
-    var mes by remember { mutableStateOf(YearMonth.from(hoje)) }
-    val lista = Operacoes.ordenados(todos.filter { YearMonth.from(it.data) == mes }).reversed()
-
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        TituloComMes(titulo, meses, mes) { mes = it }
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                if (lista.isEmpty()) {
-                    TextoVazio("Nada registrado em ${Datas.mesAnoCurto(mes)}.", Modifier.padding(vertical = 10.dp))
-                } else {
-                    ListaLancamentos(estado, lista) { l ->
-                        Operacoes.comprovanteDoLancamento(estado, l)?.let { abrir("comprovante/${it.id}") }
-                    }
-                    Spacer(Modifier.size(4.dp))
+    if (movimentos.isEmpty()) {
+        item(key = "historico-vazio") {
+            Box(Modifier.trechoDoCartao(primeiro = true, ultimo = true).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                TextoVazio(vazio)
+            }
+        }
+        return
+    }
+    val dias = movimentos.groupBy { it.data }.entries.toList()
+    dias.forEachIndexed { i, (dia, lista) ->
+        item(key = "dia-$dia") {
+            Column(Modifier.trechoDoCartao(primeiro = i == 0, ultimo = false).padding(horizontal = 12.dp)) {
+                if (i > 0) HorizontalDivider(Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                else Spacer(Modifier.height(2.dp))
+                CabecalhoDia(dia, hoje)
+            }
+        }
+        lista.forEachIndexed { j, mv ->
+            val ultimo = i == dias.lastIndex && j == lista.lastIndex
+            item(key = mv.chave) {
+                Box(
+                    Modifier
+                        .trechoDoCartao(primeiro = false, ultimo = ultimo)
+                        .padding(start = 12.dp, end = 12.dp, bottom = if (ultimo) 8.dp else 0.dp),
+                ) {
+                    val destino = destinoDoMovimento(estado, mv)
+                    ItemDoHistorico(
+                        emblema = { EmblemaMovimento(estado, mv) },
+                        nome = nomeDoMovimento(estado, mv),
+                        tarja = tarjaDoMovimento(estado, mv, hoje),
+                        valor = valorDoMovimento(mv),
+                        dourado = douradoNoHistorico(estado, mv, hoje),
+                        aoTocar = destino?.let { { abrir(it) } },
+                    )
                 }
             }
         }
+    }
+}
+
+/** Largura da coluna do emblema (com o nome da modalidade embaixo da bola): igual em todos os itens. */
+private val LARGURA_EMBLEMA = 72.dp
+
+/**
+ * Um item do Histórico: o emblema (nas apostas, a bola com o nome da modalidade embaixo) e, ao
+ * lado, a tarja que vai até o fim ("Aposta Nº8 · Sorteio hoje") e o valor bem grande. [dourado]
+ * (aposta premiada e prêmio): tudo na cor de ouro.
+ */
+@Composable
+fun ItemDoHistorico(
+    emblema: @Composable () -> Unit,
+    nome: String?,
+    tarja: String,
+    valor: String,
+    dourado: Boolean,
+    aoTocar: (() -> Unit)?,
+) {
+    val ouro = corPremiada()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(enabled = aoTocar != null) { aoTocar?.invoke() }
+            .padding(vertical = 10.dp),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier.width(LARGURA_EMBLEMA),
+        ) {
+            emblema()
+            if (nome != null) {
+                Text(
+                    nome,
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.5.sp, lineHeight = 15.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (dourado) ouro else MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            TarjaLarga(tarja, dourado)
+            TextoQueCabe(
+                valor,
+                MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp, lineHeight = 34.sp),
+                cor = if (dourado) ouro else MaterialTheme.colorScheme.onSurface,
+                peso = FontWeight.Bold,
+                menor = 18.sp,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/** Tarja que vai até o fim da linha, em retângulo ("Aposta Nº8 · Sorteio hoje"); [dourado]: na cor de ouro. */
+@Composable
+fun TarjaLarga(texto: String, dourado: Boolean = false, modifier: Modifier = Modifier) {
+    val forma = RoundedCornerShape(8.dp)
+    val fundo = if (dourado) Modifier.background(Brush.horizontalGradient(Ouro.degrade()), forma) else Modifier.background(Tarja.fundo(), forma)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .then(fundo)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        TextoQueCabe(
+            texto,
+            MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, lineHeight = 21.sp),
+            cor = if (dourado) Ouro.textoTarja else Tarja.texto(),
+            peso = FontWeight.SemiBold,
+            menor = 11.sp,
+        )
     }
 }

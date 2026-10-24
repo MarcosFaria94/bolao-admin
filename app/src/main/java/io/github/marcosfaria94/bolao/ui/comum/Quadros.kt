@@ -4,11 +4,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -23,7 +22,7 @@ import androidx.compose.ui.unit.sp
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 
 /**
- * Quadro no estilo do saldo do Financeiro: fundo um pouco mais escuro que o dos cartões e um
+ * Quadro no estilo do saldo da Home: fundo um pouco mais escuro que o dos cartões e um
  * contorno fino. Com [aoTocar], o quadro inteiro é um botão.
  */
 @Composable
@@ -42,66 +41,68 @@ fun Quadro(
 }
 
 /**
- * Saldo no estilo dos apps de banco: "Saldo líquido", o valor grande e, embaixo, o provisionado
- * e o extra (sem fundo próprio). [compacto]: a versão menor, no alto da Nova aposta.
+ * Saldo no estilo dos apps de banco: "Saldo líquido" e o valor grande à esquerda e, à direita
+ * dele, o provisionado e o extra, um embaixo do outro. Com [aoTocar], o quadro inteiro é um botão.
  */
 @Composable
 fun QuadroSaldo(
     saldo: Long,
     provisionado: Long,
     modifier: Modifier = Modifier,
-    compacto: Boolean = false,
     aoTocar: (() -> Unit)? = null,
 ) {
     val extra = saldo - provisionado
-    val margens = if (compacto) PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp)
-    else PaddingValues(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 18.dp)
     Quadro(modifier, aoTocar) {
-        Column(Modifier.padding(margens)) {
-            Text(
-                "Saldo líquido",
-                style = if (compacto) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            TextoQueCabe(
-                Dinheiro.rs(saldo),
-                if (compacto) MaterialTheme.typography.headlineMedium.copy(fontSize = 30.sp, lineHeight = 38.sp)
-                else MaterialTheme.typography.displayMedium,
-                peso = FontWeight.Bold,
-                menor = if (compacto) 20.sp else 28.sp,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(if (compacto) 8.dp else 14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Indicador("Provisionado", Dinheiro.rs(provisionado), Modifier.weight(1f), compacto)
-                Indicador("Extra", (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)), Modifier.weight(1f), compacto)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 16.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Saldo líquido",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+                TextoQueCabe(
+                    Dinheiro.rs(saldo),
+                    MaterialTheme.typography.displayMedium,
+                    peso = FontWeight.Bold,
+                    menor = 22.sp,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Indicador("Provisionado", Dinheiro.rs(provisionado))
+                Indicador("Extra", (if (extra < 0) "- " else "") + Dinheiro.rs(kotlin.math.abs(extra)))
             }
         }
     }
 }
 
-/** Um número do quadro, com o nome em cima: "Provisionado / R$ 30,00". */
+/** Um número do lado direito do quadro do saldo, com o nome em cima: "Provisionado / R$ 30,00". */
 @Composable
-fun Indicador(rotulo: String, valor: String, modifier: Modifier = Modifier, compacto: Boolean = false) {
-    Column(modifier) {
+fun Indicador(rotulo: String, valor: String, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.End) {
         Text(
             rotulo,
-            style = if (compacto) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
         )
-        TextoQueCabe(
+        Text(
             valor,
-            MaterialTheme.typography.titleLarge.copy(fontSize = if (compacto) 17.sp else 20.sp),
-            menor = 13.sp,
-            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.titleLarge.copy(fontSize = 19.sp, lineHeight = 24.sp),
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
 
 /**
  * Seção das listas: o título (com uma [acao] opcional ao lado, como o seletor do mês) e, embaixo,
- * um cartão com o conteúdo, como o Histórico do Financeiro.
+ * um cartão com o conteúdo (Ajustes).
  */
 @Composable
 fun Secao(

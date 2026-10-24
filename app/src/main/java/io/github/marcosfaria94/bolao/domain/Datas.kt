@@ -75,11 +75,11 @@ object Datas {
         return quando(t.toLocalDate(), hoje) + " às " + dois(t.hour) + ":" + dois(t.minute) + ":" + dois(t.second)
     }
 
-    /** Dia do sorteio na lista de apostas: "Sorteio hoje", "Sorteio amanhã", "Sorteio em 3 dias". */
+    /** Dia do sorteio no Histórico: "Sorteio hoje", "Sorteio amanhã", "Sorteio daqui 3 dias". */
     fun sorteioEm(sorteio: LocalDate, hoje: LocalDate): String = when (val n = dias(sorteio, hoje)) {
         0L -> "Sorteio hoje"
         1L -> "Sorteio amanhã"
-        else -> "Sorteio em $n dias"
+        else -> "Sorteio daqui $n dias"
     }
 
     /** "dd/MM/yyyy" -> LocalDate (formato da API da Caixa). */

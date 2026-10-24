@@ -5,15 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
@@ -43,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Apuracao
@@ -93,14 +90,14 @@ private sealed interface Vendo {
 }
 
 /**
- * Aposta registrada, com a apuração na mesma tela: o cabeçalho (emblema, "Aposta Nº1" e a
- * modalidade), prêmio, registro, situação ("Sorteio hoje"...) e, depois do sorteio, se acumulou;
- * os números (com os acertos, quando o resultado sai); a apuração
- * quando ela ainda falta; e, embaixo, os dois comprovantes (aposta e apuração) para ver e enviar.
- * O valor do prêmio aparece aqui (o aviso do celular não traz o valor).
+ * Aposta registrada, na página da modalidade (embaixo do quadro com o prêmio e o sorteio dela):
+ * "Aposta Nº1", o registro, a situação ("Sorteio hoje"...) e, depois do sorteio, se acumulou; os
+ * números (com os acertos, quando o resultado sai); a apuração quando ela ainda falta; e, embaixo,
+ * os dois comprovantes (aposta e apuração) para ver e enviar. Vai dentro da coluna da página (não
+ * tem rolagem própria). O valor do prêmio aparece aqui (o aviso do celular não traz o valor).
  */
 @Composable
-internal fun DetalheAposta(estado: Estado, a: Aposta) {
+fun SecaoApostaRegistrada(estado: Estado, a: Aposta) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
     val avisos = LocalAvisos.current
@@ -161,119 +158,112 @@ internal fun DetalheAposta(estado: Estado, a: Aposta) {
     // Depois do sorteio: se o prêmio principal acumulou (da Caixa; o resultado digitado não diz).
     val acumulou = apTela?.acumulou
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    // A aposta: o número, o registro, a situação e os números (com os acertos, depois do sorteio).
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(tituloDaAposta(a), style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp))
+            Column {
+                LinhaInfo("Registro", Datas.relativa(a.dataAposta, hoje))
+                LinhaInfo("Situação", situacao, destaque = true, cor = corDaSituacao(s))
+                acumulou?.let { LinhaInfo("Acumulou", if (it) "Sim" else "Não") }
+            }
+            ImagemDaAposta(a, apTela)
+        }
+    }
+
+    if (apurar) {
+        when (val b = busca) {
+            Busca.Carregando -> Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                Text("  Buscando o resultado na Caixa...")
+            }
+            is Busca.Falhou -> {
+                Aviso(b.motivo, alerta = true)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { escopo.launch { buscar() } }) { Text("Tentar de novo") }
+                    Button(onClick = { busca = Busca.Pronto(concursoVazio(a), manual = true) }) { Text("Informar à mão") }
+                }
+            }
+            is Busca.Pronto -> Unit
+        }
+        if (pronto != null && conferencia != null) {
+            if (pronto.manual) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Resultado do sorteio", style = MaterialTheme.typography.titleMedium)
+                        ResultadoManual(a, pronto.concurso) { busca = Busca.Pronto(it, manual = true) }
+                    }
+                }
+            } else if (conferencia.observacoes.isNotEmpty()) {
+                TextButton(onClick = { busca = Busca.Pronto(pronto.concurso, manual = true) }) { Text("Informar o resultado à mão") }
+            }
+            conferencia.observacoes.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            CampoDinheiro(
+                centavos = premio,
+                aoMudar = {
+                    premio = it
+                    premioEditado = true
+                },
+                rotulo = "Prêmio do bolão neste jogo",
+                ajuda = if (conferencia.precisaConfirmarValor) "Confira o valor no app da Caixa." else "Valor calculado pela tabela de prêmios da Caixa.",
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (conferencia.precisaConfirmarValor && conferencia.premiada) {
+                Aviso("A Caixa não informou o valor desta faixa: digite o prêmio que aparece no app da Caixa.", alerta = true)
+            }
+        }
+    }
+
+    Spacer(Modifier.height(4.dp))
+    Text("Comprovantes", style = MaterialTheme.typography.titleMedium)
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        CabecalhoAposta(a, a.numero)
-        Column {
-            textoPremio(a)?.let { (rotulo, valor) -> LinhaInfo(rotulo, valor) }
-            LinhaInfo("Registro", Datas.relativa(a.dataAposta, hoje))
-            LinhaInfo("Situação", situacao, destaque = true, cor = corDaSituacao(s))
-            acumulou?.let { LinhaInfo("Acumulou", if (it) "Sim" else "Não") }
-        }
-
-        ImagemDaAposta(a, apTela)
-
-        if (apurar) {
-            when (val b = busca) {
-                Busca.Carregando -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                    Text("  Buscando o resultado na Caixa...")
-                }
-                is Busca.Falhou -> {
-                    Aviso(b.motivo, alerta = true)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { escopo.launch { buscar() } }) { Text("Tentar de novo") }
-                        Button(onClick = { busca = Busca.Pronto(concursoVazio(a), manual = true) }) { Text("Informar à mão") }
-                    }
-                }
-                is Busca.Pronto -> Unit
-            }
-            if (pronto != null && conferencia != null) {
-                if (pronto.manual) {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Resultado do sorteio", style = MaterialTheme.typography.titleMedium)
-                            ResultadoManual(a, pronto.concurso) { busca = Busca.Pronto(it, manual = true) }
-                        }
-                    }
-                } else if (conferencia.observacoes.isNotEmpty()) {
-                    TextButton(onClick = { busca = Busca.Pronto(pronto.concurso, manual = true) }) { Text("Informar o resultado à mão") }
-                }
-                conferencia.observacoes.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                CampoDinheiro(
-                    centavos = premio,
-                    aoMudar = {
-                        premio = it
-                        premioEditado = true
-                    },
-                    rotulo = "Prêmio do bolão neste jogo",
-                    ajuda = if (conferencia.precisaConfirmarValor) "Confira o valor no app da Caixa." else "Valor calculado pela tabela de prêmios da Caixa.",
-                    modifier = Modifier.fillMaxWidth(),
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            val cAposta = Operacoes.comprovanteDaAposta(estado, a)
+            LinhaComprovante(
+                titulo = "Comprovante da aposta",
+                detalhe = detalheDoEnvio(estado, cAposta),
+                enviado = cAposta != null && estado.enviado(cAposta),
+                habilitado = cAposta != null,
+                aoVisualizar = { cAposta?.let { vendo = Vendo.Registrado(it) } },
+                aoEnviar = { cAposta?.let { c -> escopo.launch { Compartilhar.comprovante(ctx, estado, c) } } },
+                textoEnviar = if (cAposta != null && estado.enviado(cAposta)) "Enviar de novo" else "Enviar",
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            val cApuracao = Operacoes.comprovanteDaApuracao(estado, a)
+            when {
+                apurada -> LinhaComprovante(
+                    titulo = "Comprovante da apuração",
+                    detalhe = detalheDoEnvio(estado, cApuracao),
+                    enviado = cApuracao != null && estado.enviado(cApuracao),
+                    habilitado = cApuracao != null,
+                    aoVisualizar = { cApuracao?.let { vendo = Vendo.Registrado(it) } },
+                    aoEnviar = { cApuracao?.let { c -> escopo.launch { Compartilhar.comprovante(ctx, estado, c) } } },
+                    textoEnviar = if (cApuracao != null && estado.enviado(cApuracao)) "Enviar de novo" else "Enviar",
                 )
-                if (conferencia.precisaConfirmarValor && conferencia.premiada) {
-                    Aviso("A Caixa não informou o valor desta faixa: digite o prêmio que aparece no app da Caixa.", alerta = true)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(4.dp))
-        Text("Comprovantes", style = MaterialTheme.typography.titleMedium)
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                val cAposta = Operacoes.comprovanteDaAposta(estado, a)
-                LinhaComprovante(
-                    titulo = "Comprovante da aposta",
-                    detalhe = detalheDoEnvio(estado, cAposta),
-                    enviado = cAposta != null && estado.enviado(cAposta),
-                    habilitado = cAposta != null,
-                    aoVisualizar = { cAposta?.let { vendo = Vendo.Registrado(it) } },
-                    aoEnviar = { cAposta?.let { c -> escopo.launch { Compartilhar.comprovante(ctx, estado, c) } } },
-                    textoEnviar = if (cAposta != null && estado.enviado(cAposta)) "Enviar de novo" else "Enviar",
+                apNova != null -> LinhaComprovante(
+                    titulo = "Comprovante da apuração",
+                    detalhe = "Ainda não registrado",
+                    enviado = false,
+                    habilitado = true,
+                    aoVisualizar = { vendo = Vendo.PreviaApuracao },
+                    aoEnviar = { confirmar = true },
+                    textoEnviar = "Apurar e enviar",
+                    trabalhando = trabalhando,
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                val cApuracao = Operacoes.comprovanteDaApuracao(estado, a)
-                when {
-                    apurada -> LinhaComprovante(
-                        titulo = "Comprovante da apuração",
-                        detalhe = detalheDoEnvio(estado, cApuracao),
-                        enviado = cApuracao != null && estado.enviado(cApuracao),
-                        habilitado = cApuracao != null,
-                        aoVisualizar = { cApuracao?.let { vendo = Vendo.Registrado(it) } },
-                        aoEnviar = { cApuracao?.let { c -> escopo.launch { Compartilhar.comprovante(ctx, estado, c) } } },
-                        textoEnviar = if (cApuracao != null && estado.enviado(cApuracao)) "Enviar de novo" else "Enviar",
-                    )
-                    apNova != null -> LinhaComprovante(
-                        titulo = "Comprovante da apuração",
-                        detalhe = "Ainda não registrado",
-                        enviado = false,
-                        habilitado = true,
-                        aoVisualizar = { vendo = Vendo.PreviaApuracao },
-                        aoEnviar = { confirmar = true },
-                        textoEnviar = "Apurar e enviar",
-                        trabalhando = trabalhando,
-                    )
-                    else -> LinhaComprovante(
-                        titulo = "Comprovante da apuração",
-                        detalhe = if (apurar) "Esperando o resultado do sorteio" else "Sai depois do sorteio",
-                        enviado = false,
-                        habilitado = false,
-                        aoVisualizar = {},
-                        aoEnviar = {},
-                        textoEnviar = "Enviar",
-                    )
-                }
+                else -> LinhaComprovante(
+                    titulo = "Comprovante da apuração",
+                    detalhe = if (apurar) "Esperando o resultado do sorteio" else "Sai depois do sorteio",
+                    enviado = false,
+                    habilitado = false,
+                    aoVisualizar = {},
+                    aoEnviar = {},
+                    textoEnviar = "Enviar",
+                )
             }
         }
-        Spacer(Modifier.height(8.dp))
     }
 
     when (val v = vendo) {
@@ -333,7 +323,7 @@ private fun detalheDoEnvio(e: Estado, c: Comprovante?): String = when {
     else -> "Ainda não enviado ao grupo"
 }
 
-/** Um comprovante na tela da aposta: nome, se já foi ao grupo, e os botões para ver e enviar. */
+/** Um comprovante da aposta registrada: nome, se já foi ao grupo, e os botões para ver e enviar. */
 @Composable
 private fun LinhaComprovante(
     titulo: String,

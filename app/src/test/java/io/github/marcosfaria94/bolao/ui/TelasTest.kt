@@ -1,13 +1,17 @@
 package io.github.marcosfaria94.bolao.ui
 
+import io.github.marcosfaria94.bolao.data.Apuracao
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Arquivo
+import io.github.marcosfaria94.bolao.data.Comprovante
 import io.github.marcosfaria94.bolao.data.Config
 import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.data.Extrato
 import io.github.marcosfaria94.bolao.data.Indices
 import io.github.marcosfaria94.bolao.data.Lancamento
 import io.github.marcosfaria94.bolao.data.Pessoa
 import io.github.marcosfaria94.bolao.data.Rateio
+import io.github.marcosfaria94.bolao.data.TipoComprovante
 import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Modalidade
@@ -15,24 +19,29 @@ import io.github.marcosfaria94.bolao.domain.indices.ResultadoK
 import io.github.marcosfaria94.bolao.ui.aposta.Saida
 import io.github.marcosfaria94.bolao.ui.aposta.ficaEmAndamento
 import io.github.marcosfaria94.bolao.ui.aposta.novaAposta
-import io.github.marcosfaria94.bolao.ui.aposta.rotaDaAposta
+import io.github.marcosfaria94.bolao.ui.aposta.rascunhoDa
 import io.github.marcosfaria94.bolao.ui.aposta.saidaDaTela
+import io.github.marcosfaria94.bolao.ui.aposta.situacaoCurta
+import io.github.marcosfaria94.bolao.ui.aposta.situacaoDe
 import io.github.marcosfaria94.bolao.ui.aposta.tituloDaAposta
-import io.github.marcosfaria94.bolao.ui.comum.descricaoDaAposta
-import io.github.marcosfaria94.bolao.ui.comum.descricaoLancamento
-import io.github.marcosfaria94.bolao.ui.comum.tarjaLancamento
-import io.github.marcosfaria94.bolao.ui.comum.valorDoLancamento
+import io.github.marcosfaria94.bolao.ui.comum.FiltroHistorico
+import io.github.marcosfaria94.bolao.ui.comum.destinoDoMovimento
+import io.github.marcosfaria94.bolao.ui.comum.douradoNoHistorico
+import io.github.marcosfaria94.bolao.ui.comum.movimentosDoHistorico
+import io.github.marcosfaria94.bolao.ui.comum.nomeDoMovimento
+import io.github.marcosfaria94.bolao.ui.comum.tarjaDoMovimento
+import io.github.marcosfaria94.bolao.ui.comum.valorDoMovimento
 import io.github.marcosfaria94.bolao.ui.jogos.indicesDoCartao
 import io.github.marcosfaria94.bolao.ui.jogos.linhaIndices
 import io.github.marcosfaria94.bolao.ui.jogos.precoDoCartao
-import io.github.marcosfaria94.bolao.ui.jogos.tituloDoCartao
-import io.github.marcosfaria94.bolao.ui.notificacoes.textoQuantas
+import io.github.marcosfaria94.bolao.ui.jogos.premioDoCartao
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.YearMonth
 
 /** Textos das telas que não dependem do Android (títulos, legendas dos índices, aposta nova). */
 class TelasTest {
@@ -45,36 +54,92 @@ class TelasTest {
     )
 
     @Test
-    fun tituloEDescricaoDaAposta() {
-        // Tarja "Aposta Nº8"; descrição com a modalidade e o prêmio principal em milhões.
+    fun tituloESituacaoDaAposta() {
         assertEquals("Aposta Nº8", tituloDaAposta(aposta(Modalidade.MEGA_SENA, 8, 3073)))
-        assertEquals("Quina · 55M", descricaoDaAposta(aposta(Modalidade.QUINA, 1, 7148, premio = 5_500_000_000)))
-        assertEquals("Lotofácil · 1,7M", descricaoDaAposta(aposta(Modalidade.LOTOFACIL, 2, 3809, premio = 170_000_000)))
-        assertEquals("Quina", descricaoDaAposta(aposta(Modalidade.QUINA, 1, 0)))
+        val a = aposta(Modalidade.QUINA, 1, 7148)
+        fun curta(x: Aposta) = situacaoCurta(x, situacaoDe(x, hoje), hoje)
+        // Antes do sorteio: quando ele acontece.
+        assertEquals("Sorteio hoje", curta(a.copy(dataSorteio = hoje)))
+        assertEquals("Sorteio amanhã", curta(a.copy(dataSorteio = hoje.plusDays(1))))
+        assertEquals("Sorteio daqui 3 dias", curta(a.copy(dataSorteio = hoje.plusDays(3))))
+        assertEquals("Aguardando sorteio", curta(a))
+        // Depois: o resultado (sem o valor do prêmio).
+        assertEquals("Em apuração", curta(a.copy(dataSorteio = hoje.minusDays(1))))
+        val apuracao = Apuracao(acertos = "2/5", premio = 0, conferidaEm = 1, confirmadaEm = 2)
+        assertEquals("Não premiada", curta(a.copy(dataSorteio = hoje.minusDays(1), apuracao = apuracao)))
+        assertEquals("Premiada", curta(a.copy(dataSorteio = hoje.minusDays(1), apuracao = apuracao.copy(premio = 700))))
+        assertEquals("Premiada", curta(a.copy(dataSorteio = hoje.minusDays(1), apuracao = apuracao.copy(premio = 700, confirmadaEm = null))))
+    }
+
+    /** Um mês com tudo: saldo inicial, os dois aportes, uma aposta premiada com o prêmio, um rateio e o extrato. */
+    private fun mesCompleto(): Estado {
+        val apurada = Apuracao(acertos = "3/5", premio = 700, conferidaEm = 1, confirmadaEm = 2)
+        val a = aposta(Modalidade.QUINA, 1, 7148, premio = 5_500_000_000).copy(dataSorteio = hoje.withDayOfMonth(1), apuracao = apurada)
+        val b = aposta(Modalidade.LOTOFACIL, 2, 3500).copy(id = "b", dataSorteio = hoje.plusDays(1))
+        val pessoas = listOf(Pessoa("p1", "A", "A", "x", true), Pessoa("p2", "B", "B", "y"), Pessoa("p3", "C", "C", "z"))
+        val mes = YearMonth.from(hoje).minusMonths(1)
+        val img = Arquivo("x.png", "x.png", "image/png", 0)
+        return Estado(
+            pessoas = pessoas,
+            apostas = listOf(a, b),
+            lancamentos = listOf(
+                Lancamento("l0", mes.atDay(1), 0, TipoLancamento.SALDO_INICIAL, 1250),
+                Lancamento("r0", mes.atEndOfMonth(), 9, TipoLancamento.RENDIMENTO, 3),
+                Lancamento("l1", hoje.withDayOfMonth(1), 10, TipoLancamento.APORTE, 15000),
+                Lancamento("l2", hoje, 20, TipoLancamento.APORTE, 900, eventual = true),
+                Lancamento("l3", hoje.withDayOfMonth(1), 11, TipoLancamento.APOSTA, -300, apostaId = a.id),
+                Lancamento("l4", hoje.withDayOfMonth(1), 12, TipoLancamento.PREMIO, 700, apostaId = a.id),
+                Lancamento("l5", hoje, 30, TipoLancamento.RATEIO, -15048, rateioNumero = 7),
+                Lancamento("l6", hoje, 40, TipoLancamento.APOSTA, -350, apostaId = b.id),
+            ),
+            rateios = listOf(Rateio(7, hoje, 0, 0, 5016, criadoEm = 30, numeroNoMes = 1)),
+            extratos = listOf(Extrato(mes.toString(), 1253, 3, criadoEm = 9)),
+            comprovantes = listOf(
+                Comprovante("cx", TipoComprovante.EXTRATO, "EXTRATO", "", mes.atEndOfMonth(), 9, img, autenticacao = "", mes = mes.toString()),
+            ),
+        )
     }
 
     @Test
-    fun historicoDoFinanceiro() {
-        val a = aposta(Modalidade.QUINA, 1, 7148, premio = 5_500_000_000)
-        val pessoas = listOf(Pessoa("p1", "A", "A", "x", true), Pessoa("p2", "B", "B", "y"), Pessoa("p3", "C", "C", "z"))
-        val inicial = Lancamento("l0", hoje.withDayOfMonth(1), 0, TipoLancamento.SALDO_INICIAL, 1250)
-        val mensal = Lancamento("l1", hoje.withDayOfMonth(1), 1, TipoLancamento.APORTE, 15000)
-        val adicional = Lancamento("l2", hoje, 2, TipoLancamento.APORTE, 900, eventual = true)
-        val jogo = Lancamento("l3", hoje, 3, TipoLancamento.APOSTA, -300, apostaId = a.id)
-        val premio = Lancamento("l4", hoje, 4, TipoLancamento.PREMIO, 700, apostaId = a.id)
-        val rateio = Lancamento("l5", hoje, 5, TipoLancamento.RATEIO, -15048, rateioNumero = 7)
-        val e = Estado(
-            pessoas = pessoas,
-            apostas = listOf(a),
-            lancamentos = listOf(inicial, mensal, adicional, jogo, premio, rateio),
-            rateios = listOf(Rateio(7, hoje, 0, 0, 5016, criadoEm = 5, numeroNoMes = 1)),
-        )
-        assertEquals(listOf("Saldo inicial", "Aporte Nº1", "Aporte Nº2", "Aposta Nº1", "Prêmio Nº1", "Rateio Nº1"), e.lancamentos.map { tarjaLancamento(e, it) })
-        assertEquals(listOf(null, "Mensal", "Adicional", "Quina · 55M", "Quina · 55M", "3 pessoas"), e.lancamentos.map { descricaoLancamento(e, it) })
+    fun historicoDaHome() {
+        val e = mesCompleto()
+        val mes = YearMonth.from(hoje)
+        // Tudo, no mês atual: o mais recente primeiro (no mesmo dia, o último registrado em cima).
+        val tudo = movimentosDoHistorico(e, FiltroHistorico.TUDO, mes)
         assertEquals(
-            listOf("· R$ 12,50", "+ R$ 150,00", "+ R$ 9,00", "- R$ 3,00", "+ R$ 7,00", "- R$ 150,48"),
-            e.lancamentos.map { valorDoLancamento(it) },
+            listOf(
+                "Aposta Nº2 · Sorteio amanhã", "Rateio Nº1", "Aporte Nº2 · Adicional",
+                "Prêmio Nº1", "Aposta Nº1 · Premiada", "Aporte Nº1 · Mensal",
+            ),
+            tudo.map { tarjaDoMovimento(e, it, hoje) },
         )
+        assertEquals(
+            listOf("- R$ 3,50", "- R$ 150,48", "+ R$ 9,00", "+ R$ 7,00", "- R$ 3,00", "+ R$ 150,00"),
+            tudo.map { valorDoMovimento(it) },
+        )
+        // A aposta premiada e o prêmio dela ficam dourados; o nome da modalidade vai embaixo da bola.
+        assertEquals(listOf(false, false, false, true, true, false), tudo.map { douradoNoHistorico(e, it, hoje) })
+        assertEquals(listOf("Lotofácil", null, null, null, "Quina", null), tudo.map { nomeDoMovimento(e, it) })
+        assertEquals("aposta/a1", destinoDoMovimento(e, tudo[4]))
+        assertEquals("aposta/a1", destinoDoMovimento(e, tudo[3]))
+
+        // O tipo e o mês não mexem um no outro.
+        assertEquals(listOf("Aposta Nº2 · Sorteio amanhã", "Aposta Nº1 · Premiada"), movimentosDoHistorico(e, FiltroHistorico.APOSTAS, mes).map { tarjaDoMovimento(e, it, hoje) })
+        assertEquals(2, movimentosDoHistorico(e, FiltroHistorico.APORTES, mes).size)
+        assertEquals(1, movimentosDoHistorico(e, FiltroHistorico.RATEIOS, mes).size)
+        assertEquals(1, movimentosDoHistorico(e, FiltroHistorico.PREMIOS, mes).size)
+        assertTrue(movimentosDoHistorico(e, FiltroHistorico.EXTRATO, mes).isEmpty())
+
+        // Extrato do mês anterior: um item só, com o rendimento (o lançamento do rendimento não se repete).
+        val extratos = movimentosDoHistorico(e, FiltroHistorico.EXTRATO, null)
+        assertEquals(listOf("Extrato · Set/2026"), extratos.map { tarjaDoMovimento(e, it, hoje) })
+        assertEquals("+ R$ 0,03", valorDoMovimento(extratos.single()))
+        assertEquals("comprovante/cx", destinoDoMovimento(e, extratos.single()))
+        // Mês "Tudo": os dois meses, o saldo inicial sem sinal (só aparece em "Tudo").
+        val todos = movimentosDoHistorico(e, FiltroHistorico.TUDO, null)
+        assertEquals(8, todos.size)
+        assertEquals("Saldo inicial", tarjaDoMovimento(e, todos.last(), hoje))
+        assertEquals("R$ 12,50", valorDoMovimento(todos.last()))
     }
 
     @Test
@@ -93,13 +158,13 @@ class TelasTest {
     }
 
     @Test
-    fun tituloDoCartaoDosJogos() {
+    fun premioDoCartaoDosJogos() {
         val ultimo = Concurso(
             modalidade = Modalidade.QUINA, numero = 7147, data = hoje.minusDays(1), dezenas = emptyList(),
-            proximoNumero = 7148, proximaData = hoje, premioEstimadoProximo = 5_700_000_000,
+            proximoNumero = 7148, proximaData = hoje, premioEstimadoProximo = 5_850_000_000,
         )
-        assertEquals("Quina · 57M", tituloDoCartao(Indices.Item(Modalidade.QUINA, ultimo, null, 34.2)))
-        assertEquals("Quina", tituloDoCartao(Indices.Item(Modalidade.QUINA, null, null, 34.2)))
+        assertEquals("R$ 58,5 Milhões", premioDoCartao(Indices.Item(Modalidade.QUINA, ultimo, null, 34.2)))
+        assertEquals("a confirmar", premioDoCartao(Indices.Item(Modalidade.QUINA, null, null, 34.2)))
         // Preço de Ajustes diferente do dos parâmetros: aviso.
         assertTrue(Indices.Item(Modalidade.MEGA_SENA, null, null, null, precoAjustes = 700, precoParametros = 600).precoDiferente)
         assertTrue(!Indices.Item(Modalidade.MEGA_SENA, null, null, null, precoAjustes = 600, precoParametros = 600).precoDiferente)
@@ -130,15 +195,16 @@ class TelasTest {
     }
 
     @Test
-    fun apostarAbreOAndamentoOuUmaNova() {
+    fun volanteAbreOAndamentoOuUmaNova() {
         val rascunho = aposta(Modalidade.QUINA, 0, 7148, registrada = false)
-        val e = Estado(apostas = listOf(rascunho))
-        assertEquals("aposta/${rascunho.id}", rotaDaAposta(e, Modalidade.QUINA))
-        assertEquals("nova/MEGA_SENA", rotaDaAposta(e, Modalidade.MEGA_SENA))
+        val e = Estado(apostas = listOf(rascunho, aposta(Modalidade.MEGA_SENA, 1, 3000)))
+        assertEquals(rascunho, rascunhoDa(e, Modalidade.QUINA))
+        // A registrada não volta ao volante: a página do jogo começa uma aposta nova.
+        assertNull(rascunhoDa(e, Modalidade.MEGA_SENA))
     }
 
     @Test
-    fun precoEmbaixoDaBola() {
+    fun precoNoCantoDoCartao() {
         val e = Estado(config = Config(precos = mapOf(Modalidade.QUINA.name to 320)))
         assertEquals("R$ 3,20", precoDoCartao(Modalidade.QUINA, e))
         assertEquals("R$ 6,00", precoDoCartao(Modalidade.MEGA_SENA, e))
@@ -198,11 +264,5 @@ class TelasTest {
             Saida.Descartada("Aposta descartada: o bilhete ficou incompleto e sem o comprovante da Caixa."),
             saidaDaTela(federal, null, nova = true),
         )
-    }
-
-    @Test
-    fun quantasPendencias() {
-        assertEquals("1 pendência", textoQuantas(1))
-        assertEquals("3 pendências", textoQuantas(3))
     }
 }

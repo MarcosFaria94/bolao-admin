@@ -2,10 +2,8 @@ package io.github.marcosfaria94.bolao.ui.aporte
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -26,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.TipoComprovante
-import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Mensagens
@@ -38,7 +35,6 @@ import io.github.marcosfaria94.bolao.ui.comum.CampoData
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
-import io.github.marcosfaria94.bolao.ui.comum.Historico
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
@@ -52,7 +48,7 @@ import java.time.YearMonth
  * Depois disso, a tela registra aportes adicionais (data e valor livres) e os envia ao grupo.
  */
 @Composable
-fun AporteTela(estado: Estado, abrir: (String) -> Unit) {
+fun AporteTela(estado: Estado) {
     val ctx = LocalContext.current
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
@@ -148,14 +144,6 @@ fun AporteTela(estado: Estado, abrir: (String) -> Unit) {
                 visualizarHabilitado = valor > 0,
             )
         }
-
-        Spacer(Modifier.height(8.dp))
-        Historico(
-            titulo = "Histórico de aportes",
-            estado = estado,
-            filtro = { it.tipo == TipoLancamento.APORTE },
-            abrir = abrir,
-        )
     }
 
     if (vendo) {

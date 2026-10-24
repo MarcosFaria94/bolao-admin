@@ -1,41 +1,26 @@
 package io.github.marcosfaria94.bolao.ui.extrato
 
-import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowDropDown
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -46,12 +31,10 @@ import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Mensagens
 import io.github.marcosfaria94.bolao.imagem.Recibos
-import io.github.marcosfaria94.bolao.pdf.AuditoriaPdf
 import io.github.marcosfaria94.bolao.pdf.PdfsDoApp
 import io.github.marcosfaria94.bolao.ui.comum.AVISO_DEFINITIVO
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
 import io.github.marcosfaria94.bolao.ui.comum.BotoesDeRegistro
-import io.github.marcosfaria94.bolao.ui.comum.CampoData
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
@@ -161,8 +144,6 @@ fun ExtratoTela(estado: Estado, mesInicial: YearMonth? = null) {
                 }
             }
         }
-
-        Auditoria(estado)
     }
 
     if (vendo) {
@@ -200,84 +181,6 @@ fun ExtratoTela(estado: Estado, mesInicial: YearMonth? = null) {
                 }
             },
             aoFechar = { confirmar = false },
-        )
-    }
-}
-
-/** PDF com todos os comprovantes do período e os anexos originais, em ordem cronológica. */
-@Composable
-private fun Auditoria(estado: Estado) {
-    val ctx = LocalContext.current
-    val avisos = LocalAvisos.current
-    val escopo = rememberCoroutineScope()
-    var de by remember { mutableStateOf(PdfsDoApp.inicio(estado)) }
-    var ate by remember { mutableStateOf(LocalDate.now()) }
-    var gerando by remember { mutableStateOf(false) }
-    var progresso by remember { mutableFloatStateOf(0f) }
-    var pronto by remember { mutableStateOf<Pair<Uri, AuditoriaPdf.Resultado>?>(null) }
-
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Auditoria", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "PDF com todos os comprovantes (aporte, aposta, apuração, rateio e extrato) e os anexos originais, em ordem cronológica.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CampoData(data = de, aoMudar = { de = it }, rotulo = "De", modifier = Modifier.weight(1f))
-                CampoData(data = ate, aoMudar = { ate = it }, rotulo = "Até", modifier = Modifier.weight(1f))
-            }
-            if (gerando) LinearProgressIndicator(progress = { progresso }, modifier = Modifier.fillMaxWidth())
-            Button(
-                enabled = !gerando && !de.isAfter(ate),
-                onClick = {
-                    gerando = true
-                    progresso = 0f
-                    escopo.launch {
-                        try {
-                            pronto = PdfsDoApp.auditoriaEmDownloads(ctx, estado, de, ate) { feitos, total ->
-                                progresso = if (total == 0) 1f else feitos / total.toFloat()
-                            }
-                        } catch (t: Throwable) {
-                            avisos.showSnackbar("Não foi possível gerar o PDF: ${t.message}")
-                        } finally {
-                            gerando = false
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (gerando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Gerar PDF")
-            }
-        }
-    }
-
-    pronto?.let { (uri, r) ->
-        AlertDialog(
-            onDismissRequest = { pronto = null },
-            title = { Text("Auditoria pronta") },
-            text = {
-                Text(
-                    "Salva em Downloads/Bolao: ${r.comprovantes} comprovante(s), ${r.anexos} anexo(s), ${r.paginas} página(s)." +
-                        if (r.problemas.isEmpty()) "\n\nTudo confere." else "\n\nAtenção:\n" + r.problemas.joinToString("\n") { "• $it" },
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    pronto = null
-                    Compartilhar.enviarArquivo(ctx, uri, "application/pdf", "Enviar a auditoria")
-                }) { Text("Enviar") }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = { pronto = null }) { Text("Fechar") }
-                    TextButton(onClick = {
-                        pronto = null
-                        Compartilhar.abrir(ctx, uri, "application/pdf")
-                    }) { Text("Abrir") }
-                }
-            },
         )
     }
 }

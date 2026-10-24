@@ -12,7 +12,7 @@ import java.time.YearMonth
 
 /**
  * Uma pendência: algo que o Administrador precisa fazer para o bolão ficar em dia.
- * Todas aparecem na aba Notificações (a mais recente primeiro); tocar leva à tela que resolve.
+ * Todas aparecem nas Notificações (o sino da Home), a mais recente primeiro; tocar leva à tela que resolve.
  */
 data class Pendencia(
     /** Identifica a pendência (evita repetir o aviso no celular). */
@@ -26,7 +26,7 @@ data class Pendencia(
     val avisarDesde: LocalDateTime,
     /** Tela que resolve a pendência (rota da navegação). */
     val destino: String,
-    /** Modalidade da aposta (ou dos índices) da pendência, para o emblema da lista. */
+    /** Modalidade da aposta (ou dos índices) da pendência. */
     val modalidade: Modalidade? = null,
     /** Concurso da aposta (0 = sem número). */
     val concurso: Int = 0,
@@ -114,7 +114,7 @@ object Pendencias {
                 "aposta-$hoje", Pendencia.Tipo.APOSTA_DO_DIA,
                 "Fazer a aposta de hoje",
                 "Hoje é dia de aposta do bolão. Saldo: ${Dinheiro.rs(Operacoes.saldo(e))}.",
-                hoje.atStartOfDay(), hoje.atTime(HORA_JOGO, 0), "apostar",
+                hoje.atStartOfDay(), hoje.atTime(HORA_JOGO, 0), "jogos",
             )
         }
 
@@ -174,7 +174,7 @@ object Pendencias {
     /**
      * As pendências do bolão mais os avisos dos índices (preço de Ajustes diferente do dos
      * parâmetros, regras da Caixa que mudaram), a mais recente primeiro. Os avisos dos índices
-     * ficam só na aba Notificações (não vão para o celular).
+     * ficam só nas Notificações do app (não vão para o celular).
      */
     fun comAvisosDosIndices(pendencias: List<Pendencia>, avisos: List<Indices.Aviso>, fuso: ZoneId = ZoneId.systemDefault()): List<Pendencia> {
         if (avisos.isEmpty()) return pendencias
