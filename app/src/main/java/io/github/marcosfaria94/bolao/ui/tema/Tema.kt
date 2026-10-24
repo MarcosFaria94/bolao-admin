@@ -151,7 +151,7 @@ object Tarja {
     fun texto(): Color = if (isSystemInDarkTheme()) Color(0xFFE4E9F1) else Color(0xFF13294B)
 }
 
-/** Ouro da aposta premiada (e do prêmio) no Histórico da Home: a tarja em degradê, com a letra escura. */
+/** Ouro da tarja da aposta premiada no Histórico da Home ("Aposta Nº1 · Premiada"): degradê, com a letra escura. */
 object Ouro {
     @Composable
     fun degrade(): List<Color> =

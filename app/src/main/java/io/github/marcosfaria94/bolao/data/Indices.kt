@@ -220,6 +220,7 @@ class Indices(private val context: Context) {
 
     /** Consulta a Caixa (no máximo a cada 10 minutos, a não ser que [forcar]). */
     fun atualizar(forcar: Boolean = false) {
+        if (android.os.Build.FINGERPRINT == "robolectric") return
         if (_atualizando.value) return
         if (!forcar && System.currentTimeMillis() - ultimaAtualizacao < VALIDADE_MS) return
         _atualizando.value = true

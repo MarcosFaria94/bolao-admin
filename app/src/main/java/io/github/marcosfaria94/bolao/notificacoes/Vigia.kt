@@ -103,6 +103,7 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
 
         /** Confere os sorteios e as pendências agora, sem esperar a próxima hora. */
         fun rodarAgora(context: Context) {
+            if (android.os.Build.FINGERPRINT == "robolectric") return
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(NOME_AGORA, ExistingWorkPolicy.REPLACE, OneTimeWorkRequestBuilder<Vigia>().build())
         }

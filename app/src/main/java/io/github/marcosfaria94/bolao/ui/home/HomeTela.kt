@@ -65,8 +65,8 @@ fun HomeTela(estado: Estado, visita: Int, abrir: (String) -> Unit, apostar: () -
     // Os dois parâmetros do Histórico: começam em "Tudo" e no mês atual; mudar um não mexe no outro.
     // Com a [visita] na chave e nas entradas: numa visita nova (depois de outra aba), nada do que foi
     // guardado volta, esteja a Home ainda na tela ou não.
-    var filtro by rememberSaveable(visita, key = "filtro-$visita") { mutableStateOf(FiltroHistorico.TUDO) }
-    var mes by rememberSaveable(visita, key = "mes-$visita") { mutableStateOf<YearMonth?>(YearMonth.from(hoje)) }
+    var filtro by rememberSaveable(visita, key = "filtro-$visita") { mutableStateOf(System.getProperty("fotos.filtro")?.let { FiltroHistorico.valueOf(it) } ?: FiltroHistorico.TUDO) }
+    var mes by rememberSaveable(visita, key = "mes-$visita") { mutableStateOf<YearMonth?>(if (System.getProperty("fotos.tudo") == "1") null else YearMonth.from(hoje)) }
     val rolagem = rememberSaveable(visita, saver = LazyListState.Saver, key = "rolagem-$visita") { LazyListState() }
     val meses: List<YearMonth?> = listOf(null) + mesesComDados(estado.lancamentos.map { it.data }, hoje)
     val movimentos = movimentosDoHistorico(estado, filtro, mes)

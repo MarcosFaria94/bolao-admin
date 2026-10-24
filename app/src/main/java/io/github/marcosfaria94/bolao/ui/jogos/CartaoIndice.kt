@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -71,20 +72,28 @@ fun linhaIndices(item: Indices.Item): String {
     }
 }
 
-/** Prêmio estimado do próximo concurso, por extenso ("R$ 58,5 Milhões"); sem estimativa, "a confirmar". */
+/**
+ * Prêmio estimado do próximo concurso, por extenso e sem o "R$": "230 Milhões", "58,5 Milhões",
+ * "500 Mil" (abaixo de mil reais, com o valor: "R$ 900,00"); sem estimativa, "Prêmio a confirmar".
+ */
 fun premioDoCartao(item: Indices.Item): String =
-    item.ultimo?.premioEstimadoProximo?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) } ?: "a confirmar"
+    item.ultimo?.premioEstimadoProximo?.takeIf { it > 0 }
+        ?.let { if (it < 100_000) Dinheiro.rs(it) else Dinheiro.porExtenso(it, comRs = false) }
+        ?: "Prêmio a confirmar"
 
-/** Preço da aposta simples, no canto do cartão: "R$ 3,00"; na Federal, "Variável". */
+/** Preço da aposta simples, embaixo do nome da modalidade: "R$ 3,00"; na Federal, "Variável". */
 fun precoDoCartao(m: Modalidade, estado: Estado): String =
     if (m.precoVariavel) "Variável" else Dinheiro.rs(estado.config.preco(m))
 
-/** Largura da coluna da bola e do nome (igual em todos os cartões, para as bolas ficarem alinhadas). */
-private val LARGURA_BOLA = 72.dp
+/**
+ * Largura da coluna da bola, do nome e do preço (igual em todos os cartões, para as bolas ficarem
+ * alinhadas): cabe "Dia de Sorte" numa linha; "Loteria Federal" vai em duas.
+ */
+private val LARGURA_BOLA = 90.dp
 
 /**
- * Uma modalidade na lista ordenada pelo k1 (Jogos): a bola (sigla e próximo concurso) com o nome
- * da modalidade embaixo; ao lado, o preço no canto de cima, "Prêmio: R$ 58,5 Milhões",
+ * Uma modalidade na lista ordenada pelo k1 (Jogos): a bola (sigla e próximo concurso), o nome da
+ * modalidade embaixo dela e, embaixo do nome, o preço; ao lado, o prêmio bem grande ("230 Milhões"),
  * "Sorteio: Hoje" e os índices. O concurso em destaque tem contorno dourado e, no alto, a
  * estrelinha com "CONCURSO EM DESTAQUE".
  */
@@ -106,8 +115,8 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
             if (destaque) {
                 TituloDestaque(Modifier.padding(start = 6.dp, bottom = 10.dp))
             }
-            Row(verticalAlignment = Alignment.Top) {
-                // A bola e, embaixo dela (fora dela), o nome da modalidade.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // A bola, o nome da modalidade embaixo dela (fora dela) e o preço embaixo do nome.
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(5.dp),
@@ -116,28 +125,23 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
                     EmblemaModalidade(m, item.proximoNumero, tamanho = 58.dp)
                     Text(
                         m.nome,
-                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp, lineHeight = 16.sp),
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, lineHeight = 19.sp),
                         fontWeight = FontWeight.SemiBold,
                         color = cor,
                         textAlign = TextAlign.Center,
                         maxLines = 2,
                     )
+                    EtiquetaPreco(precoDoCartao(m, estado))
                 }
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    // O preço no canto de cima, à direita.
-                    Row(Modifier.fillMaxWidth()) {
-                        Spacer(Modifier.weight(1f))
-                        EtiquetaPreco(precoDoCartao(m, estado))
-                    }
+                    // O prêmio sem "Prêmio:" nem "R$", bem grande.
                     TextoQueCabe(
-                        buildAnnotatedString {
-                            append("Prêmio: ")
-                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(premioDoCartao(item)) }
-                        },
-                        MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 23.sp, fontWeight = FontWeight.Normal),
+                        premioDoCartao(item),
+                        MaterialTheme.typography.headlineSmall.copy(fontSize = 26.sp, lineHeight = 32.sp),
                         cor = cor,
-                        menor = 13.sp,
+                        peso = FontWeight.Bold,
+                        menor = 16.sp,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     // "Sorteio:" e a data na mesma cor.
@@ -173,22 +177,22 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
     }
 }
 
-/** Etiqueta do preço, no canto de cima do cartão: letra grande, com fundo próprio. */
+/** Etiqueta do preço, embaixo do nome da modalidade, com fundo próprio (diminui se não couber). */
 @Composable
 private fun EtiquetaPreco(preco: String) {
     Box(
         Modifier
+            .widthIn(max = LARGURA_BOLA)
             .background(Tarja.fundo(), RoundedCornerShape(8.dp))
-            .padding(horizontal = 9.dp, vertical = 2.dp),
+            .padding(horizontal = 7.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
+        TextoQueCabe(
             preco,
-            style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 26.sp),
-            color = Tarja.texto(),
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            softWrap = false,
+            MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, lineHeight = 22.sp),
+            cor = Tarja.texto(),
+            peso = FontWeight.Bold,
+            menor = 12.sp,
         )
     }
 }

@@ -117,8 +117,8 @@ class TelasTest {
             listOf("- R$ 3,50", "- R$ 150,48", "+ R$ 9,00", "+ R$ 7,00", "- R$ 3,00", "+ R$ 150,00"),
             tudo.map { valorDoMovimento(it) },
         )
-        // A aposta premiada e o prêmio dela ficam dourados; o nome da modalidade vai embaixo da bola.
-        assertEquals(listOf(false, false, false, true, true, false), tudo.map { douradoNoHistorico(e, it, hoje) })
+        // Só a tarja da aposta premiada fica dourada (o prêmio, não); o nome da modalidade vai embaixo da bola.
+        assertEquals(listOf(false, false, false, false, true, false), tudo.map { douradoNoHistorico(e, it, hoje) })
         assertEquals(listOf("Lotofácil", null, null, null, "Quina", null), tudo.map { nomeDoMovimento(e, it) })
         assertEquals("aposta/a1", destinoDoMovimento(e, tudo[4]))
         assertEquals("aposta/a1", destinoDoMovimento(e, tudo[3]))
@@ -163,8 +163,11 @@ class TelasTest {
             modalidade = Modalidade.QUINA, numero = 7147, data = hoje.minusDays(1), dezenas = emptyList(),
             proximoNumero = 7148, proximaData = hoje, premioEstimadoProximo = 5_850_000_000,
         )
-        assertEquals("R$ 58,5 Milhões", premioDoCartao(Indices.Item(Modalidade.QUINA, ultimo, null, 34.2)))
-        assertEquals("a confirmar", premioDoCartao(Indices.Item(Modalidade.QUINA, null, null, 34.2)))
+        // Sem "Prêmio:" nem "R$": só o valor por extenso.
+        assertEquals("58,5 Milhões", premioDoCartao(Indices.Item(Modalidade.QUINA, ultimo, null, 34.2)))
+        assertEquals("230 Milhões", premioDoCartao(Indices.Item(Modalidade.MEGA_SENA, ultimo.copy(premioEstimadoProximo = 23_000_000_000), null, 2298.0)))
+        assertEquals("500 Mil", premioDoCartao(Indices.Item(Modalidade.FEDERAL, ultimo.copy(premioEstimadoProximo = 50_000_000), null, null)))
+        assertEquals("Prêmio a confirmar", premioDoCartao(Indices.Item(Modalidade.QUINA, null, null, 34.2)))
         // Preço de Ajustes diferente do dos parâmetros: aviso.
         assertTrue(Indices.Item(Modalidade.MEGA_SENA, null, null, null, precoAjustes = 700, precoParametros = 600).precoDiferente)
         assertTrue(!Indices.Item(Modalidade.MEGA_SENA, null, null, null, precoAjustes = 600, precoParametros = 600).precoDiferente)
@@ -204,7 +207,7 @@ class TelasTest {
     }
 
     @Test
-    fun precoNoCantoDoCartao() {
+    fun precoEmbaixoDoNome() {
         val e = Estado(config = Config(precos = mapOf(Modalidade.QUINA.name to 320)))
         assertEquals("R$ 3,20", precoDoCartao(Modalidade.QUINA, e))
         assertEquals("R$ 6,00", precoDoCartao(Modalidade.MEGA_SENA, e))

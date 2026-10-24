@@ -50,7 +50,6 @@ import io.github.marcosfaria94.bolao.ui.aposta.situacaoCurta
 import io.github.marcosfaria94.bolao.ui.aposta.situacaoDe
 import io.github.marcosfaria94.bolao.ui.tema.Ouro
 import io.github.marcosfaria94.bolao.ui.tema.Tarja
-import io.github.marcosfaria94.bolao.ui.tema.corPremiada
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -160,14 +159,10 @@ fun valorDoMovimento(mv: Movimento): String = when (mv) {
         if (mv.l.tipo == TipoLancamento.SALDO_INICIAL) Dinheiro.rs(mv.l.valor) else valorComSinal(mv.l.valor)
 }
 
-/** Aposta premiada (já apurada ou esperando a apuração) e o prêmio dela: o item fica todo dourado. */
+/** Aposta premiada (já apurada ou esperando a apuração): só a tarja dela fica dourada. */
 fun douradoNoHistorico(e: Estado, mv: Movimento, hoje: LocalDate): Boolean {
-    val l = (mv as? Movimento.DeLancamento)?.l ?: return false
-    return when (l.tipo) {
-        TipoLancamento.PREMIO -> true
-        TipoLancamento.APOSTA -> l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }?.let { premiada(situacaoDe(it, hoje)) } == true
-        else -> false
-    }
+    val l = (mv as? Movimento.DeLancamento)?.l?.takeIf { it.tipo == TipoLancamento.APOSTA } ?: return false
+    return l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }?.let { premiada(situacaoDe(it, hoje)) } == true
 }
 
 /** Nome da modalidade, embaixo da bola (só nas apostas). */
@@ -308,8 +303,8 @@ private val LARGURA_EMBLEMA = 72.dp
 
 /**
  * Um item do Histórico: o emblema (nas apostas, a bola com o nome da modalidade embaixo) e, ao
- * lado, a tarja que vai até o fim ("Aposta Nº8 · Sorteio hoje") e o valor bem grande. [dourado]
- * (aposta premiada e prêmio): tudo na cor de ouro.
+ * lado, a tarja que vai até o fim ("Aposta Nº8 · Sorteio hoje") e o valor bem grande.
+ * [dourado] (aposta premiada): só a tarja fica dourada ("Aposta Nº1 · Premiada").
  */
 @Composable
 fun ItemDoHistorico(
@@ -320,7 +315,6 @@ fun ItemDoHistorico(
     dourado: Boolean,
     aoTocar: (() -> Unit)?,
 ) {
-    val ouro = corPremiada()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -340,7 +334,7 @@ fun ItemDoHistorico(
                     nome,
                     style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.5.sp, lineHeight = 15.sp),
                     fontWeight = FontWeight.SemiBold,
-                    color = if (dourado) ouro else MaterialTheme.colorScheme.onSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
                 )
@@ -352,7 +346,7 @@ fun ItemDoHistorico(
             TextoQueCabe(
                 valor,
                 MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp, lineHeight = 34.sp),
-                cor = if (dourado) ouro else MaterialTheme.colorScheme.onSurface,
+                cor = MaterialTheme.colorScheme.onSurface,
                 peso = FontWeight.Bold,
                 menor = 18.sp,
                 modifier = Modifier.fillMaxWidth(),

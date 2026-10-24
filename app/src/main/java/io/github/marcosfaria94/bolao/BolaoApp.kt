@@ -34,7 +34,7 @@ class BolaoApp : Application() {
         repo // começa a carregar os dados já na abertura
         indices // lê os índices guardados e configura o endereço da API da Caixa
         Notificador.criarCanais(this)
-        Vigia.agendar(this)
+        if (!(android.os.Build.FINGERPRINT == "robolectric")) Vigia.agendar(this)
         // Documentos de saldo não ficam guardados: apaga os que sobraram da última vez.
         runCatching { apagarTemporarios(this, idadeMinimaMs = 0) }
     }

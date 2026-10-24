@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,15 +25,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,8 +42,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.marcosfaria94.bolao.bolao
@@ -65,23 +60,28 @@ import io.github.marcosfaria94.bolao.ui.aposta.SecaoApostaRegistrada
 import io.github.marcosfaria94.bolao.ui.aposta.SecaoVolante
 import io.github.marcosfaria94.bolao.ui.aposta.novaAposta
 import io.github.marcosfaria94.bolao.ui.aposta.rascunhoDa
-import io.github.marcosfaria94.bolao.ui.comum.BarraTitulo
+import io.github.marcosfaria94.bolao.ui.comum.AjustarBarra
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
 import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
+import io.github.marcosfaria94.bolao.ui.comum.PaginaComGaveta
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.bola3D
 import io.github.marcosfaria94.bolao.ui.comum.estiloNaBola
+import io.github.marcosfaria94.bolao.ui.comum.rememberEstadoGaveta
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
  * Página do jogo (tocar numa modalidade em Jogos): o emblema, o nome e a chance do prêmio
  * principal com o botão "Detalhes" ao lado; o prêmio e o dia do sorteio num quadro; e, embaixo, o
  * volante da aposta (do "Aposta Nº1" até "Descartar rascunho"), com a aposta em andamento da
- * modalidade ou uma nova. "Detalhes" (último resultado, regras e probabilidades) abre por cima e,
- * ao fechar, a página volta como estava, sem mexer na aposta.
+ * modalidade ou uma nova. Os Detalhes (último resultado, regras e probabilidades) ficam guardados
+ * à direita: arrastar o dedo para a esquerda os puxa por cima da página (o botão "Detalhes" e a
+ * alça da borda também abrem); para a direita, o voltar ou a seta da barra de cima, eles fecham e
+ * a página volta como estava, sem mexer na aposta.
  *
  * [apostaId]: a aposta aberta pelo Histórico ou por um aviso. Registrada, ela aparece no lugar do
  * volante (com a apuração e os comprovantes); em andamento, ela é a do volante.
@@ -96,13 +96,18 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, aoSair: () -> Unit, apostaId: 
     val item: Indices.Item? = itens[m]
     val u = item?.ultimo
     val hoje = LocalDate.now()
-    var detalhes by rememberSaveable { mutableStateOf(false) }
+    val detalhes = rememberEstadoGaveta(System.getProperty("fotos.detalhes") == "1")
 
     val aberta = apostaId?.let { id -> estado.apostas.firstOrNull { it.id == id } }
     if (apostaId != null && aberta == null) {
         Box(Modifier.fillMaxSize().padding(24.dp)) { Text("Esta aposta não existe mais.") }
         return
     }
+    // Com os Detalhes abertos, o voltar e a seta da barra de cima (que passa a dizer "Detalhes") fecham só eles.
+    val escopo = rememberCoroutineScope()
+    val fecharDetalhes: () -> Unit = { escopo.launch { detalhes.fechar() } }
+    BackHandler(enabled = detalhes.aberta, onBack = fecharDetalhes)
+    AjustarBarra(ativo = detalhes.aberta, titulo = "Detalhes", voltar = fecharDetalhes)
     // O volante: a aposta em andamento (a aberta ou a da modalidade) ou uma nova, com o volante vazio.
     // Fica no modelo da página: ver os Detalhes não descarta nada.
     val vm: ApostaEmEdicao? = if (aberta?.registrada == true) {
@@ -129,44 +134,52 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, aoSair: () -> Unit, apostaId: 
     val sorteio = aposta.dataSorteio ?: u?.proximaData?.takeIf { doProximo }
     val emDestaque = doProximo && indices.destaque(itens)?.modalidade == m
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    PaginaComGaveta(
+        detalhes,
+        nome = "Detalhes",
+        modifier = Modifier.imePadding(),
+        gaveta = { DetalhesDaModalidade(estado, m, u, atualizando) },
     ) {
-        CabecalhoModalidade(m, aposta.concurso.takeIf { it > 0 } ?: item?.proximoNumero, aoDetalhes = { detalhes = true })
-        QuadroPremio(
-            premio = premio,
-            sorteio = sorteio,
-            hoje = hoje,
-            federal = m == Modalidade.FEDERAL,
-            destaque = emDestaque,
-            consultando = premio == null && sorteio == null && atualizando,
-        )
-        if (registrada != null) {
-            SecaoApostaRegistrada(estado, registrada)
-        } else {
-            val v = vm!!
-            // A aposta mudada (ou descartada) numa tela aberta por cima desta: a página acompanha.
-            val gravada = estado.apostas.firstOrNull { it.id == v.aposta.id }
-            LaunchedEffect(gravada) { if (v.conferirGravada(gravada)) aoSair() }
-            SecaoVolante(
-                estado = estado,
-                r = v.aposta,
-                mudar = v::mudar,
-                aoDescartar = {
-                    v.descartar()
-                    aoSair()
-                },
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CabecalhoModalidade(
+                m,
+                aposta.concurso.takeIf { it > 0 } ?: item?.proximoNumero,
+                aoDetalhes = { escopo.launch { detalhes.abrir() } },
             )
+            QuadroPremio(
+                premio = premio,
+                sorteio = sorteio,
+                hoje = hoje,
+                federal = m == Modalidade.FEDERAL,
+                destaque = emDestaque,
+                consultando = premio == null && sorteio == null && atualizando,
+            )
+            if (registrada != null) {
+                SecaoApostaRegistrada(estado, registrada)
+            } else {
+                val v = vm!!
+                // A aposta mudada (ou descartada) numa tela aberta por cima desta: a página acompanha.
+                val gravada = estado.apostas.firstOrNull { it.id == v.aposta.id }
+                LaunchedEffect(gravada) { if (v.conferirGravada(gravada)) aoSair() }
+                SecaoVolante(
+                    estado = estado,
+                    r = v.aposta,
+                    mudar = v::mudar,
+                    aoDescartar = {
+                        v.descartar()
+                        aoSair()
+                    },
+                )
+            }
+            Spacer(Modifier.height(8.dp))
         }
-        Spacer(Modifier.height(8.dp))
     }
-
-    if (detalhes) DetalhesDaModalidade(estado, m, u, atualizando, aoFechar = { detalhes = false })
 }
 
 /** Emblema (sigla e concurso), o nome bem grande e a chance do prêmio principal, com o "Detalhes" ao lado. */
@@ -234,50 +247,40 @@ private fun QuadroPremio(premio: Long?, sorteio: LocalDate?, hoje: LocalDate, fe
 }
 
 /**
- * "Detalhes" do jogo, numa tela que abre por cima da página: o último resultado (se acumulou, os
- * números sorteados e a premiação), as regras e as probabilidades. Fechar volta para a página do
- * jogo como ela estava (o volante não muda).
+ * Os Detalhes do jogo (a gaveta da página): o último resultado (se acumulou, os números sorteados
+ * e a premiação), as regras e as probabilidades. Fechar volta para a página do jogo como ela
+ * estava (o volante não muda).
  */
 @Composable
-private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, atualizando: Boolean, aoFechar: () -> Unit) {
-    Dialog(
-        onDismissRequest = aoFechar,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, atualizando: Boolean) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                BarraTitulo("Detalhes", aoVoltar = aoFechar)
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    UltimoResultado(m, u, atualizando)
+        UltimoResultado(m, u, atualizando)
 
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("Regras", style = MaterialTheme.typography.titleMedium)
-                            Spacer(Modifier.height(4.dp))
-                            regras(m, estado).forEach { (r, v) -> LinhaValor(r, v) }
-                        }
-                    }
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Regras", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
+                regras(m, estado).forEach { (r, v) -> LinhaValor(r, v) }
+            }
+        }
 
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("Probabilidades", style = MaterialTheme.typography.titleMedium)
-                            Spacer(Modifier.height(4.dp))
-                            Probabilidades.faixas(m).forEach { f -> LinhaValor(f.nome, Probabilidades.texto(f.umEm)) }
-                            Probabilidades.faixas(m).mapNotNull { it.observacao }.distinct().forEach { obs ->
-                                Text("* $obs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Probabilidades", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
+                Probabilidades.faixas(m).forEach { f -> LinhaValor(f.nome, Probabilidades.texto(f.umEm)) }
+                Probabilidades.faixas(m).mapNotNull { it.observacao }.distinct().forEach { obs ->
+                    Text("* $obs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
+        Spacer(Modifier.height(8.dp))
     }
 }
 

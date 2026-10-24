@@ -73,8 +73,10 @@ import io.github.marcosfaria94.bolao.ui.atualizacao.DialogosAtualizacao
 import io.github.marcosfaria94.bolao.ui.cadastro.CadastroTela
 import io.github.marcosfaria94.bolao.ui.comum.BarraTitulo
 import io.github.marcosfaria94.bolao.ui.comum.ComprovanteTela
+import io.github.marcosfaria94.bolao.ui.comum.BarraDaTela
 import io.github.marcosfaria94.bolao.ui.comum.Icones
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
+import io.github.marcosfaria94.bolao.ui.comum.LocalBarraDaTela
 import io.github.marcosfaria94.bolao.ui.extincao.ExtincaoTela
 import io.github.marcosfaria94.bolao.ui.extrato.ExtratoTela
 import io.github.marcosfaria94.bolao.ui.home.HomeTela
@@ -220,15 +222,19 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     var visitaDaHome by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(rota) { if (rota == Aba.JOGOS.rota || rota == Aba.AJUSTES.rota) visitaDaHome++ }
 
+    // A tela aberta pode trocar o título e a seta de voltar (os Detalhes por cima da página do jogo).
+    val barraDaTela = remember { BarraDaTela() }
+    val ajuste = barraDaTela.ajuste
+
     Scaffold(
         topBar = {
             Column {
                 BarraTitulo(
-                    titulo,
-                    aoVoltar = if (ehAba) null else ({ nav.popBackStack() }),
+                    ajuste?.titulo ?: titulo,
+                    aoVoltar = ajuste?.voltar ?: if (ehAba) null else ({ nav.popBackStack() }),
                     acoes = {
                         // Na Home, o sino das notificações (todo amarelo), com o número de pendências.
-                        if (rota == Aba.HOME.rota) Sino(pendencias.size) { abrir("notificacoes") }
+                        if (rota == Aba.HOME.rota && ajuste == null) Sino(pendencias.size) { abrir("notificacoes") }
                     },
                 )
                 if (teste) FaixaModoTeste(aoSair = { sairDoTeste = true })
@@ -270,43 +276,45 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         contentWindowInsets = if (ehAba) WindowInsets(0, 0, 0, 0) else WindowInsets.navigationBars,
     ) { padding ->
         // Troca de tela instantânea, sem o esmaecer (fade) padrão da navegação.
-        NavHost(
-            nav,
-            startDestination = Aba.HOME.rota,
-            modifier = Modifier.padding(padding),
-            enterTransition = { EnterTransition.None },
-            exitTransition = { ExitTransition.None },
-            popEnterTransition = { EnterTransition.None },
-            popExitTransition = { ExitTransition.None },
-        ) {
-            composable(Aba.HOME.rota) { HomeTela(estado, visitaDaHome, abrir = ::abrir, apostar = { abrirAba(Aba.JOGOS.rota) }) }
-            composable(Aba.JOGOS.rota) { JogosTela(estado, abrirModalidade = { abrir("modalidade/${it.name}") }) }
-            composable(Aba.AJUSTES.rota) { AjustesTela(estado, atualizacao, abrir = ::abrir) }
-            composable("notificacoes") { NotificacoesTela(pendencias, abrir = ::abrir) }
-            composable("saldo") { SaldoTela(estado) }
-            composable("integridade") { IntegridadeTela(estado) }
-            composable("aporte") { AporteTela(estado) }
-            composable("rateio") { RateioTela(estado) }
-            composable("extrato") { ExtratoTela(estado) }
-            composable("extrato/{mes}") { e ->
-                val mes = runCatching { YearMonth.parse(e.arguments?.getString("mes").orEmpty()) }.getOrNull()
-                ExtratoTela(estado, mesInicial = mes)
+        CompositionLocalProvider(LocalBarraDaTela provides barraDaTela) {
+            NavHost(
+                nav,
+                startDestination = Aba.HOME.rota,
+                modifier = Modifier.padding(padding),
+                enterTransition = { EnterTransition.None },
+                exitTransition = { ExitTransition.None },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { ExitTransition.None },
+            ) {
+                composable(Aba.HOME.rota) { HomeTela(estado, visitaDaHome, abrir = ::abrir, apostar = { abrirAba(Aba.JOGOS.rota) }) }
+                composable(Aba.JOGOS.rota) { JogosTela(estado, abrirModalidade = { abrir("modalidade/${it.name}") }) }
+                composable(Aba.AJUSTES.rota) { AjustesTela(estado, atualizacao, abrir = ::abrir) }
+                composable("notificacoes") { NotificacoesTela(pendencias, abrir = ::abrir) }
+                composable("saldo") { SaldoTela(estado) }
+                composable("integridade") { IntegridadeTela(estado) }
+                composable("aporte") { AporteTela(estado) }
+                composable("rateio") { RateioTela(estado) }
+                composable("extrato") { ExtratoTela(estado) }
+                composable("extrato/{mes}") { e ->
+                    val mes = runCatching { YearMonth.parse(e.arguments?.getString("mes").orEmpty()) }.getOrNull()
+                    ExtratoTela(estado, mesInicial = mes)
+                }
+                composable("comprovante/{id}") { e -> ComprovanteTela(estado, e.arguments?.getString("id").orEmpty()) }
+                // A página do jogo: o volante (a aposta em andamento da modalidade ou uma nova).
+                composable("modalidade/{nome}") { e ->
+                    val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
+                    if (m != null) ModalidadeTela(estado, m, aoSair = { fechar(nav, e) })
+                }
+                // Endereço antigo da aposta nova: a página do jogo.
+                composable("nova/{nome}") { e ->
+                    val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
+                    if (m != null) ModalidadeTela(estado, m, aoSair = { fechar(nav, e) })
+                }
+                // Uma aposta (do Histórico ou de um aviso): a página do jogo dela, com a aposta no lugar do volante.
+                composable("aposta/{id}") { e -> PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty()) { fechar(nav, e) } }
+                // A apuração fica na aposta (avisos antigos ainda podem abrir este endereço).
+                composable("apuracao/{id}") { e -> PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty()) { fechar(nav, e) } }
             }
-            composable("comprovante/{id}") { e -> ComprovanteTela(estado, e.arguments?.getString("id").orEmpty()) }
-            // A página do jogo: o volante (a aposta em andamento da modalidade ou uma nova).
-            composable("modalidade/{nome}") { e ->
-                val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
-                if (m != null) ModalidadeTela(estado, m, aoSair = { fechar(nav, e) })
-            }
-            // Endereço antigo da aposta nova: a página do jogo.
-            composable("nova/{nome}") { e ->
-                val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
-                if (m != null) ModalidadeTela(estado, m, aoSair = { fechar(nav, e) })
-            }
-            // Uma aposta (do Histórico ou de um aviso): a página do jogo dela, com a aposta no lugar do volante.
-            composable("aposta/{id}") { e -> PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty()) { fechar(nav, e) } }
-            // A apuração fica na aposta (avisos antigos ainda podem abrir este endereço).
-            composable("apuracao/{id}") { e -> PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty()) { fechar(nav, e) } }
         }
     }
 
