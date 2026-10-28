@@ -11,6 +11,7 @@ import io.github.marcosfaria94.bolao.domain.Extra
 import io.github.marcosfaria94.bolao.domain.Formato
 import io.github.marcosfaria94.bolao.domain.LeituraComprovante
 import io.github.marcosfaria94.bolao.domain.Mensagens
+import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Palpite
 import io.github.marcosfaria94.bolao.domain.Volante
 import java.time.LocalDate
@@ -27,6 +28,11 @@ val Aposta.palpite: Palpite get() = Palpite(numeros, trevos, extra, palpitesLote
  *
  * O registro só cresce: nenhum lançamento, aposta registrada, apuração ou comprovante
  * é alterado ou apagado depois de criado. Cada registro gera um [Comprovante] único.
+ *
+ * Desde a 0.10 a aposta e o rateio são registrados antes do comprovante (da Caixa e dos Pix):
+ * enquanto esperam o comprovante e a conferência dele (aba Comprovantes), ainda podem ser
+ * descartados; o comprovante do bolão sai na conferência. No modo individual não há comprovante
+ * nenhum e tudo pode ser excluído.
  */
 object Operacoes {
 
@@ -41,8 +47,44 @@ object Operacoes {
     fun apostasDoMes(e: Estado, mes: YearMonth): List<Aposta> =
         e.apostas.filter { it.registrada && YearMonth.from(it.dataAposta) == mes }
 
-    /** Número que a próxima aposta registrada em [hoje] vai receber (Nº1 = primeira do mês). */
-    fun proximoNumero(e: Estado, hoje: LocalDate): Int = apostasDoMes(e, YearMonth.from(hoje)).size + 1
+    /**
+     * Número que a próxima aposta registrada em [hoje] vai receber (Nº1 = primeira do mês). Depois de
+     * uma aposta descartada (antes da conferência) pode sobrar um buraco: o próximo nunca repete um número.
+     */
+    fun proximoNumero(e: Estado, hoje: LocalDate): Int {
+        val doMes = apostasDoMes(e, YearMonth.from(hoje))
+        return maxOf(doMes.size, doMes.maxOfOrNull { it.numero } ?: 0) + 1
+    }
+
+    // ---------- esperando comprovante (desde a 0.10) ----------
+
+    /** Registrada e esperando o comprovante da Caixa (aba Comprovantes). */
+    fun aguardandoComprovante(a: Aposta): Boolean = a.registrada && a.pendenteDeAnexo && a.comprovante == null
+
+    /** Registrada, com o comprovante da Caixa anexado, esperando a conferência (aprovação). */
+    fun aguardandoConferencia(a: Aposta): Boolean = a.registrada && a.pendenteDeAnexo && a.comprovante != null
+
+    /** Apostas esperando o comprovante da Caixa, na ordem do registro. */
+    fun apostasSemComprovante(e: Estado): List<Aposta> =
+        e.apostas.filter { aguardandoComprovante(it) }.sortedWith(compareBy({ it.dataAposta }, { it.numero }, { it.criadaEm }))
+
+    /** Apostas com o comprovante da Caixa anexado, esperando a conferência. */
+    fun apostasParaConferir(e: Estado): List<Aposta> =
+        e.apostas.filter { aguardandoConferencia(it) }.sortedWith(compareBy({ it.dataAposta }, { it.numero }, { it.criadaEm }))
+
+    /** Todos os integrantes já têm o comprovante do Pix no rateio. */
+    fun pixCompletos(e: Estado, r: Rateio): Boolean = e.pessoas.all { r.pix.containsKey(it.id) }
+
+    /** Rateios esperando os comprovantes dos Pix (algum integrante ainda sem). */
+    fun rateiosSemPix(e: Estado): List<Rateio> = e.rateios.filter { it.pendenteDeAnexo && !pixCompletos(e, it) }
+
+    /** Rateios com todos os Pix anexados, esperando a conferência. */
+    fun rateiosParaConferir(e: Estado): List<Rateio> = e.rateios.filter { it.pendenteDeAnexo && pixCompletos(e, it) }
+
+    /** Apostas e rateios do mês [mes] que ainda esperam comprovante ou conferência. */
+    fun pendentesDeAnexo(e: Estado, mes: YearMonth): Int =
+        e.apostas.count { it.registrada && it.pendenteDeAnexo && YearMonth.from(it.dataAposta) == mes } +
+            e.rateios.count { it.pendenteDeAnexo && YearMonth.from(it.data) == mes }
 
     /** Número da aposta: o registrado, ou o que um rascunho receberia se fosse registrado em [hoje]. */
     fun numeroDe(e: Estado, a: Aposta, hoje: LocalDate): Int = if (a.registrada) a.numero else proximoNumero(e, hoje)
@@ -52,8 +94,12 @@ object Operacoes {
         e.lancamentos.count { it.tipo == TipoLancamento.APORTE && YearMonth.from(it.data) == YearMonth.from(data) } + 1
 
     /** Número do próximo rateio registrado em [hoje] (Nº1 = primeiro rateio do mês; recomeça a cada mês). */
-    fun proximoNumeroRateio(e: Estado, hoje: LocalDate): Int =
-        e.lancamentos.count { it.tipo == TipoLancamento.RATEIO && YearMonth.from(it.data) == YearMonth.from(hoje) } + 1
+    fun proximoNumeroRateio(e: Estado, hoje: LocalDate): Int {
+        val mes = YearMonth.from(hoje)
+        val lancados = e.lancamentos.count { it.tipo == TipoLancamento.RATEIO && YearMonth.from(it.data) == mes }
+        val maior = e.rateios.filter { YearMonth.from(it.data) == mes }.maxOfOrNull { it.numeroNoMes } ?: 0
+        return maxOf(lancados, maior) + 1
+    }
 
     /**
      * Nº do lançamento no mês, como nos comprovantes: o da aposta (aposta e prêmio), o do aporte e o
@@ -180,8 +226,11 @@ object Operacoes {
     /** Saldo logo antes do lançamento de [tipo] ligado à aposta [apostaId]. */
     fun saldoAntesDe(e: Estado, apostaId: String, tipo: TipoLancamento): Long {
         val l = e.lancamentos.firstOrNull { it.apostaId == apostaId && it.tipo == tipo } ?: return saldo(e)
-        return e.lancamentos.filter { it.criadoEm < l.criadoEm }.sumOf { it.valor }
+        return saldoAntesDoLancamento(e, l)
     }
+
+    /** Saldo logo antes do lançamento [l] (os lançamentos registrados antes dele). */
+    fun saldoAntesDoLancamento(e: Estado, l: Lancamento): Long = e.lancamentos.filter { it.criadoEm < l.criadoEm }.sumOf { it.valor }
 
     // ---------- provisionado e extra ----------
 
@@ -361,28 +410,144 @@ object Operacoes {
         bilheteFederal = l.bilhete ?: a.bilheteFederal,
     )
 
-    /** Dá o número do mês, marca como registrada, desconta do saldo e cria o comprovante. */
+    /**
+     * Registra a aposta: dá o número do mês, marca como registrada e desconta do saldo. No bolão, a
+     * aposta fica esperando o comprovante da Caixa (aba Comprovantes) e a conferência, que cria o
+     * comprovante do bolão ([aprovarAposta]); até lá ela pode ser descartada ([descartarAposta]).
+     * No modo individual não há comprovante: a aposta já fica valendo.
+     */
     fun registrarAposta(e: Estado, id: String, hoje: LocalDate, agora: Long): Estado {
         val a = e.apostas.first { it.id == id }
         require(!a.registrada) { "A aposta já foi registrada." }
         require(a.valor > 0) { "Informe o valor da aposta." }
         require(a.concurso > 0) { "Informe o número do concurso." }
-        val anexo = requireNotNull(a.comprovante) { "Anexe o comprovante da Caixa." }
         val numero = proximoNumero(e, hoje)
-        val registrada = a.copy(numero = numero, dataAposta = hoje, eventual = false, registrada = true)
-        val texto = blocoAposta(e, registrada, hoje, saldo(e))
+        val registrada = a.copy(
+            numero = numero, dataAposta = hoje, eventual = false, registrada = true,
+            pendenteDeAnexo = !e.individual,
+            comprovante = if (e.individual) null else a.comprovante,
+        )
         val lanc = Lancamento(
             id = novoId(), data = hoje, criadoEm = agora, tipo = TipoLancamento.APOSTA, valor = -a.valor, apostaId = id,
         )
+        return e.copy(apostas = e.apostas.map { if (it.id == id) registrada else it }, lancamentos = e.lancamentos + lanc)
+    }
+
+    /**
+     * Registro com o comprovante da Caixa já anexado e conferido na hora (dados de exemplo e testes):
+     * registra e aprova de uma vez, como até a 0.9.
+     */
+    fun registrarApostaComComprovante(e: Estado, id: String, hoje: LocalDate, agora: Long): Estado {
+        requireNotNull(e.apostas.first { it.id == id }.comprovante) { "Anexe o comprovante da Caixa." }
+        return aprovarAposta(registrarAposta(e, id, hoje, agora), id, agora)
+    }
+
+    /**
+     * Anexa o comprovante da Caixa a uma aposta que espera por ele. [ajustada]: a aposta como está no
+     * comprovante (os números e o concurso lidos), quando são diferentes dos do app; [notas]: o que
+     * mudou ou não deu para ler, para a conferência.
+     */
+    fun anexarNaAposta(e: Estado, id: String, arquivo: Arquivo, ajustada: Aposta? = null, notas: List<String> = emptyList()): Estado {
+        val a = e.apostas.first { it.id == id }
+        require(a.registrada && a.pendenteDeAnexo) { "Esta aposta não espera comprovante." }
+        val base = ajustada?.takeIf { it.id == id } ?: a
+        return e.copy(apostas = e.apostas.map { if (it.id == id) base.copy(comprovante = arquivo, notasDoAnexo = notas) else it })
+    }
+
+    /** O dia do sorteio e o prêmio do concurso da aposta (que mudou pelo comprovante da Caixa), antes da conferência. */
+    fun ajustarSorteio(e: Estado, id: String, data: LocalDate?, premio: Long?): Estado = e.copy(
+        apostas = e.apostas.map { a ->
+            if (a.id == id && a.pendenteDeAnexo) a.copy(dataSorteio = data ?: a.dataSorteio, premioEstimado = premio ?: a.premioEstimado) else a
+        },
+    )
+
+    /** Tira o comprovante da Caixa anexado (na conferência): a aposta volta a esperar o comprovante. */
+    fun desanexarDaAposta(e: Estado, id: String): Estado {
+        val a = e.apostas.first { it.id == id }
+        require(aguardandoConferencia(a)) { "Esta aposta já foi conferida." }
+        return e.copy(apostas = e.apostas.map { if (it.id == id) it.copy(comprovante = null, notasDoAnexo = emptyList()) else it })
+    }
+
+    /**
+     * Conferência (aprovação) do comprovante da Caixa: cria o comprovante do bolão (o bloco APOSTA
+     * do termo, com o saldo de logo antes da aposta e o comprovante da Caixa anexado). Depois disso a
+     * aposta vale como as outras: não pode mais ser descartada, e a apuração já pode sair.
+     */
+    fun aprovarAposta(e: Estado, id: String, agora: Long): Estado {
+        val a = e.apostas.first { it.id == id }
+        require(a.registrada) { "Registre a aposta antes." }
+        require(a.pendenteDeAnexo) { "Esta aposta já foi conferida." }
+        val anexo = requireNotNull(a.comprovante) { "Anexe o comprovante da Caixa." }
+        val conferida = a.copy(pendenteDeAnexo = false, notasDoAnexo = emptyList())
+        val texto = blocoAposta(e, conferida, a.dataAposta, saldoAntesDe(e, id, TipoLancamento.APOSTA))
         val c = novoComprovante(
-            e, TipoComprovante.APOSTA, Mensagens.tituloAposta(numero, hoje), texto, hoje, agora,
+            e, TipoComprovante.APOSTA, Mensagens.tituloAposta(a.numero, a.dataAposta), texto, a.dataAposta, agora,
             anexos = listOf(anexo), apostaId = id,
         )
-        return e.copy(
-            apostas = e.apostas.map { if (it.id == id) registrada else it },
-            lancamentos = e.lancamentos + lanc,
-            comprovantes = e.comprovantes + c,
+        return e.copy(apostas = e.apostas.map { if (it.id == id) conferida else it }, comprovantes = e.comprovantes + c)
+    }
+
+    /** A aposta ainda pode ser descartada (antes da conferência; no modo individual, sempre). */
+    fun podeDescartar(e: Estado, a: Aposta): Boolean = !a.registrada || e.individual || a.pendenteDeAnexo
+
+    /**
+     * Descarta uma aposta registrada que ainda não foi conferida (no modo individual, qualquer uma):
+     * ela sai do app e os lançamentos dela (o valor, e no individual o prêmio) também. As apostas do
+     * mês registradas depois dela, ainda sem conferência, sobem um número para não deixar buraco.
+     */
+    fun descartarAposta(e: Estado, id: String): Estado {
+        val a = e.apostas.firstOrNull { it.id == id } ?: return e
+        if (!a.registrada) return excluirRascunho(e, id)
+        require(podeDescartar(e, a)) { "A aposta Nº${a.numero} já foi conferida: não pode mais ser descartada." }
+        val semEla = e.copy(
+            apostas = e.apostas.filterNot { it.id == id },
+            lancamentos = e.lancamentos.filterNot { it.apostaId == id },
         )
+        return renumerarApostas(semEla, YearMonth.from(a.dataAposta), a.numero)
+    }
+
+    /** Fecha o buraco do número [livre] no [mes], se todas as apostas depois dele ainda puderem mudar de número. */
+    private fun renumerarApostas(e: Estado, mes: YearMonth, livre: Int): Estado {
+        val depois = e.apostas.filter { it.registrada && YearMonth.from(it.dataAposta) == mes && it.numero > livre }
+        if (depois.isEmpty() || depois.any { !podeDescartar(e, it) }) return e
+        val ids = depois.map { it.id }.toSet()
+        return e.copy(apostas = e.apostas.map { if (it.id in ids) it.copy(numero = it.numero - 1) else it })
+    }
+
+    // ---------- concurso das apostas que ainda não valem ----------
+
+    /** O próximo concurso de uma modalidade (o que está recebendo apostas), como a Caixa informa. */
+    data class ProximoConcurso(val numero: Int, val data: LocalDate?, val premio: Long?)
+
+    /**
+     * O concurso da aposta já passou ([proximo] é maior): vale para a aposta em andamento e para a
+     * registrada que ainda espera o comprovante, quando ela foi registrada depois do sorteio do
+     * concurso dela (o app estava com o concurso desatualizado). Com o comprovante da Caixa anexado,
+     * vale o concurso do comprovante. A Loteca (os 14 jogos) e a Federal (o bilhete) não mudam sozinhas.
+     */
+    fun concursoDesatualizado(a: Aposta, proximo: Int): Boolean {
+        if (a.modalidade.formato == Formato.LOTECA || a.modalidade.formato == Formato.FEDERAL) return false
+        if (a.comprovante != null || a.concurso !in 1 until proximo) return false
+        if (!a.registrada) return true
+        val sorteio = a.dataSorteio
+        return a.pendenteDeAnexo && (sorteio == null || sorteio.isBefore(a.dataAposta))
+    }
+
+    /** A aposta passada para o próximo concurso (número, sorteio e prêmio estimado). */
+    fun noConcurso(a: Aposta, p: ProximoConcurso): Aposta =
+        a.copy(concurso = p.numero, dataSorteio = p.data ?: a.dataSorteio, premioEstimado = p.premio ?: a.premioEstimado)
+
+    /**
+     * Atualiza o concurso das apostas que ainda não valem ([concursoDesatualizado]) para o próximo
+     * concurso de cada modalidade. Devolve o estado e as apostas mudadas (antes e depois).
+     */
+    fun atualizarConcursos(e: Estado, proximos: Map<Modalidade, ProximoConcurso>): Pair<Estado, List<Pair<Aposta, Aposta>>> {
+        val mudadas = mutableListOf<Pair<Aposta, Aposta>>()
+        val apostas = e.apostas.map { a ->
+            val p = proximos[a.modalidade]
+            if (p != null && concursoDesatualizado(a, p.numero)) noConcurso(a, p).also { mudadas += a to it } else a
+        }
+        return (if (mudadas.isEmpty()) e else e.copy(apostas = apostas)) to mudadas
     }
 
     // ---------- apuração ----------
@@ -442,9 +607,23 @@ object Operacoes {
     fun confirmarApuracao(e: Estado, id: String, apuracao: Apuracao, hoje: LocalDate, agora: Long, imagem: Arquivo? = null): Estado {
         val a = e.apostas.first { it.id == id }
         require(a.registrada) { "Registre a aposta antes de apurar." }
+        require(!a.pendenteDeAnexo) { "A aposta Nº${a.numero} ainda espera a conferência do comprovante da Caixa." }
         require(a.apuracao?.confirmadaEm == null) { "Esta aposta já foi apurada." }
         require(apuracao.premio >= 0) { "Prêmio inválido." }
         val confirmada = apuracao.copy(confirmadaEm = agora)
+        if (e.individual) {
+            // Modo individual: só o prêmio entra no saldo (sem comprovante).
+            val premioIndividual = listOfNotNull(
+                Lancamento(
+                    id = novoId(), data = a.dataSorteio?.takeIf { !it.isAfter(hoje) } ?: hoje, criadoEm = agora,
+                    tipo = TipoLancamento.PREMIO, valor = apuracao.premio, apostaId = id,
+                ).takeIf { apuracao.premio > 0 },
+            )
+            return e.copy(
+                apostas = e.apostas.map { if (it.id == id) it.copy(apuracao = confirmada) else it },
+                lancamentos = e.lancamentos + premioIndividual,
+            )
+        }
         // O resultado vai na imagem dos acertos; sem ela, fica a contagem no próprio bloco.
         val resultado = if (imagem != null) Mensagens.VIDE_ANEXO else apuracao.acertos
         val texto = blocoApuracao(a, hoje, saldo(e), apuracao.premio, resultado)
@@ -497,32 +676,97 @@ object Operacoes {
     /** Título do próximo rateio em [hoje] ("RATEIO Nº1 - 14/06/26"). */
     fun tituloRateio(e: Estado, hoje: LocalDate): String = Mensagens.tituloRateio(proximoNumeroRateio(e, hoje), hoje)
 
-    fun registrarRateio(e: Estado, hoje: LocalDate, pedido: Long, comprovantes: List<Arquivo>, agora: Long): Estado {
+    /**
+     * Registra o rateio de [pedido] (no máximo o Extra): o total das cotas sai do saldo e o rateio fica
+     * esperando os comprovantes dos Pix de cada integrante (aba Comprovantes) e a conferência, que cria
+     * o comprovante do bolão ([aprovarRateio]). Até lá ele pode ser descartado ([descartarRateio]).
+     */
+    fun registrarRateio(e: Estado, hoje: LocalDate, pedido: Long, agora: Long): Estado {
+        require(!e.individual) { "O modo individual não tem rateio." }
         val extra = extra(e, hoje)
         require(extra > 0) { "Não há valor a ser rateado." }
         require(pedido <= extra) { "Valor acima de ${Dinheiro.rs(extra)} não pode ser rateado." }
         val calc = calcularRateio(e, hoje, pedido)
         require(calc.cota > 0) { "O valor é pequeno demais para dividir entre ${e.pessoas.size}." }
-        require(comprovantes.size == e.pessoas.size) { "Anexe os comprovantes dos ${e.pessoas.size} Pix." }
         // [numero] é só a chave interna (corrida); no comprovante vai o número do rateio no mês.
         val numero = e.proximoRateio
         val noMes = proximoNumeroRateio(e, hoje)
-        val saldoAntes = saldo(e)
-        val rateio = Rateio(numero, hoje, saldoAntes, provisao(e, hoje).provisionado, calc.cota, comprovantes, agora, numeroNoMes = noMes)
+        val rateio = Rateio(
+            numero, hoje, saldo(e), provisao(e, hoje).provisionado, calc.cota, emptyList(), agora,
+            numeroNoMes = noMes, pendenteDeAnexo = true,
+        )
         val lanc = Lancamento(
             id = novoId(), data = hoje, criadoEm = agora, tipo = TipoLancamento.RATEIO,
             valor = -calc.total, rateioNumero = numero,
         )
+        return e.copy(rateios = e.rateios + rateio, lancamentos = e.lancamentos + lanc, proximoRateio = numero + 1)
+    }
+
+    /** Registro com os comprovantes dos Pix (na ordem dos integrantes) e a conferência na hora (exemplos e testes). */
+    fun registrarRateioComPix(e: Estado, hoje: LocalDate, pedido: Long, comprovantes: List<Arquivo>, agora: Long): Estado {
+        require(comprovantes.size == e.pessoas.size) { "Anexe os comprovantes dos ${e.pessoas.size} Pix." }
+        var novo = registrarRateio(e, hoje, pedido, agora)
+        val numero = novo.rateios.last().numero
+        e.pessoas.forEachIndexed { i, p -> novo = anexarPix(novo, numero, p.id, comprovantes[i]) }
+        return aprovarRateio(novo, numero, agora)
+    }
+
+    fun rateio(e: Estado, numero: Int): Rateio = e.rateios.first { it.numero == numero }
+
+    /** Anexa o comprovante do Pix de [pessoaId] num rateio que espera os Pix. */
+    fun anexarPix(e: Estado, numero: Int, pessoaId: String, arquivo: Arquivo): Estado {
+        val r = rateio(e, numero)
+        require(r.pendenteDeAnexo) { "Este rateio já foi conferido." }
+        require(e.pessoas.any { it.id == pessoaId }) { "Integrante não encontrado." }
+        return e.copy(rateios = e.rateios.map { if (it.numero == numero) it.copy(pix = it.pix + (pessoaId to arquivo)) else it })
+    }
+
+    /** Tira o comprovante do Pix de [pessoaId] (na conferência). */
+    fun desanexarPix(e: Estado, numero: Int, pessoaId: String): Estado {
+        require(rateio(e, numero).pendenteDeAnexo) { "Este rateio já foi conferido." }
+        return e.copy(rateios = e.rateios.map { if (it.numero == numero) it.copy(pix = it.pix - pessoaId) else it })
+    }
+
+    /** O lançamento (a saída do total) do rateio [numero]. */
+    fun lancamentoDoRateio(e: Estado, numero: Int): Lancamento? =
+        e.lancamentos.firstOrNull { it.tipo == TipoLancamento.RATEIO && it.rateioNumero == numero }
+
+    /**
+     * Conferência do rateio: com o Pix de cada integrante anexado, cria o comprovante do bolão (o
+     * bloco RATEIO do termo, com o saldo de logo antes do rateio e os Pix na ordem dos integrantes).
+     */
+    fun aprovarRateio(e: Estado, numero: Int, agora: Long): Estado {
+        val r = rateio(e, numero)
+        require(r.pendenteDeAnexo) { "Este rateio já foi conferido." }
+        require(pixCompletos(e, r)) { "Faltam comprovantes de Pix neste rateio." }
+        val l = requireNotNull(lancamentoDoRateio(e, numero)) { "Rateio sem lançamento." }
+        val anexos = e.pessoas.map { r.pix.getValue(it.id) }
+        val saldoAntes = saldoAntesDoLancamento(e, l)
+        val noMes = r.numeroNoMes.takeIf { it > 0 } ?: numeroNoMes(e, l) ?: 1
         val c = novoComprovante(
-            e, TipoComprovante.RATEIO, Mensagens.tituloRateio(noMes, hoje), Mensagens.rateio(noMes, hoje, saldoAntes, calc.total), hoje, agora,
-            anexos = comprovantes, rateioNumero = numero,
+            e, TipoComprovante.RATEIO, Mensagens.tituloRateio(noMes, r.data), Mensagens.rateio(noMes, r.data, saldoAntes, -l.valor),
+            r.data, agora, anexos = anexos, rateioNumero = numero,
         )
-        return e.copy(
-            rateios = e.rateios + rateio,
-            lancamentos = e.lancamentos + lanc,
-            comprovantes = e.comprovantes + c,
-            proximoRateio = numero + 1,
+        val conferido = r.copy(pendenteDeAnexo = false, comprovantes = anexos, pix = emptyMap(), saldoLiquido = saldoAntes)
+        return e.copy(rateios = e.rateios.map { if (it.numero == numero) conferido else it }, comprovantes = e.comprovantes + c)
+    }
+
+    /**
+     * Descarta um rateio que ainda não foi conferido: ele sai do app e o valor volta ao saldo. Os
+     * rateios do mês registrados depois dele, ainda sem conferência, sobem um número.
+     */
+    fun descartarRateio(e: Estado, numero: Int): Estado {
+        val r = rateio(e, numero)
+        require(r.pendenteDeAnexo) { "Este rateio já foi conferido: não pode mais ser descartado." }
+        val semEle = e.copy(
+            rateios = e.rateios.filterNot { it.numero == numero },
+            lancamentos = e.lancamentos.filterNot { it.tipo == TipoLancamento.RATEIO && it.rateioNumero == numero },
         )
+        val mes = YearMonth.from(r.data)
+        val depois = semEle.rateios.filter { YearMonth.from(it.data) == mes && it.numeroNoMes > r.numeroNoMes }
+        if (r.numeroNoMes <= 0 || depois.isEmpty() || depois.any { !it.pendenteDeAnexo }) return semEle
+        val chaves = depois.map { it.numero }.toSet()
+        return semEle.copy(rateios = semEle.rateios.map { if (it.numero in chaves) it.copy(numeroNoMes = it.numeroNoMes - 1) else it })
     }
 
     // ---------- extrato ----------
@@ -556,6 +800,9 @@ object Operacoes {
     /** null = pode registrar; senão, o motivo. */
     fun impedimentoDoExtrato(e: Estado, mes: YearMonth, hoje: LocalDate): String? = when {
         mesFechado(e, mes) -> "O extrato de ${Datas.mesAno(mes)} já foi registrado."
+        pendentesDeAnexo(e, mes) > 0 ->
+            "Há ${pendentesDeAnexo(e, mes)} registro(s) de ${Datas.mesAno(mes)} esperando o comprovante ou a conferência " +
+                "(aba Comprovantes): resolva antes de fechar o mês."
         hoje.isBefore(mes.atEndOfMonth()) ->
             if (hoje.plusDays(1) == mes.atEndOfMonth()) "O extrato só pode ser registrado a partir de amanhã, último dia do mês."
             else "O extrato só pode ser registrado a partir do último dia do mês (${Datas.longa(mes.atEndOfMonth())})."
@@ -631,7 +878,10 @@ object Operacoes {
 
     /** O que ainda impede a extinção (vazio = pode extinguir). */
     fun impedimentosDaExtincao(e: Estado): List<String> = buildList {
-        val naoApuradas = e.apostas.count { it.registrada && it.apuracao?.confirmadaEm == null }
+        if (e.individual) return@buildList
+        val esperando = e.apostas.count { it.registrada && it.pendenteDeAnexo } + e.rateios.count { it.pendenteDeAnexo }
+        if (esperando > 0) add("$esperando registro(s) esperando o comprovante ou a conferência (aba Comprovantes).")
+        val naoApuradas = e.apostas.count { it.registrada && !it.pendenteDeAnexo && it.apuracao?.confirmadaEm == null }
         if (naoApuradas > 0) add("$naoApuradas aposta(s) ainda sem apuração.")
         val rascunhos = rascunhos(e).size
         if (rascunhos > 0) add("$rascunhos aposta(s) em andamento: registre ou descarte.")

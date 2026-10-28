@@ -102,7 +102,7 @@ class IndiceKTest {
 
     @Test
     fun parametrosLidos() {
-        assertEquals("1.2", parametros.versao)
+        assertEquals("1.3", parametros.versao)
         assertEquals(9, parametros.modalidades.size)
         assertEquals(9, parametros.ghNos.size)
         assertEquals(listOf(2, 3, 4, 5, 6), parametros.modalidades.getValue("maismilionaria").ordemCascata)

@@ -185,6 +185,166 @@ object LeituraComprovante {
         return null
     }
 
+    // ---------- vários comprovantes de uma vez (aba Comprovantes, desde a 0.10) ----------
+
+    /**
+     * Nome de cada modalidade como aparece nos comprovantes (sem acento, em maiúsculas), na ordem
+     * de procura: a Quina por último, para não confundir com as faixas de prêmio de outros jogos.
+     */
+    private val NOMES: List<Pair<Modalidade, Regex>> = listOf(
+        Modalidade.MAIS_MILIONARIA to Regex("(\\+|MAIS)\\s*-?\\s*MILIONARIA"),
+        Modalidade.MEGA_SENA to Regex("MEGA\\s*-?\\s*SENA"),
+        Modalidade.DUPLA_SENA to Regex("DUPLA\\s*-?\\s*SENA"),
+        Modalidade.LOTOFACIL to Regex("LOTO\\s*-?\\s*FACIL"),
+        Modalidade.LOTOMANIA to Regex("LOTO\\s*-?\\s*MANIA"),
+        Modalidade.TIMEMANIA to Regex("TIME\\s*-?\\s*MANIA"),
+        Modalidade.DIA_DE_SORTE to Regex("DIA\\s+DE\\s+SORTE"),
+        Modalidade.SUPER_SETE to Regex("SUPER\\s*-?\\s*(SETE|7)\\b"),
+        Modalidade.LOTECA to Regex("\\bLOTECA\\b"),
+        // Só "Loteria Federal": "Caixa Econômica Federal" está em todo comprovante da Caixa.
+        Modalidade.FEDERAL to Regex("LOTERIA\\s+FEDERAL"),
+        Modalidade.QUINA to Regex("\\bQUINA\\b"),
+    )
+
+    /** A modalidade escrita na linha (null = nenhuma). */
+    fun modalidadeDaLinha(linha: String): Modalidade? {
+        val s = simples(linha)
+        return NOMES.firstOrNull { it.second.containsMatchIn(s) }?.first
+    }
+
+    /** Modalidades citadas no texto, na ordem em que aparecem. */
+    fun modalidades(texto: String): List<Modalidade> = texto.lines().mapNotNull { modalidadeDaLinha(it) }.distinct()
+
+    /**
+     * O texto dividido por modalidade: cada parte começa na linha com o nome da modalidade e vai até
+     * o nome de outra (um comprovante de várias apostas de jogos diferentes). O que vem antes do
+     * primeiro nome (o cabeçalho da Caixa) vai junto da primeira parte. Sem nenhum nome: vazio.
+     */
+    fun secoes(texto: String): List<Pair<Modalidade, String>> {
+        val linhas = texto.lines()
+        val partes = mutableListOf<Pair<Modalidade, MutableList<String>>>()
+        val antes = mutableListOf<String>()
+        for (l in linhas) {
+            val m = modalidadeDaLinha(l)
+            when {
+                m != null && (partes.isEmpty() || partes.last().first != m) -> {
+                    partes += m to mutableListOf<String>().also { if (partes.isEmpty()) it += antes }
+                    partes.last().second += l
+                }
+                partes.isEmpty() -> antes += l
+                else -> partes.last().second += l
+            }
+        }
+        return partes.map { (m, l) -> m to l.joinToString("\n") }
+    }
+
+    /**
+     * Todas as apostas de uma modalidade no texto (um comprovante pode ter mais de um jogo): uma
+     * leitura para cada conjunto de números com a quantidade certa. Com um jogo só, é a [ler].
+     */
+    fun lerApostas(m: Modalidade, texto: String): List<Lida> {
+        val base = ler(m, texto)
+        if (m.formato != Formato.NUMEROS) return listOf(base)
+        val linhas = texto.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val varios = todosOsNumeros(m, linhas)
+        if (varios.size <= 1) return listOf(if (base.numeros != null) base else base.copy(numeros = varios.firstOrNull()))
+        // Com vários jogos, trevos e time/mês não dá para saber de qual é: ficam de fora.
+        return varios.map { Lida(concurso = base.concurso, numeros = it) }
+    }
+
+    /** Os conjuntos de números válidos do texto (depois dos rótulos ou em blocos só de números). */
+    private fun todosOsNumeros(m: Modalidade, linhas: List<String>): List<List<Int>> {
+        val alvo = m.qtdAposta
+        val faixa = m.menor..m.maior
+        fun valida(l: List<Int>) = l.size == alvo && l.distinct().size == alvo && l.all { it in faixa }
+        val rotulados = mutableListOf<List<Int>>()
+        var i = 0
+        while (i < linhas.size) {
+            val s = simples(linhas[i]).substringBefore("TREVO")
+            val rotulo = Regex("\\b(NUMEROS|DEZENAS|APOSTADOS)\\b").find(s)
+            if (rotulo == null) {
+                i++
+                continue
+            }
+            val juntos = numerosDe(s.substring(rotulo.range.last + 1)).toMutableList()
+            var k = i + 1
+            while (juntos.size < alvo && k < linhas.size && soNumeros(linhas[k])) {
+                juntos += numerosDe(linhas[k])
+                k++
+            }
+            if (valida(juntos)) rotulados += juntos.sorted()
+            i = maxOf(k, i + 1)
+        }
+        if (rotulados.isNotEmpty()) return rotulados
+        val blocos = mutableListOf<List<Int>>()
+        var bloco = mutableListOf<Int>()
+        for (linha in linhas + "") {
+            if (soNumeros(linha)) {
+                bloco += numerosDe(linha)
+                if (bloco.size == alvo && valida(bloco)) {
+                    blocos += bloco.sorted()
+                    bloco = mutableListOf()
+                }
+            } else {
+                if (valida(bloco)) blocos += bloco.sorted()
+                bloco = mutableListOf()
+            }
+        }
+        return blocos
+    }
+
+    /** O que se lê de um comprovante de Pix: o valor, o trecho do destino (quem recebeu) e o código da transação. */
+    data class PixLido(val valor: Long?, val destino: String, val codigo: String?)
+
+    private val VALOR = Regex("R\\$\\s*(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d+,\\d{2})")
+
+    /** O texto é de um comprovante de Pix (transferência), e não de uma aposta? */
+    fun ehPix(texto: String): Boolean {
+        val s = simples(texto)
+        return "PIX" in s && VALOR.containsMatchIn(s) &&
+            listOf("COMPROVANTE", "TRANSFERENCIA", "TRANSFERIDO", "ENVIADO", "PAGAMENTO").any { it in s }
+    }
+
+    /**
+     * Lê um comprovante de Pix: o valor (na linha do "Valor", ou na seguinte; senão, o primeiro valor
+     * em reais), o trecho de quem recebeu (de "Destino", "Para", "Recebedor" ou "Favorecido" até
+     * "Origem"/"De"/"Pagador") e o código da transação (E2E), quando aparece.
+     */
+    fun lerPix(texto: String): PixLido {
+        val linhas = texto.lines().map { simples(it).trim() }.filter { it.isNotEmpty() }
+        var valor: Long? = null
+        for ((i, l) in linhas.withIndex()) {
+            if (!Regex("\\bVALOR\\b").containsMatchIn(l) || "TARIFA" in l) continue
+            val achado = VALOR.find(l) ?: linhas.getOrNull(i + 1)?.let { VALOR.find(it) }
+            if (achado != null) {
+                valor = Dinheiro.ler(achado.groupValues[1])
+                break
+            }
+        }
+        if (valor == null) valor = VALOR.find(linhas.joinToString("\n"))?.let { Dinheiro.ler(it.groupValues[1]) }
+        val inicio = linhas.indexOfFirst { l -> listOf("DESTINO", "RECEBEDOR", "FAVORECIDO", "QUEM RECEBEU").any { it in l } || l.startsWith("PARA") }
+        val fim = if (inicio < 0) -1 else (inicio + 1 until linhas.size).firstOrNull { k ->
+            val l = linhas[k]
+            listOf("ORIGEM", "PAGADOR", "QUEM PAGOU").any { it in l } || l == "DE" || l.startsWith("DE ")
+        } ?: linhas.size
+        val destino = if (inicio < 0) linhas.joinToString(" ") else linhas.subList(inicio, fim).joinToString(" ")
+        val codigo = Regex("\\bE\\d{8}[A-Z0-9]{20,}\\b").find(linhas.joinToString(" "))?.value
+        return PixLido(valor, destino, codigo)
+    }
+
+    /** O [nome] (ou um pedaço dele com 3 letras ou mais) e a [chave] aparecem no [trecho]? Quanto maior, mais certo. */
+    fun pontosDoNome(trecho: String, nome: String, apelido: String, chave: String): Int {
+        val alvo = compacto(trecho)
+        var pontos = 0
+        val chaveCompacta = compacto(chave)
+        if (chaveCompacta.length >= 5 && chaveCompacta in alvo) pontos += 5
+        if (compacto(nome).length >= 3 && compacto(nome) in alvo) pontos += 4
+        simples(nome).split(Regex("\\s+")).filter { it.length >= 3 && it !in setOf("DOS", "DAS", "DE", "DA", "DO") }
+            .forEach { if (compacto(it) in alvo) pontos += 1 }
+        if (compacto(apelido).length >= 3 && compacto(apelido) in alvo) pontos += 1
+        return pontos
+    }
+
     /** Federal: o número do bilhete (5 ou 6 algarismos) depois de "Bilhete". */
     private fun bilhete(linhas: List<String>): String? {
         val zona = depoisDoRotulo(linhas, "BILHETE") ?: return null

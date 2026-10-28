@@ -20,10 +20,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Bolao">
 
+        <!-- Tela dividida e mudança de tamanho não recriam a tela (e não pedem a digital de novo). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|keyboard|keyboardHidden|navigation"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

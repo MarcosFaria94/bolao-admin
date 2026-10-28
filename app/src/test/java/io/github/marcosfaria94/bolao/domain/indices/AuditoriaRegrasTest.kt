@@ -107,6 +107,31 @@ class AuditoriaRegrasTest {
     }
 
     @Test
+    fun megaSenaComQuinaEQuadraDe10PorCento() {
+        // Até o 3072 valiam 13% (quina) e 15% (quadra); a partir do 3073, 10% e 10% (regra atual da Caixa).
+        val c = caso("megasena_3072")
+        val antigo = registro(c, "ultimo")!!
+        assertTrue(AuditoriaRegras.auditar(parametros, "megasena", antigo, registro(c, "anterior"))!!.confere)
+        val m = parametros.modalidades.getValue("megasena")
+        assertEquals(0.13, m.faixas[1].fracaoNo(3072), 0.0)
+        assertEquals(0.10, m.faixas[1].fracaoNo(3073), 0.0)
+        assertEquals(0.15, m.faixas[2].fracaoNo(3072), 0.0)
+        assertEquals(0.10, m.faixas[2].fracaoNo(3075), 0.0)
+
+        // O mesmo rateio num concurso novo (3075): com 10%, cada ganhador recebe 10/13 e 10/15 do antigo.
+        fun liquido(v: Double) = if (v > parametros.limiteIsencao) v * (1 - parametros.irAliquota) else v
+        val base = antigo.valorArrecadado * m.fracPremio
+        val quina = liquido(0.10 * base / antigo.ganhadores.getValue(2))
+        val quadra = liquido(0.10 * base / antigo.ganhadores.getValue(3))
+        val novo = antigo.copy(numero = 3075, premios = antigo.premios + mapOf(2 to quina, 3 to quadra))
+        val r = AuditoriaRegras.auditar(parametros, "megasena", novo, null)!!
+        assertTrue(r.faixas.toString(), r.confere)
+        // Pago pela regra antiga num concurso novo: não passa (era o aviso "Regras da Mega-Sena mudaram").
+        val pelaRegraAntiga = antigo.copy(numero = 3075)
+        assertFalse(AuditoriaRegras.auditar(parametros, "megasena", pelaRegraAntiga, null)!!.confere)
+    }
+
+    @Test
     fun concursoQueNaoDaParaConferir() {
         val q = caso("quina_7148")
         // A Caixa já publicou os ganhadores, mas ainda não os valores: espera completar.

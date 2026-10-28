@@ -33,7 +33,7 @@ data class Pendencia(
     /** Tipo do comprovante a enviar (pendência de envio). */
     val comprovante: TipoComprovante? = null,
 ) {
-    enum class Tipo { APORTE, APOSTA_DO_DIA, RASCUNHO, ENVIO, APURACAO, EXTRATO, INDICES }
+    enum class Tipo { APORTE, APOSTA_DO_DIA, RASCUNHO, ANEXO, CONFERENCIA, ENVIO, APURACAO, EXTRATO, INDICES }
 }
 
 /** Aviso de aposta premiada (o outro aviso que vai para o celular), sem o valor: ele é surpresa no app. */
@@ -48,6 +48,12 @@ object Pendencias {
     const val HORA_JOGO = 10
     const val HORA_EXTRATO = 18
     const val MINUTOS_RASCUNHO = 60L
+
+    /** Depois de registrar uma aposta (ou um rateio), quanto esperar o comprovante antes de avisar no celular. */
+    const val MINUTOS_ANEXO = 60L
+
+    /** Aba que recebe os comprovantes da Caixa e dos Pix e faz a conferência. */
+    const val ABA_COMPROVANTES = "comprovantes"
 
     /** A apuração automática sai a partir das 8h do dia seguinte ao sorteio (como no termo). */
     const val HORA_APURACAO = 8
@@ -72,8 +78,8 @@ object Pendencias {
         val mes = YearMonth.from(hoje)
         val lista = mutableListOf<Pendencia>()
 
-        // Aporte mensal (a partir do dia 1º).
-        if (Operacoes.aporteMensalPendente(e, hoje)) {
+        // Aporte mensal (a partir do dia 1º). O modo individual não tem aporte.
+        if (!e.individual && Operacoes.aporteMensalPendente(e, hoje)) {
             val dia1 = mes.atDay(1)
             lista += Pendencia(
                 "aporte-$mes", Pendencia.Tipo.APORTE,
@@ -84,32 +90,61 @@ object Pendencias {
             )
         }
 
-        // Apostas em andamento (rascunhos): anexar o comprovante da Caixa ou registrar.
+        // Apostas em andamento (volante completo): falta registrar.
         val rascunhos = Operacoes.rascunhos(e)
         rascunhos.forEach { r ->
             val criada = instante(r.criadaEm, fuso)
             val jogo = r.modalidade.nome + if (r.concurso > 0) " · ${r.concurso}" else ""
-            lista += if (r.comprovante == null) {
-                Pendencia(
-                    "rascunho-${r.id}", Pendencia.Tipo.RASCUNHO,
-                    "Anexar o comprovante da Caixa",
-                    "$jogo: sem o comprovante publicado no grupo, a aposta não vale para o bolão.",
-                    criada, criada.plusMinutes(MINUTOS_RASCUNHO), "aposta/${r.id}",
-                    modalidade = r.modalidade, concurso = r.concurso,
-                )
-            } else {
-                Pendencia(
-                    "rascunho-${r.id}", Pendencia.Tipo.RASCUNHO,
-                    "Registrar a aposta",
-                    "$jogo: o comprovante da Caixa já está anexado.",
-                    criada, criada.plusMinutes(MINUTOS_RASCUNHO), "aposta/${r.id}",
-                    modalidade = r.modalidade, concurso = r.concurso,
-                )
-            }
+            lista += Pendencia(
+                "rascunho-${r.id}", Pendencia.Tipo.RASCUNHO,
+                "Registrar a aposta",
+                "$jogo: o volante está pronto, falta registrar.",
+                criada, criada.plusMinutes(MINUTOS_RASCUNHO), "aposta/${r.id}",
+                modalidade = r.modalidade, concurso = r.concurso,
+            )
         }
 
-        // Dia de aposta (se não houver uma aposta em andamento, que já é pendência).
-        if (Calendario.ehDiaProgramado(hoje) && !Operacoes.apostaFeitaEm(e, hoje) && rascunhos.isEmpty()) {
+        // Apostas registradas esperando o comprovante da Caixa (aba Comprovantes).
+        Operacoes.apostasSemComprovante(e).forEach { a ->
+            val registro = e.lancamentos.firstOrNull { it.apostaId == a.id && it.tipo == TipoLancamento.APOSTA }?.criadoEm ?: a.criadaEm
+            val desde = instante(registro, fuso)
+            lista += Pendencia(
+                "anexo-${a.id}", Pendencia.Tipo.ANEXO,
+                "Anexar o comprovante da Caixa",
+                "Aposta ${nome(a)}: sem o comprovante da Caixa conferido, a aposta não vale para o bolão.",
+                desde, desde.plusMinutes(MINUTOS_ANEXO), ABA_COMPROVANTES,
+                modalidade = a.modalidade, concurso = a.concurso,
+            )
+        }
+        // Rateios esperando os comprovantes dos Pix.
+        Operacoes.rateiosSemPix(e).forEach { r ->
+            val desde = instante(r.criadoEm, fuso)
+            val faltam = e.pessoas.count { !r.pix.containsKey(it.id) }
+            lista += Pendencia(
+                "pix-${r.numero}", Pendencia.Tipo.ANEXO,
+                "Anexar os Pix do rateio Nº${r.numeroNoMes}",
+                if (faltam == 1) "Falta 1 comprovante de Pix (${Dinheiro.rs(r.cota)} para cada um)."
+                else "Faltam $faltam comprovantes de Pix (${Dinheiro.rs(r.cota)} para cada um).",
+                desde, desde.plusMinutes(MINUTOS_ANEXO), ABA_COMPROVANTES,
+            )
+        }
+        // Comprovantes anexados esperando a conferência (uma pendência só, para todos).
+        val paraConferir = Operacoes.apostasParaConferir(e).mapNotNull { it.comprovante?.guardadoEm } +
+            Operacoes.rateiosParaConferir(e).flatMap { r -> r.pix.values.map { it.guardadoEm } }
+        if (paraConferir.isNotEmpty()) {
+            val n = Operacoes.apostasParaConferir(e).size + Operacoes.rateiosParaConferir(e).size
+            val desde = instante(paraConferir.max(), fuso)
+            lista += Pendencia(
+                "conferir-${paraConferir.min()}", Pendencia.Tipo.CONFERENCIA,
+                "Conferir os comprovantes",
+                if (n == 1) "1 registro com os comprovantes anexados espera a sua aprovação."
+                else "$n registros com os comprovantes anexados esperam a sua aprovação.",
+                desde, desde.plusMinutes(MINUTOS_ANEXO), ABA_COMPROVANTES,
+            )
+        }
+
+        // Dia de aposta (se não houver uma aposta em andamento, que já é pendência). Não no modo individual.
+        if (!e.individual && Calendario.ehDiaProgramado(hoje) && !Operacoes.apostaFeitaEm(e, hoje) && rascunhos.isEmpty()) {
             lista += Pendencia(
                 "aposta-$hoje", Pendencia.Tipo.APOSTA_DO_DIA,
                 "Fazer a aposta de hoje",
@@ -133,8 +168,8 @@ object Pendencias {
             )
         }
 
-        // Apurações que precisam do Administrador.
-        e.apostas.filter { it.registrada && it.apuracao?.confirmadaEm == null && it.dataSorteio != null }.forEach { a ->
+        // Apurações que precisam do Administrador (as apostas esperando o comprovante ficam de fora).
+        e.apostas.filter { it.registrada && !it.pendenteDeAnexo && it.apuracao?.confirmadaEm == null && it.dataSorteio != null }.forEach { a ->
             val ap = a.apuracao
             val sorteio = a.dataSorteio!!
             if (ap != null && ap.precisaConfirmar) {
@@ -158,8 +193,8 @@ object Pendencias {
             }
         }
 
-        // Extrato: no último dia do mês e depois, enquanto não for registrado.
-        Operacoes.extratosPendentes(e, hoje).forEach { m ->
+        // Extrato: no último dia do mês e depois, enquanto não for registrado. Não no modo individual.
+        if (!e.individual) Operacoes.extratosPendentes(e, hoje).forEach { m ->
             val fim = m.atEndOfMonth()
             lista += Pendencia(
                 "extrato-$m", Pendencia.Tipo.EXTRATO,
@@ -213,7 +248,7 @@ object Pendencias {
      */
     fun aguardandoResultado(e: Estado, agora: LocalDateTime): List<Aposta> = e.apostas.filter { a ->
         val sorteio = a.dataSorteio ?: return@filter false
-        if (!a.registrada || a.apuracao?.confirmadaEm != null) return@filter false
+        if (!a.registrada || a.pendenteDeAnexo || a.apuracao?.confirmadaEm != null) return@filter false
         val ap = a.apuracao
         if (ap != null && ap.rateioOficial.isNotEmpty() && !ap.precisaConfirmar) return@filter false
         val horaResultado = if (sorteio.dayOfWeek == DayOfWeek.SUNDAY) 12 else 22
@@ -229,7 +264,7 @@ object Pendencias {
         return e.apostas.filter { a ->
             val ap = a.apuracao ?: return@filter false
             val sorteio = a.dataSorteio ?: return@filter false
-            a.registrada && ap.confirmadaEm == null && !ap.precisaConfirmar && ap.rateioOficial.isNotEmpty() &&
+            a.registrada && !a.pendenteDeAnexo && ap.confirmadaEm == null && !ap.precisaConfirmar && ap.rateioOficial.isNotEmpty() &&
                 !agora.isBefore(sorteio.plusDays(1).atTime(HORA_APURACAO, 0))
         }
     }

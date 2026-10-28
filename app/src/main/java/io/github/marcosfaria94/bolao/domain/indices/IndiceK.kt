@@ -183,9 +183,7 @@ object IndiceK {
         val potes = HashMap<Int, Double>()
         for (f in m.faixas) {
             if (!f.rateio) continue
-            var fracao = f.fracao
-            if (f.fracaoFinalZero != null && numero % 10 == 0) fracao = f.fracaoFinalZero
-            var pote = fracao * base
+            var pote = f.fracaoNo(numero) * base
             if (f.principal) pote += acumulado / (1 - ir)
             pote += heranca[f.faixa] ?: 0.0
             potes[f.faixa] = pote
@@ -242,7 +240,7 @@ object IndiceK {
         var fixos = 0.0
         for (f in m.faixas) if (f.fixo) fixos += (gan[f.faixa] ?: 0) * f.valor
         val base = r * m.fracPremio * (1 - m.fracRgp) - fixos
-        return m.faixas.filter { it.herdaMesmaFaixa && (gan[it.faixa] ?: 0) == 0 }.associate { it.faixa to it.fracao * base }
+        return m.faixas.filter { it.herdaMesmaFaixa && (gan[it.faixa] ?: 0) == 0 }.associate { it.faixa to it.fracaoNo(u.numero) * base }
     }
 
     fun ehEspecial(e: Double, eAnt: Double, acumEspecial: Double, acumProx: Double): Boolean {

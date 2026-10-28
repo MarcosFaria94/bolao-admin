@@ -21,7 +21,7 @@ class PendenciasTest {
     private fun chaves(e: Estado, agora: LocalDateTime) = Pendencias.de(e, agora, fuso).map { it.chave }
 
     private fun registrar(e: Estado, a: Aposta, hoje: LocalDate, agora: Long = 1) =
-        Operacoes.registrarAposta(Operacoes.salvarRascunho(e, a), a.id, hoje, agora)
+        Operacoes.registrarApostaComComprovante(Operacoes.salvarRascunho(e, a), a.id, hoje, agora)
 
     @Test
     fun aporteDoMes() {
@@ -54,7 +54,7 @@ class PendenciasTest {
         val r = Aposta("r", 0, Modalidade.MEGA_SENA, 1, LocalDate.of(2026, 10, 19), valor = 600, criadaEm = ms(criada))
         var e = Operacoes.salvarRascunho(Operacoes.registrarAporteMensal(base, LocalDate.of(2026, 10, 1), 0), r)
         val p = Pendencias.de(e, criada.plusMinutes(5), fuso).single { it.chave == "rascunho-r" }
-        assertEquals("Anexar o comprovante da Caixa", p.titulo)
+        assertEquals("Registrar a aposta", p.titulo)
         assertEquals("aposta/r", p.destino)
         // A lista mostra a bola da modalidade (sigla e concurso).
         assertEquals(Modalidade.MEGA_SENA, p.modalidade)
@@ -65,8 +65,24 @@ class PendenciasTest {
         assertTrue(Pendencias.paraAvisar(listOf(p), criada.plusMinutes(30), emptySet()).isEmpty())
         assertEquals(1, Pendencias.paraAvisar(listOf(p), criada.plusMinutes(61), emptySet()).size)
 
-        // Registrada: sai o rascunho e entra o envio do comprovante (até ser aberto no WhatsApp).
-        e = registrar(e, r.copy(comprovante = anexo), LocalDate.of(2026, 10, 19), ms(criada.plusMinutes(20)))
+        // Registrada sem o comprovante da Caixa: sai o rascunho e entra "Anexar o comprovante" (aba Comprovantes).
+        e = Operacoes.registrarAposta(e, "r", LocalDate.of(2026, 10, 19), ms(criada.plusMinutes(20)))
+        assertTrue(chaves(e, criada.plusMinutes(25)).none { it.startsWith("rascunho-") })
+        val anexar = Pendencias.de(e, criada.plusMinutes(25), fuso).single { it.tipo == Pendencia.Tipo.ANEXO }
+        assertEquals("anexo-r", anexar.chave)
+        assertEquals(Pendencias.ABA_COMPROVANTES, anexar.destino)
+        assertTrue(Pendencias.paraAvisar(listOf(anexar), criada.plusMinutes(70), emptySet()).isEmpty())
+        assertEquals(1, Pendencias.paraAvisar(listOf(anexar), criada.plusMinutes(81), emptySet()).size)
+        // Esperando o comprovante, não entra na apuração automática.
+        assertTrue(Pendencias.aguardandoResultado(e.copy(apostas = e.apostas.map { it.copy(dataSorteio = LocalDate.of(2026, 10, 1)) }), criada).isEmpty())
+        // Anexado: uma pendência só, a da conferência.
+        e = Operacoes.anexarNaAposta(e, "r", anexo.copy(guardadoEm = ms(criada.plusMinutes(21))))
+        val conferir = Pendencias.de(e, criada.plusMinutes(25), fuso).single { it.tipo == Pendencia.Tipo.CONFERENCIA }
+        assertEquals(Pendencias.ABA_COMPROVANTES, conferir.destino)
+        assertTrue(Pendencias.de(e, criada.plusMinutes(25), fuso).none { it.tipo == Pendencia.Tipo.ANEXO })
+        // Aprovada: entra o envio do comprovante (até ser aberto no WhatsApp).
+        e = Operacoes.aprovarAposta(e, "r", ms(criada.plusMinutes(22)))
+        assertTrue(Pendencias.de(e, criada.plusMinutes(25), fuso).none { it.tipo == Pendencia.Tipo.CONFERENCIA })
         val envio = Pendencias.de(e, criada.plusMinutes(25), fuso).single { it.tipo == Pendencia.Tipo.ENVIO }
         val c = e.comprovantes.last()
         assertEquals("comprovante/${c.id}", envio.destino)
@@ -167,6 +183,26 @@ class PendenciasTest {
         // Às 23h nada vai para o celular; às 8h do dia seguinte, vai.
         assertTrue(Pendencias.paraAvisar(p, LocalDateTime.of(2026, 11, 1, 23, 0), emptySet()).isEmpty())
         assertTrue(Pendencias.paraAvisar(p, LocalDateTime.of(2026, 11, 2, 8, 0), emptySet()).isNotEmpty())
+    }
+
+    @Test
+    fun rateioEsperandoOsPix() {
+        var e = Operacoes.registrarAporteMensal(base.copy(lancamentos = listOf(Lancamento("i", LocalDate.of(2026, 10, 1), 0, TipoLancamento.SALDO_INICIAL, 9000))), LocalDate.of(2026, 10, 1), 0)
+        val quando = LocalDateTime.of(2026, 10, 14, 12, 0)
+        e = Operacoes.registrarRateio(e, quando.toLocalDate(), 3000, ms(quando))
+        val p = Pendencias.de(e, quando.plusMinutes(5), fuso).single { it.tipo == Pendencia.Tipo.ANEXO }
+        assertEquals("Anexar os Pix do rateio Nº1", p.titulo)
+        assertEquals("Faltam 3 comprovantes de Pix (R$ 10,00 para cada um).", p.texto)
+        pessoas.forEach { e = Operacoes.anexarPix(e, 1, it.id, anexo) }
+        assertTrue(Pendencias.de(e, quando.plusMinutes(5), fuso).any { it.tipo == Pendencia.Tipo.CONFERENCIA })
+    }
+
+    @Test
+    fun modoIndividualSoTemAsApuracoes() {
+        val individual = base.copy(modo = Modo.INDIVIDUAL, pessoas = pessoas.take(1))
+        // Sem aporte, sem dia de aposta, sem extrato.
+        assertTrue(Pendencias.de(individual, LocalDateTime.of(2026, 10, 31, 12, 0), fuso).isEmpty())
+        assertTrue(Pendencias.de(individual, LocalDateTime.of(2026, 11, 1, 12, 0), fuso).isEmpty())
     }
 
     @Test

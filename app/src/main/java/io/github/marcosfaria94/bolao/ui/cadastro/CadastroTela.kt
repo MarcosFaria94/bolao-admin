@@ -20,6 +20,8 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.Button
@@ -31,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -62,6 +65,9 @@ import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Config
 import io.github.marcosfaria94.bolao.data.Lancamento
+import io.github.marcosfaria94.bolao.data.MAXIMO_DE_INTEGRANTES
+import io.github.marcosfaria94.bolao.data.MINIMO_DE_INTEGRANTES
+import io.github.marcosfaria94.bolao.data.Modo
 import io.github.marcosfaria94.bolao.data.Pessoa
 import io.github.marcosfaria94.bolao.data.Repositorio
 import io.github.marcosfaria94.bolao.data.TipoLancamento
@@ -89,8 +95,25 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
     private val repo: Repositorio = app.bolao.repo
 
     var passo by mutableIntStateOf(0)
+    /** Bolão (o grupo) ou Individual: escolhido no passo 1. */
+    var modo by mutableStateOf(Modo.BOLAO)
     val pessoas = mutableStateListOf(FormPessoa(), FormPessoa(), FormPessoa())
     var administrador by mutableIntStateOf(0)
+    /** Modo individual: o nome de quem usa (opcional). */
+    var nomeIndividual by mutableStateOf("")
+
+    val individual: Boolean get() = modo == Modo.INDIVIDUAL
+
+    /** Passos do cadastro: 1 = modo; no bolão, integrantes, saldo, aporte e termo; no individual, o nome. */
+    val totalPassos: Int get() = if (individual) 2 else 5
+
+    /** Muda a quantidade de integrantes (no mínimo 2), mantendo o que já foi digitado. */
+    fun mudarQuantidade(n: Int) {
+        val alvo = n.coerceIn(MINIMO_DE_INTEGRANTES, MAXIMO_DE_INTEGRANTES)
+        while (pessoas.size < alvo) pessoas += FormPessoa()
+        while (pessoas.size > alvo) pessoas.removeAt(pessoas.lastIndex)
+        if (administrador >= pessoas.size) administrador = 0
+    }
     var saldoInicial by mutableLongStateOf(0L)
     /** Mês do primeiro aporte mensal (null = o padrão, ver [inicioAportes]). */
     var inicioEscolhido by mutableStateOf<YearMonth?>(null)
@@ -121,9 +144,10 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
 
     fun problemasValores(): List<String> = if (aporteMensal <= 0) listOf("Informe o aporte mensal.") else emptyList()
 
-    fun problemasDoPasso(): List<String> = when (passo) {
-        1 -> problemasPessoas()
-        3 -> problemasValores()
+    fun problemasDoPasso(): List<String> = when {
+        individual -> emptyList()
+        passo == 2 -> problemasPessoas()
+        passo == 4 -> problemasValores()
         else -> emptyList()
     }
 
@@ -153,6 +177,10 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
 
     fun concluir(aoErro: (String) -> Unit) {
         if (salvando) return
+        if (individual) {
+            concluirIndividual(aoErro)
+            return
+        }
         val problemas = problemasPessoas() + problemasValores()
         if (problemas.isNotEmpty()) {
             aoErro(problemas.first())
@@ -188,6 +216,7 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 repo.atualizar {
                     it.copy(
+                        modo = Modo.BOLAO,
                         cadastroConcluido = true,
                         cadastradoEm = hoje,
                         inicioAportes = inicioAportes(hoje).toString(),
@@ -205,9 +234,39 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    /** Modo individual: só o nome (opcional); o saldo começa em zero, sem aporte, sem termo. */
+    private fun concluirIndividual(aoErro: (String) -> Unit) {
+        salvando = true
+        viewModelScope.launch {
+            try {
+                val nome = nomeIndividual.trim().ifBlank { "Eu" }
+                val hoje = LocalDate.now()
+                repo.atualizar {
+                    it.copy(
+                        modo = Modo.INDIVIDUAL,
+                        cadastroConcluido = true,
+                        cadastradoEm = hoje,
+                        pessoas = listOf(
+                            Pessoa(
+                                id = Repositorio.novoId(),
+                                nome = nome,
+                                apelido = nome.substringBefore(' '),
+                                chavePix = "",
+                                administrador = true,
+                            ),
+                        ),
+                    )
+                }
+            } catch (t: Throwable) {
+                aoErro("Não foi possível salvar: ${t.message}")
+            } finally {
+                salvando = false
+            }
+        }
+    }
 }
 
-private const val TOTAL_PASSOS = 4
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -243,7 +302,7 @@ fun CadastroTela(vm: CadastroViewModel = viewModel()) {
 
     Scaffold(
         topBar = {
-            BarraTitulo("Cadastro inicial", subtitulo = if (vm.passo > 0) "Passo ${vm.passo} de $TOTAL_PASSOS" else null)
+            BarraTitulo("Cadastro inicial", subtitulo = if (vm.passo > 0) "Passo ${vm.passo} de ${vm.totalPassos}" else null)
         },
         snackbarHost = { SnackbarHost(avisos) },
     ) { padding ->
@@ -256,7 +315,7 @@ fun CadastroTela(vm: CadastroViewModel = viewModel()) {
         ) {
             if (vm.passo > 0) {
                 LinearProgressIndicator(
-                    progress = { vm.passo / TOTAL_PASSOS.toFloat() },
+                    progress = { vm.passo / vm.totalPassos.toFloat() },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -267,17 +326,19 @@ fun CadastroTela(vm: CadastroViewModel = viewModel()) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                when (vm.passo) {
-                    0 -> PassoBoasVindas(
+                when {
+                    vm.passo == 0 -> PassoBoasVindas(
                         restaurando = restaurando,
                         aoComecar = { vm.passo = 1 },
                         aoRestaurar = { confirmarRestaurar = true },
                         preparandoExemplo = preparandoExemplo,
                         aoExperimentar = { ModoTeste.entrar(ctx) },
                     )
-                    1 -> PassoIntegrantes(vm)
-                    2 -> PassoSaldo(vm)
-                    3 -> PassoValores(vm)
+                    vm.passo == 1 -> PassoModo(vm)
+                    vm.individual -> PassoIndividual(vm)
+                    vm.passo == 2 -> PassoIntegrantes(vm)
+                    vm.passo == 3 -> PassoSaldo(vm)
+                    vm.passo == 4 -> PassoValores(vm)
                     else -> PassoTermo(
                         vm,
                         aoEscolherSemAssinatura = { escolherTermoSemAssinatura.launch(arrayOf("application/pdf", "image/*")) },
@@ -296,7 +357,7 @@ fun CadastroTela(vm: CadastroViewModel = viewModel()) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     OutlinedButton(onClick = vm::voltar, modifier = Modifier.weight(1f)) { Text("Voltar") }
-                    if (vm.passo < TOTAL_PASSOS) {
+                    if (vm.passo < vm.totalPassos) {
                         Button(onClick = vm::avancar, modifier = Modifier.weight(1f)) { Text("Continuar") }
                     } else {
                         Button(
@@ -381,11 +442,86 @@ private fun PassoBoasVindas(
     }
 }
 
+/** Passo 1: Bolão (o grupo) ou Individual. */
+@Composable
+private fun PassoModo(vm: CadastroViewModel) {
+    Text("Como vai usar o app?", style = MaterialTheme.typography.titleLarge)
+    OpcaoDeModo(
+        titulo = "Bolão",
+        texto = "Para um grupo de 2 ou mais pessoas, com o termo, os aportes, o rateio, o extrato e os comprovantes " +
+            "enviados ao grupo do WhatsApp.",
+        escolhida = !vm.individual,
+        aoEscolher = { vm.modo = Modo.BOLAO },
+    )
+    OpcaoDeModo(
+        titulo = "Individual",
+        texto = "Só para você, bem enxuto: registra as apostas e os prêmios. O saldo começa em zero e cai a cada aposta " +
+            "(mostra quanto você gastou) e sobe com os prêmios. Sem comprovantes, sem termo; tudo pode ser excluído e o " +
+            "app pode ser apagado a qualquer momento.",
+        escolhida = vm.individual,
+        aoEscolher = { vm.modo = Modo.INDIVIDUAL },
+    )
+}
+
+@Composable
+private fun OpcaoDeModo(titulo: String, texto: String, escolhida: Boolean, aoEscolher: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (escolhida) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = escolhida, onClick = aoEscolher, role = Role.RadioButton),
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
+            RadioButton(selected = escolhida, onClick = null)
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(titulo, style = MaterialTheme.typography.titleMedium)
+                Text(texto, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** Modo individual: o nome (opcional) e o que muda. */
+@Composable
+private fun PassoIndividual(vm: CadastroViewModel) {
+    Text("Modo individual", style = MaterialTheme.typography.titleLarge)
+    OutlinedTextField(
+        value = vm.nomeIndividual,
+        onValueChange = { vm.nomeIndividual = it },
+        label = { Text("Seu nome (opcional)") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Aviso(
+        "O saldo começa em R$ 0,00 e mostra o resultado das suas apostas: cada aposta desconta o preço e cada prêmio soma. " +
+            "Os preços da aposta simples já vêm preenchidos e podem ser mudados em Ajustes.",
+    )
+}
+
 @Composable
 private fun PassoIntegrantes(vm: CadastroViewModel) {
     Text("Integrantes", style = MaterialTheme.typography.titleLarge)
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text("Quantos integrantes?", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        OutlinedIconButton(onClick = { vm.mudarQuantidade(vm.pessoas.size - 1) }, enabled = vm.pessoas.size > MINIMO_DE_INTEGRANTES) {
+            Icon(Icons.Outlined.Remove, contentDescription = "Menos um integrante")
+        }
+        Text(
+            vm.pessoas.size.toString(),
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(horizontal = 14.dp),
+        )
+        OutlinedIconButton(onClick = { vm.mudarQuantidade(vm.pessoas.size + 1) }, enabled = vm.pessoas.size < MAXIMO_DE_INTEGRANTES) {
+            Icon(Icons.Outlined.Add, contentDescription = "Mais um integrante")
+        }
+    }
     Text(
-        "O nome curto aparece nas mensagens, ex.: \"APORTE (Fulano)\". Marque quem é o Administrador.",
+        "No mínimo $MINIMO_DE_INTEGRANTES. Cada um fica com 1/${vm.pessoas.size} de qualquer prêmio e obrigação. " +
+            "O nome curto aparece nas mensagens, ex.: \"APORTE (Fulano)\". Marque quem é o Administrador.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -487,7 +623,7 @@ private fun PassoValores(vm: CadastroViewModel) {
         centavos = vm.aporteMensal,
         aoMudar = { vm.aporteMensal = it },
         rotulo = "Aporte de cada integrante no dia 1º",
-        ajuda = "Total do mês: ${Dinheiro.rs(vm.aporteMensal * 3)}",
+        ajuda = "Total do mês: ${Dinheiro.rs(vm.aporteMensal * vm.pessoas.size)} (${vm.pessoas.size} integrantes)",
         erro = vm.tentouAvancar && vm.aporteMensal <= 0,
         imeAction = ImeAction.Done,
         modifier = Modifier.fillMaxWidth(),
@@ -501,7 +637,7 @@ private fun PassoValores(vm: CadastroViewModel) {
 private fun PassoTermo(vm: CadastroViewModel, aoEscolherSemAssinatura: () -> Unit, aoEscolherAssinado: () -> Unit) {
     Text("Termo", style = MaterialTheme.typography.titleLarge)
     Text(
-        "Anexe o termo sem assinaturas e o termo assinado pelos 3. Se ainda não tiver, pule e anexe depois em Ajustes.",
+        "Anexe o termo sem assinaturas e o termo assinado pelos ${vm.pessoas.size}. Se ainda não tiver, pule e anexe depois em Ajustes.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -526,5 +662,5 @@ private fun PassoTermo(vm: CadastroViewModel, aoEscolherSemAssinatura: () -> Uni
     Text("• Saldo inicial: ${Dinheiro.rs(vm.saldoInicial)}", style = MaterialTheme.typography.bodyMedium)
     Text("• Primeiro aporte mensal: ${Datas.mesAno(vm.inicioAportes(LocalDate.now()))}", style = MaterialTheme.typography.bodyMedium)
     Text("• Aporte mensal: ${Dinheiro.rs(vm.aporteMensal)} por integrante", style = MaterialTheme.typography.bodyMedium)
-    TextButton(onClick = { vm.passo = 1 }) { Text("Corrigir algo") }
+    TextButton(onClick = { vm.passo = 2 }) { Text("Corrigir algo") }
 }

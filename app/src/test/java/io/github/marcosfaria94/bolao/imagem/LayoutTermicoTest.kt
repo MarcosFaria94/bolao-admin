@@ -118,4 +118,37 @@ class LayoutTermicoTest {
         assertEquals("ANEXO: 1 COMPROVANTE DE PIX", LayoutTermico.descricaoAnexos(TipoComprovante.EXTINCAO, 1))
         assertEquals(null, LayoutTermico.descricaoAnexos(TipoComprovante.EXTRATO, 0))
     }
+    @Test
+    fun apuracaoComOsSorteadosEORateioOficial() {
+        val a = io.github.marcosfaria94.bolao.data.Aposta(
+            id = "a", numero = 1, modalidade = Modalidade.QUINA, concurso = 7150, dataAposta = LocalDate.of(2026, 6, 1),
+            valor = 300, numeros = listOf(1, 2, 3, 4, 5), registrada = true, criadaEm = 0,
+        )
+        val ap = io.github.marcosfaria94.bolao.data.Apuracao(
+            acertos = "2/5", premio = 425, dezenasSorteadas = listOf(1, 2, 33, 47, 71), faixasPremiadas = listOf(4),
+            rateioOficial = listOf(
+                io.github.marcosfaria94.bolao.domain.FaixaPremio(1, "5 acertos", 0, 0),
+                io.github.marcosfaria94.bolao.domain.FaixaPremio(4, "2 acertos", 139_870, 425),
+            ),
+            acumulou = true, conferidaEm = 0,
+        )
+        val resultado = Recibos.resultadoDe(a, ap)!!
+        val linhas = LayoutTermico.montar("Bolão dos Amigos", TipoComprovante.APURACAO, bloco, 1, null, null, previa = true, resultado = resultado)
+        val textos = linhas.map { it.texto }
+        // O bloco do termo continua igual ("RESULTADO: (VIDE ANEXO)") e, embaixo, o resultado oficial.
+        assertTrue(textos.contains("RESULTADO: (VIDE ANEXO)"))
+        val i = textos.indexOf("RESULTADO OFICIAL - CONCURSO 7150")
+        assertTrue(i > textos.indexOf("RESULTADO: (VIDE ANEXO)"))
+        assertEquals("SORTEADOS: 01 02 33 47 71", textos[i + 1])
+        assertEquals("ACUMULOU: SIM", textos[i + 2])
+        assertTrue(textos.contains("RATEIO OFICIAL"))
+        // A faixa da aposta em negativo.
+        val premiada = linhas.single { it.texto.startsWith("2 acertos") }
+        assertEquals(Estilo.INVERTIDO, premiada.estilo)
+        assertTrue(premiada.texto, premiada.texto.trimEnd().endsWith("R$ 4,25") && premiada.texto.contains("139.870"))
+        assertTrue(linhas.single { it.texto.startsWith("5 acertos") }.texto.trimEnd().endsWith("-"))
+        // Tudo dentro dos "=" e antes do rodapé.
+        assertTrue(textos.lastIndexOf("=".repeat(48)) > textos.indexOf("RATEIO OFICIAL"))
+        salvar("apuracao-com-resultado", linhas)
+    }
 }

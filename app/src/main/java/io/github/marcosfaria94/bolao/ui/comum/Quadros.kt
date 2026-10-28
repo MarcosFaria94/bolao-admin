@@ -83,8 +83,8 @@ fun QuadroSaldo(
 
 /** Um número do lado direito do quadro do saldo, com o nome em cima: "Provisionado / R$ 30,00". */
 @Composable
-fun Indicador(rotulo: String, valor: String, modifier: Modifier = Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.End) {
+fun Indicador(rotulo: String, valor: String, modifier: Modifier = Modifier, alinharNoFim: Boolean = true) {
+    Column(modifier, horizontalAlignment = if (alinharNoFim) Alignment.End else Alignment.Start) {
         Text(
             rotulo,
             style = MaterialTheme.typography.titleSmall,

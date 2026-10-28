@@ -87,7 +87,7 @@ import java.time.LocalDate
  * volante (com a apuração e os comprovantes); em andamento, ela é a do volante.
  */
 @Composable
-fun ModalidadeTela(estado: Estado, m: Modalidade, aoSair: () -> Unit, apostaId: String? = null) {
+fun ModalidadeTela(estado: Estado, m: Modalidade, aoSair: () -> Unit, apostaId: String? = null, abrir: (String) -> Unit = {}) {
     val app = LocalContext.current.bolao
     val indices = remember { app.indices }
     val itens by indices.itens.collectAsStateWithLifecycle()
@@ -147,7 +147,14 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, aoSair: () -> Unit, apostaId: 
             consultando = premio == null && sorteio == null && atualizando,
         )
         if (registrada != null) {
-            SecaoApostaRegistrada(estado, registrada)
+            SecaoApostaRegistrada(
+                estado, registrada, abrir = abrir,
+                aoSair = {
+                    // Descartada (ou excluída) aqui: o volante desta página não traz a aposta de volta como rascunho.
+                    vm?.esquecer()
+                    aoSair()
+                },
+            )
         } else {
             val v = vm!!
             // A aposta mudada (ou descartada) numa tela aberta por cima desta: a página acompanha.

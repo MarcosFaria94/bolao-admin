@@ -54,7 +54,8 @@ fun volanteCompleto(a: Aposta): Boolean =
 
 /**
  * Regra do rascunho: ao sair da tela, a aposta só fica em "Em andamento" com o volante completo
- * ou com o comprovante da Caixa anexado. Faltando dezena e sem o comprovante, é descartada.
+ * (ou, nas apostas de versões antigas, com o comprovante da Caixa anexado). Faltando dezena, é
+ * descartada. Desde a 0.10 o comprovante da Caixa vem depois do registro (aba Comprovantes).
  */
 fun ficaEmAndamento(a: Aposta): Boolean = a.comprovante != null || volanteCompleto(a)
 
@@ -86,16 +87,11 @@ fun saidaDaTela(a: Aposta, gravada: Aposta?, nova: Boolean): Saida = when {
     gravada?.registrada == true -> Saida.Nada
     ficaEmAndamento(a) -> Saida.EmAndamento(
         if (!nova) null
-        else "Aposta em andamento: " + when {
-            a.comprovante == null -> "falta anexar o comprovante da Caixa."
-            volanteCompleto(a) -> "pronta para registrar."
-            else -> "falta completar o volante."
-        },
+        else "Aposta em andamento: " + if (volanteCompleto(a)) "falta registrar." else "falta completar o volante.",
     )
     else -> Saida.Descartada(
         if (gravada != null || algoEscolhido(a)) {
-            "Aposta descartada: " + (if (a.modalidade.formato == Formato.FEDERAL) "o bilhete" else "o volante") +
-                " ficou incompleto e sem o comprovante da Caixa."
+            "Aposta descartada: " + (if (a.modalidade.formato == Formato.FEDERAL) "o bilhete" else "o volante") + " ficou incompleto."
         } else {
             null
         },
@@ -160,6 +156,14 @@ class ApostaEmEdicao(
             }
         }
         return false
+    }
+
+    /**
+     * A aposta já registrada saiu do app por outro caminho (descartada antes da conferência, ou
+     * excluída no modo individual): ao sair da página, não volta como rascunho.
+     */
+    fun esquecer() {
+        descartada = true
     }
 
     /** "Descartar rascunho": apaga a aposta e o comprovante anexado (a não ser que já tenha sido registrada). */

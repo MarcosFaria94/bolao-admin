@@ -115,9 +115,14 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             val repo = context.bolao.repo
             val a = repo.atual().apostas.firstOrNull { it.id == id } ?: return null
             val ap = a.apuracao ?: return null
-            if (ap.confirmadaEm != null || ap.precisaConfirmar) return null
+            if (ap.confirmadaEm != null || ap.precisaConfirmar || a.pendenteDeAnexo) return null
             val agora = System.currentTimeMillis()
             val hoje = LocalDate.now()
+            // Modo individual: sem comprovante e sem a imagem dos acertos; só o prêmio entra no saldo.
+            if (repo.atual().individual) {
+                repo.atualizar { Operacoes.confirmarApuracao(it, id, ap, hoje, agora) }
+                return null
+            }
             val imagem = repo.guardarGerado("acertos", "acertos-${a.modalidade.sigla}-${a.concurso}.png", "image/png") { f ->
                 ImagemConferencia.salvar(context, a, ap, f)
             }

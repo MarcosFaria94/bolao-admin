@@ -234,7 +234,10 @@ class Repositorio(private val context: Context) {
         e.termo?.let { add(it.nome) }
         e.termoSemAssinatura?.let { add(it.nome) }
         e.apostas.forEach { a -> a.comprovante?.let { add(it.nome) } }
-        e.rateios.forEach { r -> r.comprovantes.forEach { add(it.nome) } }
+        e.rateios.forEach { r ->
+            r.comprovantes.forEach { add(it.nome) }
+            r.pix.values.forEach { add(it.nome) }
+        }
         e.comprovantes.forEach { c ->
             add(c.imagem.nome)
             c.anexos.forEach { add(it.nome) }

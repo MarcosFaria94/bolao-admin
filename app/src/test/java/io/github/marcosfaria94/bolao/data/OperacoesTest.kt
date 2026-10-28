@@ -44,7 +44,7 @@ class OperacoesTest {
             dataSorteio = d(sorteio), premioEstimado = premio, valor = valor, criadaEm = agora(), comprovante = anexo("caixa-$dia.pdf"),
         )
         val comRascunho = Operacoes.salvarRascunho(e, a)
-        val registrado = Operacoes.registrarAposta(comRascunho, a.id, d(dia), agora())
+        val registrado = Operacoes.registrarApostaComComprovante(comRascunho, a.id, d(dia), agora())
         return registrado to registrado.apostas.first { it.id == a.id }
     }
 
@@ -109,9 +109,9 @@ class OperacoesTest {
         assertEquals(3900L, Operacoes.saldo(e))
         assertEquals(2400L, Operacoes.extra(e, d(14)))
         val pix = pessoas.map { anexo("pix-${it.apelido}.png") }
-        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarRateio(e, d(14), 2401, pix, agora()) }
-        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarRateio(e, d(14), 2400, pix.take(2), agora()) }
-        e = Operacoes.registrarRateio(e, d(14), 2400, pix, agora())
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarRateioComPix(e, d(14), 2401, pix, agora()) }
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarRateioComPix(e, d(14), 2400, pix.take(2), agora()) }
+        e = Operacoes.registrarRateioComPix(e, d(14), 2400, pix, agora())
         assertEquals(1500L, Operacoes.saldo(e))
         assertEquals(800L, e.rateios.single().cota)
         assertEquals(ModelosDoTermo.TITULO_RATEIO, e.comprovantes.last().titulo)
@@ -122,7 +122,7 @@ class OperacoesTest {
         )
         assertEquals(1, e.rateios.single().numeroNoMes)
         // Sem extra, não há o que ratear.
-        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarRateio(e, d(14), 1, pix, agora()) }
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarRateioComPix(e, d(14), 1, pix, agora()) }
 
         e = aposta(e, 16, Modalidade.LOTOMANIA, 300).first
         e = aposta(e, 19, Modalidade.QUINA, 300).first
@@ -169,7 +169,7 @@ class OperacoesTest {
             valor = 300, criadaEm = agora(), comprovante = anexo("j.pdf"),
         )
         // O rascunho criado em junho e registrado em 01/07 vira a Nº1 de julho, com a data do registro.
-        e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, julho), "j", LocalDate.of(2026, 7, 1), agora())
+        e = Operacoes.registrarApostaComComprovante(Operacoes.salvarRascunho(e, julho), "j", LocalDate.of(2026, 7, 1), agora())
         val j = e.apostas.first { it.id == "j" }
         assertEquals(1, j.numero)
         assertEquals(LocalDate.of(2026, 7, 1), j.dataAposta)
@@ -177,11 +177,152 @@ class OperacoesTest {
         assertEquals("APOSTA Nº 1 -  01/07/2026", e.comprovantes.last().titulo)
     }
 
+    private fun semComprovante(id: String, dia: Int, m: Modalidade = Modalidade.QUINA, concurso: Int = 7000) = Aposta(
+        id = id, numero = 0, modalidade = m, concurso = concurso, dataAposta = d(dia), dataSorteio = d(dia + 1),
+        valor = 300, numeros = listOf(1, 2, 3, 4, 5), criadaEm = agora(),
+    )
+
     @Test
-    fun apostaSemComprovanteNaoRegistra() {
-        val a = Aposta(id = "a", numero = 0, modalidade = Modalidade.QUINA, concurso = 1, dataAposta = d(1), valor = 300, criadaEm = 0)
-        val e = Operacoes.salvarRascunho(inicial(), a)
-        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarAposta(e, "a", d(1), 1) }
+    fun apostaRegistradaEsperaOComprovanteEPodeSerDescartada() {
+        var e = Operacoes.registrarAporteMensal(inicial(), d(1), agora())
+        listOf("a", "b", "c").forEach { id ->
+            e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, semComprovante(id, 4)), id, d(4), agora())
+        }
+        // Registradas sem o comprovante: o valor já saiu do saldo, mas não há comprovante do bolão.
+        assertEquals(listOf(1, 2, 3), e.apostas.map { it.numero })
+        assertEquals(4000L - 900, Operacoes.saldo(e))
+        assertTrue(e.apostas.all { Operacoes.aguardandoComprovante(it) })
+        assertEquals(1, e.comprovantes.size)
+        assertEquals(listOf("a", "b", "c"), Operacoes.apostasSemComprovante(e).map { it.id })
+        // Sem a conferência não dá para apurar nem fechar o mês.
+        assertThrows(IllegalArgumentException::class.java) {
+            Operacoes.confirmarApuracao(e, "a", Apuracao("0/5", 0, conferidaEm = 0), d(6), agora())
+        }
+        assertNotNull(Operacoes.impedimentoDoExtrato(e, junho, d(30)))
+        assertTrue(Operacoes.impedimentosDaExtincao(e).any { it.contains("esperando") })
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.aprovarAposta(e, "a", agora()) }
+
+        // Descartar a do meio: o valor volta e a de depois sobe um número.
+        e = Operacoes.descartarAposta(e, "b")
+        assertEquals(listOf("a" to 1, "c" to 2), e.apostas.map { it.id to it.numero })
+        assertEquals(4000L - 600, Operacoes.saldo(e))
+        assertTrue(e.lancamentos.none { it.apostaId == "b" })
+
+        // Comprovante anexado (com os números corrigidos) e conferência: sai o comprovante do bolão.
+        val caixa = anexo("caixa-a.pdf")
+        val ajustada = e.apostas.first { it.id == "a" }.copy(numeros = listOf(6, 7, 8, 9, 10))
+        e = Operacoes.anexarNaAposta(e, "a", caixa, ajustada, listOf("Números: no app 01 02 03 04 05; no comprovante 06 07 08 09 10."))
+        assertTrue(Operacoes.aguardandoConferencia(e.apostas.first { it.id == "a" }))
+        assertEquals(listOf("a"), Operacoes.apostasParaConferir(e).map { it.id })
+        e = Operacoes.desanexarDaAposta(e, "a")
+        assertTrue(Operacoes.aguardandoComprovante(e.apostas.first { it.id == "a" }))
+        e = Operacoes.anexarNaAposta(e, "a", caixa, ajustada)
+        e = Operacoes.aprovarAposta(e, "a", agora())
+        val a = e.apostas.first { it.id == "a" }
+        assertFalse(a.pendenteDeAnexo)
+        assertEquals(listOf(6, 7, 8, 9, 10), a.numeros)
+        val c = e.comprovantes.last()
+        assertEquals(TipoComprovante.APOSTA, c.tipo)
+        assertEquals("APOSTA Nº 1 -  04/06/2026", c.titulo)
+        assertTrue(c.texto.contains("SALDO ATUAL:   R$ 40,00"))
+        assertEquals(listOf(caixa), c.anexos)
+        // Conferida, não pode mais ser descartada; a "c" ainda pode (e a "a" não muda de número).
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.descartarAposta(e, "a") }
+        e = Operacoes.descartarAposta(e, "c")
+        assertEquals(listOf("a" to 1), e.apostas.map { it.id to it.numero })
+        // Com o buraco depois de uma conferida, o próximo número não repete nenhum.
+        assertEquals(2, Operacoes.proximoNumero(e, d(7)))
+        assertNull(Operacoes.primeiraAutenticacaoQuebrada(e))
+        assertTrue(Integridade.registrosSemComprovante(e).isEmpty())
+    }
+
+    @Test
+    fun descarteNaoRenumeraDepoisDeUmaConferida() {
+        var e = Operacoes.registrarAporteMensal(inicial(), d(1), agora())
+        listOf("a", "b").forEach { id -> e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, semComprovante(id, 4)), id, d(4), agora()) }
+        e = Operacoes.aprovarAposta(Operacoes.anexarNaAposta(e, "b", anexo("b.pdf")), "b", agora())
+        e = Operacoes.descartarAposta(e, "a")
+        // A Nº2 já tem comprovante com o número dela: fica o buraco, e a próxima é a Nº3.
+        assertEquals(listOf("b" to 2), e.apostas.map { it.id to it.numero })
+        assertEquals(3, Operacoes.proximoNumero(e, d(7)))
+    }
+
+    @Test
+    fun rateioEsperaOsPixEAConferencia() {
+        var e = Operacoes.registrarAporteMensal(inicial().copy(lancamentos = listOf(Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 5000))), d(1), agora())
+        e = Operacoes.registrarRateio(e, d(14), 2400, agora())
+        val r = e.rateios.single()
+        assertTrue(r.pendenteDeAnexo)
+        assertEquals(800L, r.cota)
+        assertEquals(8000L - 2400, Operacoes.saldo(e))
+        assertEquals(listOf(r.numero), Operacoes.rateiosSemPix(e).map { it.numero })
+        // Um Pix por integrante; com todos, vai para a conferência.
+        pessoas.take(2).forEach { p -> e = Operacoes.anexarPix(e, r.numero, p.id, anexo("pix-${p.apelido}.png")) }
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.aprovarRateio(e, r.numero, agora()) }
+        e = Operacoes.anexarPix(e, r.numero, "p3", anexo("pix-Beltrano.png"))
+        assertEquals(listOf(r.numero), Operacoes.rateiosParaConferir(e).map { it.numero })
+        // Descartar antes da conferência: o valor volta.
+        val descartado = Operacoes.descartarRateio(e, r.numero)
+        assertEquals(8000L, Operacoes.saldo(descartado))
+        assertTrue(descartado.rateios.isEmpty())
+        // Aprovado: o comprovante do bolão com os 3 Pix na ordem dos integrantes.
+        e = Operacoes.aprovarRateio(e, r.numero, agora())
+        val c = e.comprovantes.last()
+        assertEquals(TipoComprovante.RATEIO, c.tipo)
+        assertEquals("RATEIO Nº1 - 14/06/26", c.titulo)
+        assertEquals(listOf("pix-Fulano.png", "pix-Beto.png", "pix-Beltrano.png"), c.anexos.map { it.nome })
+        assertTrue(c.texto.contains("SALDO ATUAL:   R$ 80,00"))
+        assertFalse(e.rateios.single().pendenteDeAnexo)
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.descartarRateio(e, r.numero) }
+        assertNull(Operacoes.primeiraAutenticacaoQuebrada(e))
+    }
+
+    @Test
+    fun concursoQueJaPassouAcompanhaACaixa() {
+        var e = Operacoes.registrarAporteMensal(inicial(), d(1), agora())
+        // Em andamento, no concurso 3075; registrada depois do sorteio do 3075 (o app estava desatualizado).
+        val rascunho = semComprovante("r", 25, Modalidade.MEGA_SENA, 3075)
+        val atrasada = semComprovante("x", 25, Modalidade.MEGA_SENA, 3075).copy(dataSorteio = d(24))
+        e = Operacoes.salvarRascunho(e, rascunho)
+        e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, atrasada), "x", d(25), agora())
+        // Registrada para o sorteio de amanhã: continua (o comprovante da Caixa diz o concurso).
+        val emDia = semComprovante("y", 25, Modalidade.MEGA_SENA, 3076).copy(dataSorteio = d(26))
+        e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, emDia), "y", d(25), agora())
+        val proximo = Operacoes.ProximoConcurso(3076, d(27), 3_000_000_00)
+        val (novo, mudadas) = Operacoes.atualizarConcursos(e, mapOf(Modalidade.MEGA_SENA to proximo))
+        assertEquals(setOf("r", "x"), mudadas.map { it.first.id }.toSet())
+        assertEquals(3076, novo.apostas.first { it.id == "r" }.concurso)
+        assertEquals(d(27), novo.apostas.first { it.id == "x" }.dataSorteio)
+        assertEquals(3076, novo.apostas.first { it.id == "y" }.concurso)
+        assertEquals(d(26), novo.apostas.first { it.id == "y" }.dataSorteio)
+        // A Loteca não muda sozinha (os jogos são outros).
+        assertFalse(Operacoes.concursoDesatualizado(semComprovante("l", 25, Modalidade.LOTECA, 1200), 1201))
+        // Sem nada a mudar, o estado é o mesmo.
+        assertTrue(Operacoes.atualizarConcursos(novo, mapOf(Modalidade.MEGA_SENA to proximo)).second.isEmpty())
+    }
+
+    @Test
+    fun modoIndividual() {
+        var e = Estado(
+            cadastroConcluido = true, cadastradoEm = d(1), modo = Modo.INDIVIDUAL,
+            pessoas = listOf(Pessoa("eu", "Fulano", "Fulano", "", administrador = true)),
+        )
+        e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, semComprovante("a", 3)), "a", d(3), agora())
+        e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, semComprovante("b", 5)), "b", d(5), agora())
+        // Sem comprovante e já valendo: o saldo começa em zero e fica negativo.
+        assertEquals(-600L, Operacoes.saldo(e))
+        assertTrue(e.apostas.none { it.pendenteDeAnexo })
+        assertTrue(e.comprovantes.isEmpty())
+        e = Operacoes.confirmarApuracao(e, "a", Apuracao("3/5", 1100, conferidaEm = 0), d(5), agora())
+        assertEquals(500L, Operacoes.saldo(e))
+        assertTrue(e.comprovantes.isEmpty())
+        // Tudo pode ser excluído (a aposta e o prêmio dela).
+        e = Operacoes.descartarAposta(e, "a")
+        assertEquals(-300L, Operacoes.saldo(e))
+        assertEquals(listOf("b" to 1), e.apostas.map { it.id to it.numero })
+        assertTrue(Operacoes.impedimentosDaExtincao(e).isEmpty())
+        assertTrue(Integridade.registrosSemComprovante(e).isEmpty())
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.registrarRateio(e, d(14), 100, agora()) }
     }
 
     @Test
@@ -262,8 +403,8 @@ class OperacoesTest {
         assertEquals("APORTE Nº 2 - 10/06/2026", e.comprovantes.last().titulo)
         assertEquals("APORTE Nº2 - JUN/2026", e.comprovantes.last().texto.lines().first())
         assertEquals("TIPO DE APORTE: ADICIONAL", e.comprovantes.last().texto.lines()[2])
-        e = Operacoes.registrarRateio(e, d(20), 300, pix, agora())
-        e = Operacoes.registrarRateio(e, d(20), 300, pix, agora())
+        e = Operacoes.registrarRateioComPix(e, d(20), 300, pix, agora())
+        e = Operacoes.registrarRateioComPix(e, d(20), 300, pix, agora())
         assertEquals("RATEIO Nº2 - 20/06/26", e.comprovantes.last().titulo)
         assertEquals("RATEIO Nº2 - JUN/2026", e.comprovantes.last().texto.lines().first())
         // Julho: tudo volta ao Nº1 (a chave interna do rateio continua corrida).
@@ -272,7 +413,7 @@ class OperacoesTest {
         assertEquals("RATEIO Nº1 - 01/07/26", Operacoes.tituloRateio(e, julho))
         e = Operacoes.registrarAporteMensal(e, julho, agora())
         assertEquals("APORTE Nº 1 - 01/07/2026", e.comprovantes.last().titulo)
-        e = Operacoes.registrarRateio(e, julho, 300, pix, agora())
+        e = Operacoes.registrarRateioComPix(e, julho, 300, pix, agora())
         assertEquals("RATEIO Nº1 - 01/07/26", e.comprovantes.last().titulo)
         assertEquals(listOf(1, 2, 3), e.rateios.map { it.numero })
         assertEquals(listOf(1, 2, 1), e.rateios.map { it.numeroNoMes })

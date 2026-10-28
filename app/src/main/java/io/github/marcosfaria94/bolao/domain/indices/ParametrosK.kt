@@ -34,9 +34,22 @@ data class FaixaK(
     val cascata: Boolean = false,
     /** Prêmio fixo, em reais. */
     val valor: Double = 0.0,
+    /**
+     * Frações que valeram antes da regra atual: (até o concurso, fração). A Caixa muda a divisão
+     * entre as faixas de vez em quando (Mega-Sena: quina e quadra de 13% e 15% para 10% e 10% a
+     * partir do concurso 3073); assim os concursos antigos continuam conferindo com a regra deles.
+     */
+    val fracoesAnteriores: List<Pair<Int, Double>> = emptyList(),
 ) {
     val fixo: Boolean get() = tipo == "fixo"
     val rateio: Boolean get() = tipo == "rateio"
+
+    /** Fração da faixa no concurso [numero]: a regra que valia nele (e a dos concursos de final 0). */
+    fun fracaoNo(numero: Int): Double {
+        fracoesAnteriores.sortedBy { it.first }.firstOrNull { numero <= it.first }?.let { return it.second }
+        if (fracaoFinalZero != null && numero % 10 == 0) return fracaoFinalZero
+        return fracao
+    }
 }
 
 data class VendasK(
@@ -120,6 +133,12 @@ data class ParametrosK(
                         herdaMesmaFaixa = f.booleano("herda_mesma_faixa") ?: false,
                         cascata = f.booleano("cascata") ?: false,
                         valor = f.numOuNull("valor") ?: 0.0,
+                        fracoesAnteriores = f.lista("fracoes_anteriores").mapNotNull { e ->
+                            val h = e as? JsonObject ?: return@mapNotNull null
+                            val ate = h.inteiro("ate_concurso") ?: return@mapNotNull null
+                            val fr = h.numOuNull("fracao") ?: return@mapNotNull null
+                            ate to fr
+                        },
                     )
                 },
                 vendas = VendasK(

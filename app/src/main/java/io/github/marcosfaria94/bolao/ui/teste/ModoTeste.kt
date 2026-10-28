@@ -5,6 +5,10 @@ import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.DadosDeExemplo
+import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.data.Operacoes
+import io.github.marcosfaria94.bolao.domain.Formato
+import io.github.marcosfaria94.bolao.domain.Volante
 import io.github.marcosfaria94.bolao.domain.Autenticacao
 import io.github.marcosfaria94.bolao.data.Pessoa
 import io.github.marcosfaria94.bolao.domain.Concurso
@@ -26,6 +30,7 @@ import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
+import kotlin.random.Random
 
 /**
  * Liga e desliga o modo de teste. Os dados de exemplo ficam num espaço separado
@@ -57,7 +62,8 @@ object ModoTeste {
                         fuso = ZoneId.systemDefault(),
                         reais = reais,
                         pessoas = real.pessoas.takeIf { real.cadastroConcluido },
-                        semente = agora,
+                        semente = System.nanoTime() xor agora,
+                        modo = if (real.cadastroConcluido) real.modo else io.github.marcosfaria94.bolao.data.Modo.BOLAO,
                     )
                 }
                 app.repo.entrarNoTeste(exemplo) { pasta, e ->
@@ -139,6 +145,46 @@ object ModoTeste {
             guardadoEm = System.currentTimeMillis(),
             sha256 = Autenticacao.sha256(arquivo.readBytes()),
         )
+    }
+
+    /**
+     * Comprovantes fictícios de tudo o que espera comprovante (as apostas registradas e os Pix dos
+     * rateios), com o texto de cada um, para a aba Comprovantes. Para variar, às vezes um deles vem
+     * com outros números (a aposta é alterada pelo comprovante) e às vezes um vem repetido.
+     */
+    suspend fun comprovantesDeExemplo(context: Context, e: Estado): List<Pair<Arquivo, String>> = withContext(Dispatchers.IO) {
+        val r = Random(System.nanoTime())
+        val pasta = context.bolao.repo.pastaArquivos
+        fun novo(prefixo: String, nomeOriginal: String, desenhar: (File) -> String): Pair<Arquivo, String> {
+            val nome = "${DadosDeExemplo.PREFIXO}$prefixo-${UUID.randomUUID().toString().take(8)}.png"
+            val arquivo = File(pasta, nome)
+            val texto = desenhar(arquivo)
+            return Arquivo(nome, nomeOriginal, "image/png", System.currentTimeMillis(), Autenticacao.sha256(arquivo.readBytes())) to texto
+        }
+        val apostas = Operacoes.apostasSemComprovante(e)
+        val alterar = if (apostas.isNotEmpty() && r.nextInt(100) < 35) apostas.random(r).id else null
+        val lista = mutableListOf<Pair<Arquivo, String>>()
+        apostas.forEach { a ->
+            val jogo = if (a.id == alterar && a.modalidade.formato == Formato.NUMEROS) {
+                a.copy(numeros = Volante.sortear(a.modalidade, r).numeros)
+            } else {
+                a
+            }
+            lista += novo("comprovante", "comprovante-caixa-${a.modalidade.sigla}-${a.concurso}.png") { f -> ImagensDeExemplo.comprovanteAposta(f, jogo) }
+        }
+        Operacoes.rateiosSemPix(e).forEach { rt ->
+            e.pessoas.filter { !rt.pix.containsKey(it.id) }.forEach { p ->
+                lista += novo("pix", "pix-${p.apelido}.png") { f -> ImagensDeExemplo.pix(f, p.apelido, p.chavePix, rt.cota, rt.data) }
+            }
+        }
+        // De vez em quando, o mesmo arquivo escolhido duas vezes (o app descarta a repetição).
+        if (lista.isNotEmpty() && r.nextInt(100) < 25) {
+            val (arq, texto) = lista.random(r)
+            val copia = "${DadosDeExemplo.PREFIXO}copia-${UUID.randomUUID().toString().take(8)}.png"
+            File(pasta, arq.nome).copyTo(File(pasta, copia))
+            lista += arq.copy(nome = copia) to texto
+        }
+        lista.shuffled(r)
     }
 
     /** Comprovante fictício de um Pix (rateio ou divisão final), no modo de teste. */

@@ -1,7 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
 import android.content.ActivityNotFoundException
-import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -44,29 +43,24 @@ object Compartilhar {
      * Abre o WhatsApp com o texto e os anexos prontos (o Administrador escolhe o grupo e envia).
      * Com [texto] vazio vão só os anexos (o "Saldo atual" do termo não tem mensagem).
      * Devolve false se não deu para abrir.
+     *
+     * Até a 0.9 ia junto um ClipData "text/uri-list" montado à mão: o WhatsApp lia esse ClipData
+     * (de tipo texto) e mandava só o texto, sem a imagem. Agora o Android monta o ClipData a partir
+     * dos anexos (com o tipo certo de cada um) e a leitura dos arquivos é liberada para o WhatsApp.
      */
     fun whatsapp(context: Context, texto: String, anexos: List<Anexo> = emptyList()): Boolean {
         val mensagem = comAvisoDeTeste(context, texto)
         val uris = anexos.map { uri(context, it.arquivo) }
-        val intent = when (uris.size) {
-            0 -> Intent(Intent.ACTION_SEND).setType("text/plain")
-            1 -> Intent(Intent.ACTION_SEND).setType(anexos[0].mime).putExtra(Intent.EXTRA_STREAM, uris[0])
-            else -> Intent(Intent.ACTION_SEND_MULTIPLE)
-                .setType(if (anexos.all { it.mime.startsWith("image/") }) "image/*" else "*/*")
-                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
-        }
-        if (mensagem.isNotBlank()) intent.putExtra(Intent.EXTRA_TEXT, mensagem)
-        if (uris.isNotEmpty()) {
-            val clip = ClipData.newRawUri("anexo", uris[0])
-            uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
-            intent.clipData = clip
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            // Se o WhatsApp não puser o texto junto dos anexos, é só colar.
-            if (mensagem.isNotBlank()) copiar(context, "Mensagem do bolão", mensagem)
-        }
+        val intent = intentDeEnvio(mensagem, uris, anexos.map { it.mime })
         val pacote = PACOTES_WHATSAPP.firstOrNull { instalado(context, it) }
+        if (anexos.isNotEmpty() && mensagem.isNotBlank()) {
+            // Se o WhatsApp não puser o texto junto dos anexos, é só colar.
+            copiar(context, "Mensagem do bolão", mensagem)
+        }
         return try {
             if (pacote != null) {
+                // Libera a leitura dos anexos para o WhatsApp inteiro (ele passa o arquivo para outras partes dele ao enviar).
+                uris.forEach { context.grantUriPermission(pacote, it, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 context.startActivity(intent.setPackage(pacote).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } else {
                 context.startActivity(Intent.createChooser(intent, "Enviar").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -76,6 +70,27 @@ object Compartilhar {
             Toast.makeText(context, "Não encontrei o WhatsApp neste celular.", Toast.LENGTH_LONG).show()
             false
         }
+    }
+
+    // Tipo do envio: o do anexo (um só), image/* (só imagens) ou qualquer tipo (imagem e PDF juntos).
+    fun tipoDoEnvio(mimes: List<String>): String = when {
+        mimes.isEmpty() -> "text/plain"
+        mimes.size == 1 -> mimes[0]
+        mimes.all { it.startsWith("image/") } -> "image/*"
+        else -> "*/*"
+    }
+
+    /** A mensagem com os anexos, sem ClipData feito à mão (o Android monta o ClipData com o tipo de cada anexo). */
+    private fun intentDeEnvio(mensagem: String, uris: List<Uri>, mimes: List<String>): Intent {
+        val tipo = tipoDoEnvio(mimes)
+        val intent = when (uris.size) {
+            0 -> Intent(Intent.ACTION_SEND).setType(tipo)
+            1 -> Intent(Intent.ACTION_SEND).setType(tipo).putExtra(Intent.EXTRA_STREAM, uris[0])
+            else -> Intent(Intent.ACTION_SEND_MULTIPLE).setType(tipo).putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+        }
+        if (mensagem.isNotBlank()) intent.putExtra(Intent.EXTRA_TEXT, mensagem)
+        if (uris.isNotEmpty()) intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        return intent
     }
 
     /** Anexos que vão ao grupo: a imagem do comprovante e os anexos originais, sem mudança. */

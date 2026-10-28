@@ -130,6 +130,10 @@ fun corAguardando(): Color = if (isSystemInDarkTheme()) Color(0xFF7CC4FF) else C
 @Composable
 fun corApuracao(): Color = if (isSystemInDarkTheme()) Color(0xFFFFB74D) else Color(0xFFB26A00)
 
+/** Roxo do que está esperando a conferência (comprovante anexado, falta aprovar). */
+@Composable
+fun corConferir(): Color = if (isSystemInDarkTheme()) Color(0xFFC4A7FF) else Color(0xFF6D3FD0)
+
 /** Amarelo-ouro do valor das apostas nas movimentações. */
 @Composable
 fun corAposta(): Color = if (isSystemInDarkTheme()) Dourado else Color(0xFF9A6A00)

@@ -33,55 +33,73 @@ class DadosDeExemploTest {
         assertFalse(e.comprovantes.map { it.autenticacao } == com.comprovantes.map { it.autenticacao })
     }
 
+    /** As apostas dos dias programados (as que esperam o comprovante ficam de fora). */
+    private fun programadas(e: Estado) = e.apostas.filter { !it.pendenteDeAnexo }
+
     @Test
     fun exemploDe17DeOutubro() {
         val hoje = LocalDate.of(2026, 10, 17)
         val e = gerar(hoje)
         assertTrue(e.exemplo)
         assertTrue(e.cadastroConcluido)
-        assertEquals(DadosDeExemplo.PESSOAS, e.pessoas)
+        // De 2 a 5 integrantes fictícios, o Administrador primeiro.
+        assertTrue(e.pessoas.size in 2..5)
+        assertEquals(DadosDeExemplo.NOMES.take(e.pessoas.size), e.pessoas)
 
         // 10 apostas em setembro e 6 em outubro (dias 1 a 16); a de hoje fica para quem testa.
-        assertEquals(16, e.apostas.size)
-        assertEquals((1..10).toList() + (1..6).toList(), e.apostas.map { it.numero })
-        val pendentes = e.apostas.filter { it.apuracao == null }
+        val p = programadas(e)
+        assertEquals(16, p.size)
+        assertEquals((1..10).toList() + (1..6).toList(), p.map { it.numero })
+        val pendentes = p.filter { it.apuracao == null }
         assertEquals(1, pendentes.size)
         assertEquals(LocalDate.of(2026, 10, 16), pendentes.single().dataAposta)
         assertTrue(pendentes.single().dataSorteio!!.isBefore(hoje))
 
-        // Setembro: 10,02 + 30,00 + 14,00 − 30,00 − 24,00 + 0,03 = 0,05.
+        // Uma ou duas premiadas em setembro.
         val setembro = YearMonth.of(2026, 9)
-        val ateSetembro = e.lancamentos.filter { !YearMonth.from(it.data).isAfter(setembro) }
-        assertEquals(5L, ateSetembro.sumOf { it.valor })
-        // Outubro até o dia 16: 0,05 + 30,00 + 7,00 − 19,00 = 18,05.
-        assertEquals(1805L, Operacoes.saldo(e))
-
-        assertEquals(1, e.rateios.size)
-        assertEquals(800L, e.rateios.single().cota)
+        val premiadasSetembro = p.filter { YearMonth.from(it.dataAposta) == setembro && (it.apuracao?.premio ?: 0) > 0 }
+        assertTrue(premiadasSetembro.size in 1..2)
         assertEquals(listOf("2026-09"), e.extratos.map { it.mes })
-        assertEquals(DadosDeExemplo.RENDIMENTO_ANTERIOR, Operacoes.rendimentoDoMes(e, setembro))
-        assertEquals(EXTRATO_SETEMBRO, Operacoes.textoExtrato(e, setembro))
+        assertTrue(Operacoes.rendimentoDoMes(e, setembro) in 1..DadosDeExemplo.RENDIMENTO_MAXIMO)
+        conferirCoerencia(hoje, e, instante(hoje))
+    }
 
-        // Rateio hoje: faltam 19, 22, 25 e 28 (4 × R$ 3,00); Extra = 18,05 − 12,00; cota = 6,05 ÷ 3 = 2,01.
-        val s = Operacoes.provisao(e, hoje)
-        assertEquals(1200L, s.provisionado)
-        assertEquals(605L, Operacoes.extra(e, hoje))
-        assertEquals(201L, Operacoes.calcularRateio(e, hoje, Operacoes.extra(e, hoje)).cota)
+    @Test
+    fun cadaExemploSaiDiferente() {
+        val hoje = LocalDate.of(2026, 10, 17)
+        val exemplos = (1L..12L).map { DadosDeExemplo.gerar(hoje, instante(hoje, 12), fuso, semente = it) }
+        // Modalidades, integrantes e valores variam de um exemplo para outro.
+        assertTrue(exemplos.map { e -> e.apostas.map { it.modalidade } }.distinct().size > 6)
+        assertTrue(exemplos.map { it.pessoas.size }.distinct().size > 1)
+        assertTrue(exemplos.map { Operacoes.saldo(it) }.distinct().size > 6)
+        // Às vezes há o que anexar na aba Comprovantes (aposta sem comprovante ou rateio sem Pix).
+        assertTrue(exemplos.any { Operacoes.apostasSemComprovante(it).isNotEmpty() })
+        assertTrue(exemplos.any { Operacoes.rateiosSemPix(it).isNotEmpty() || Operacoes.rateiosParaConferir(it).isNotEmpty() })
+        exemplos.forEach { conferirCoerencia(hoje, it, instante(hoje, 12)) }
+    }
 
-        // Comprovantes: 2 aportes (só registrados), 16 apostas, 15 apurações, 1 rateio e 1 extrato.
-        val porTipo = e.comprovantes.groupingBy { it.tipo }.eachCount()
-        assertEquals(mapOf(
-            TipoComprovante.APORTE to 2, TipoComprovante.APOSTA to 16, TipoComprovante.APURACAO to 15,
-            TipoComprovante.RATEIO to 1, TipoComprovante.EXTRATO to 1,
-        ), porTipo)
-        // Todos os que vão ao grupo já foram enviados; a corrente de autenticação está íntegra.
-        assertTrue(Operacoes.comprovantesPendentesDeEnvio(e).isEmpty())
-        assertNull(Operacoes.primeiraAutenticacaoQuebrada(e))
-        assertTrue(e.comprovantes.single { it.tipo == TipoComprovante.EXTRATO }.texto == EXTRATO_SETEMBRO)
-
-        // A primeira aposta de outubro teve prêmio (11 acertos na Lotofácil).
-        val premiadas = e.apostas.filter { (it.apuracao?.premio ?: 0) > 0 }
-        assertEquals(listOf("12/15" to 1400L, "11/15" to 700L), premiadas.map { it.apuracao!!.acertos to it.apuracao!!.premio })
+    @Test
+    fun exemploDoModoIndividual() {
+        var d = LocalDate.of(2026, 1, 1)
+        while (d.isBefore(LocalDate.of(2027, 1, 1))) {
+            val e = DadosDeExemplo.gerar(d, instante(d, 12), fuso, semente = d.toEpochDay(), modo = Modo.INDIVIDUAL)
+            val msg = "dia $d"
+            assertTrue(msg, e.individual && e.exemplo)
+            assertEquals(msg, 1, e.pessoas.size)
+            assertTrue(msg, e.comprovantes.isEmpty())
+            assertTrue(msg, e.rateios.isEmpty() && e.extratos.isEmpty())
+            assertTrue(msg, e.lancamentos.all { it.tipo == TipoLancamento.APOSTA || it.tipo == TipoLancamento.PREMIO })
+            assertTrue(msg, e.apostas.all { it.registrada && !it.pendenteDeAnexo && it.comprovante == null && it.dataAposta.isBefore(d) })
+            // O saldo é o gasto menos os prêmios (começa em zero).
+            assertEquals(msg, e.lancamentos.sumOf { it.valor }, Operacoes.saldo(e))
+            val esperando = e.apostas.single { it.apuracao == null }
+            assertEquals(msg, e.apostas.maxOf { it.dataAposta }, esperando.dataAposta)
+            assertTrue(msg, e.apostas.any { (it.apuracao?.premio ?: 0) > 0 })
+            e.apostas.groupBy { YearMonth.from(it.dataAposta) }.values.forEach { doMes ->
+                assertEquals(msg, (1..doMes.size).toList(), doMes.sortedBy { it.dataAposta }.map { it.numero })
+            }
+            d = d.plusDays(7)
+        }
     }
 
     @Test
@@ -107,32 +125,47 @@ class DadosDeExemploTest {
             saldo += it.valor
             assertTrue("$msg: saldo negativo em ${it.data}", saldo >= 0)
         }
-        // Todas registradas, com comprovante e numeração do mês em sequência.
-        assertTrue(msg, e.apostas.all { it.registrada && it.comprovante != null })
+        // Todas registradas; as conferidas com o comprovante; numeração do mês em sequência.
+        assertTrue(msg, e.apostas.all { it.registrada })
+        assertTrue(msg, e.apostas.filter { !it.pendenteDeAnexo }.all { it.comprovante != null })
         e.apostas.groupBy { YearMonth.from(it.dataAposta) }.values.forEach { doMes ->
             assertEquals(msg, (1..doMes.size).toList(), doMes.map { it.numero })
         }
         assertNull(msg, Operacoes.primeiraAutenticacaoQuebrada(e))
         assertTrue(msg, Operacoes.comprovantesPendentesDeEnvio(e).isEmpty())
-        // Só a última fica esperando a apuração, já sorteada.
-        val pendente = e.apostas.single { it.apuracao == null }
-        assertEquals(msg, e.apostas.maxOf { it.dataAposta }, pendente.dataAposta)
+        assertTrue(msg, Integridade.registrosSemComprovante(e).isEmpty())
+        // Só a última aposta programada espera a apuração, já sorteada; a que espera o comprovante, o sorteio.
+        val p = programadas(e)
+        val pendente = p.single { it.apuracao == null }
+        assertEquals(msg, p.maxOf { it.dataAposta }, pendente.dataAposta)
         assertTrue(msg, pendente.dataSorteio!!.isBefore(hoje))
         assertFalse(msg, pendente.dataSorteio!!.isBefore(pendente.dataAposta))
+        e.apostas.filter { it.pendenteDeAnexo }.forEach { a ->
+            assertNull(msg, a.apuracao)
+            assertNull(msg, a.comprovante)
+            assertFalse(msg, a.dataSorteio!!.isBefore(hoje))
+            assertEquals(msg, hoje.minusDays(1), a.dataAposta)
+        }
+        assertTrue(msg, e.apostas.count { it.pendenteDeAnexo } <= 1)
         // As outras foram conferidas com o próprio volante.
         e.apostas.filter { it.apuracao != null }.forEach { a ->
             assertNotNull(msg, a.apuracao!!.confirmadaEm)
             assertTrue(msg, a.apuracao!!.dezenasSorteadas.isNotEmpty())
             assertTrue("$msg: palpite incompleto", Volante.pendencias(a.modalidade, a.palpite).isEmpty())
         }
-        assertTrue(msg, Volante.pendencias(pendente.modalidade, pendente.palpite).isEmpty())
-        // Rateio do mês anterior e extrato do mês anterior.
-        assertEquals(msg, 800L, e.rateios.single().cota)
-        assertEquals(msg, listOf(YearMonth.from(hoje).minusMonths(1).toString()), e.extratos.map { it.mes })
-        // Anexos com nomes únicos: comprovante de cada aposta, imagem de cada apuração e os 3 Pix.
+        assertTrue(msg, e.apostas.all { Volante.pendencias(it.modalidade, it.palpite).isEmpty() })
+        // Rateio: no máximo um conferido no mês anterior e um esperando os Pix ontem; extrato do mês anterior.
+        val anterior = YearMonth.from(hoje).minusMonths(1)
+        assertTrue(msg, e.rateios.count { !it.pendenteDeAnexo } <= 1)
+        assertTrue(msg, e.rateios.filter { !it.pendenteDeAnexo }.all { YearMonth.from(it.data) == anterior && it.cota > 0 })
+        assertTrue(msg, e.rateios.filter { it.pendenteDeAnexo }.all { it.data == hoje.minusDays(1) && it.pix.size < e.pessoas.size })
+        assertEquals(msg, listOf(anterior.toString()), e.extratos.map { it.mes })
+        // Anexos com nomes únicos: comprovante de cada aposta conferida, imagem de cada apuração e os Pix.
         val anexos = DadosDeExemplo.anexos(e).map { it.nome }
         assertEquals(msg, anexos.size, anexos.distinct().size)
-        assertEquals(msg, e.apostas.size + (e.apostas.size - 1) + 3, anexos.size)
+        val conferidas = e.apostas.count { !it.pendenteDeAnexo }
+        val pix = e.rateios.sumOf { if (it.pendenteDeAnexo) it.pix.size else it.comprovantes.size }
+        assertEquals(msg, conferidas + (conferidas - 1) + pix, anexos.size)
         val imagens = e.comprovantes.map { it.imagem.nome }
         assertEquals(msg, imagens.size, imagens.distinct().size)
         // As mensagens saem sem erro e as apostas registradas nunca passaram do saldo.
@@ -142,7 +175,7 @@ class DadosDeExemploTest {
             Operacoes.textoAposta(e, a, hoje)
         }
         Operacoes.textoExtrato(e, YearMonth.from(hoje))
-        Operacoes.textoExtrato(e, YearMonth.from(hoje).minusMonths(1))
+        Operacoes.textoExtrato(e, anterior)
     }
 
     @Test
@@ -150,12 +183,12 @@ class DadosDeExemploTest {
         val hoje = LocalDate.of(2026, 10, 17)
         val lf = concursoReal(Modalidade.LOTOFACIL, 3600, LocalDate.of(2026, 10, 16))
         val e = gerar(hoje, mapOf(Modalidade.LOTOFACIL to lf))
-        val pendente = e.apostas.single { it.apuracao == null }
+        val pendente = programadas(e).single { it.apuracao == null }
         assertEquals(Modalidade.LOTOFACIL, pendente.modalidade)
         assertEquals(3600, pendente.concurso)
         assertEquals(LocalDate.of(2026, 10, 16), pendente.dataSorteio)
         // Os outros jogos da Lotofácil ganham números anteriores, estimados a partir do real.
-        val outras = e.apostas.filter { it.modalidade == Modalidade.LOTOFACIL && it.id != pendente.id }
+        val outras = programadas(e).filter { it.modalidade == Modalidade.LOTOFACIL && it.id != pendente.id }
         assertTrue(outras.all { it.concurso < 3600 })
         assertEquals(outras.size, outras.map { it.concurso }.distinct().size)
     }
@@ -166,7 +199,7 @@ class DadosDeExemploTest {
         val hoje = LocalDate.of(2026, 10, 18)
         val lf = concursoReal(Modalidade.LOTOFACIL, 3600, hoje)
         val qn = concursoReal(Modalidade.QUINA, 6900, LocalDate.of(2026, 10, 17))
-        val pendente = gerar(hoje, mapOf(Modalidade.LOTOFACIL to lf, Modalidade.QUINA to qn)).apostas.single { it.apuracao == null }
+        val pendente = programadas(gerar(hoje, mapOf(Modalidade.LOTOFACIL to lf, Modalidade.QUINA to qn))).single { it.apuracao == null }
         assertEquals(Modalidade.QUINA, pendente.modalidade)
         assertEquals(6900, pendente.concurso)
     }
@@ -189,7 +222,7 @@ class DadosDeExemploTest {
         val e = gerar(hoje)
         assertEquals(0L, Operacoes.aportesDoMes(e, YearMonth.from(hoje)))
         // O último jogo é o do dia 28 do mês anterior.
-        assertEquals(LocalDate.of(2026, 10, 28), e.apostas.single { it.apuracao == null }.dataAposta)
+        assertEquals(LocalDate.of(2026, 10, 28), programadas(e).single { it.apuracao == null }.dataAposta)
     }
 
     @Test
@@ -212,8 +245,4 @@ class DadosDeExemploTest {
         data = data,
         dezenas = Volante.universo(m).toList().take(m.qtdSorteada),
     )
-
-    private companion object {
-        const val EXTRATO_SETEMBRO = "- EXTRATO SET/2026 -\n\nRESUMO\nSALDO LÍQ. ANTERIOR:   R\$10,02\nRENDIMENTO LÍQUIDO.: + R\$ 0,03\nAPORTES............: + R\$30,00\nPREMIAÇÕES.........: + R\$14,00\nAPOSTAS............: - R\$30,00\nRATEIO.............: - R\$24,00\nSALDO FINAL........: = R\$ 0,05\n\nMOVIMENTAÇÕES\n00  01/09/26 SALDO LÍQUIDO.:   R\$10,05\n01  01/09/26 APORTE........: + R\$30,00\n02  01/09/26 APOSTA Nº01 LF: - R\$ 3,50\n03  02/09/26 PRÊMIO Nº01 LF: + R\$14,00\n04  04/09/26 APOSTA Nº02 QN: - R\$ 3,00\n05  07/09/26 APOSTA Nº03 DS: - R\$ 2,50\n06  10/09/26 APOSTA Nº04 LM: - R\$ 3,00\n07  13/09/26 APOSTA Nº05 SS: - R\$ 3,00\n08  14/09/26 RATEIO........: - R\$24,00\n09  16/09/26 APOSTA Nº06 DP: - R\$ 3,00\n10  19/09/26 APOSTA Nº07 QN: - R\$ 3,00\n11  22/09/26 APOSTA Nº08 DS: - R\$ 2,50\n12  25/09/26 APOSTA Nº09 LM: - R\$ 3,00\n13  28/09/26 APOSTA Nº10 LF: - R\$ 3,50"
-    }
 }

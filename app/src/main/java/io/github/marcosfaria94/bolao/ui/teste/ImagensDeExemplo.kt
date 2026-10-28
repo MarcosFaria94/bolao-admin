@@ -51,6 +51,13 @@ object ImagensDeExemplo {
                     pix(File(pasta, arq.nome), p?.apelido ?: "Integrante ${i + 1}", p?.chavePix.orEmpty(), r.cota, r.data)
                 }
             }
+            // Pix já anexados de um rateio esperando a conferência.
+            r.pix.forEach { (id, arq) ->
+                if (arq.nome.startsWith(DadosDeExemplo.PREFIXO)) {
+                    val p = e.pessoa(id)
+                    pix(File(pasta, arq.nome), p?.apelido ?: "Integrante", p?.chavePix.orEmpty(), r.cota, r.data)
+                }
+            }
         }
         // Imagens dos acertos das apurações (as mesmas que o app gera ao apurar).
         e.comprovantes.filter { it.tipo == TipoComprovante.APURACAO }.forEach { c ->
@@ -62,31 +69,40 @@ object ImagensDeExemplo {
         }
     }
 
-    fun comprovanteAposta(destino: File, a: Aposta) {
-        val m = a.modalidade
-        val linhas = buildList {
-            add("Aposta em ${Datas.longa(a.dataAposta)}")
-            a.dataSorteio?.let { add("Sorteio: ${Datas.longa(it)}") }
-            add("Valor: ${Dinheiro.rs(a.valor)}")
-            add("")
-            addAll(linhasDoPalpite(a))
-        }
-        desenhar(destino, m.cor.toInt(), "${m.nome} ${a.concurso}", "Comprovante de aposta", linhas)
+    private fun linhasDaAposta(a: Aposta): List<String> = buildList {
+        add("Aposta em ${Datas.longa(a.dataAposta)}")
+        a.dataSorteio?.let { add("Sorteio: ${Datas.longa(it)}") }
+        add("Valor: ${Dinheiro.rs(a.valor)}")
+        add("")
+        addAll(linhasDoPalpite(a))
     }
 
-    fun pix(destino: File, apelido: String, chave: String, valor: Long, data: LocalDate) {
-        desenhar(
-            destino,
-            VERDE_PIX,
-            "Pix de ${Dinheiro.rs(valor)}",
-            "Comprovante de Pix",
-            listOf(
-                "Para: $apelido",
-                "Chave: ${chave.ifBlank { "-" }}",
-                "Data: ${Datas.longa(data)}",
-            ),
-        )
+    /** Desenha o comprovante fictício da aposta [a] e devolve o texto dele (o que o reconhecimento de texto leria). */
+    fun comprovanteAposta(destino: File, a: Aposta): String {
+        val m = a.modalidade
+        val linhas = linhasDaAposta(a)
+        desenhar(destino, m.cor.toInt(), "${m.nome} ${a.concurso}", "Comprovante de aposta", linhas)
+        return texto("${m.nome} ${a.concurso}", "Comprovante de aposta", linhas)
     }
+
+    private fun linhasDoPix(apelido: String, chave: String, valor: Long, data: LocalDate) = listOf(
+        "Valor: ${Dinheiro.rs(valor)}",
+        "Para: $apelido",
+        "Chave: ${chave.ifBlank { "-" }}",
+        "Data: ${Datas.longa(data)}",
+    )
+
+    /** Desenha o comprovante fictício de um Pix e devolve o texto dele. */
+    fun pix(destino: File, apelido: String, chave: String, valor: Long, data: LocalDate): String {
+        val linhas = linhasDoPix(apelido, chave, valor, data)
+        desenhar(destino, VERDE_PIX, "Pix de ${Dinheiro.rs(valor)}", "Comprovante de Pix", linhas)
+        return texto("Pix de ${Dinheiro.rs(valor)}", "Comprovante de Pix", linhas)
+    }
+
+    /** O texto do desenho, como o reconhecimento de texto leria (o modo de teste não precisa ler as próprias imagens). */
+    private fun texto(titulo: String, subtitulo: String, linhas: List<String>): String =
+        (listOf("EXEMPLO", "Não é um comprovante real", titulo, subtitulo) + linhas.filter { it.isNotEmpty() } +
+            "Criado pelo modo de teste do Bolão dos Amigos").joinToString("\n")
 
     private fun linhasDoPalpite(a: Aposta): List<String> {
         val m = a.modalidade

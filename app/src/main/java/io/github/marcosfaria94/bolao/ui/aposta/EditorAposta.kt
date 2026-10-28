@@ -1,7 +1,5 @@
 package io.github.marcosfaria94.bolao.ui.aposta
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -68,10 +66,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Aposta
-import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.TipoComprovante
@@ -79,12 +75,10 @@ import io.github.marcosfaria94.bolao.data.palpite
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Extra
 import io.github.marcosfaria94.bolao.domain.Formato
-import io.github.marcosfaria94.bolao.domain.LeituraComprovante
 import io.github.marcosfaria94.bolao.domain.MESES_DE_SORTE
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Palpite
 import io.github.marcosfaria94.bolao.domain.Volante
-import io.github.marcosfaria94.bolao.imagem.LeitorComprovante
 import io.github.marcosfaria94.bolao.imagem.Recibos
 import io.github.marcosfaria94.bolao.net.CaixaApi
 import io.github.marcosfaria94.bolao.ui.comum.Animacoes
@@ -95,12 +89,9 @@ import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.CampoInteiro
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoSimNao
-import io.github.marcosfaria94.bolao.ui.comum.LinhaAnexo
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
-import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
-import io.github.marcosfaria94.bolao.ui.teste.ModoTeste
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -176,10 +167,14 @@ private fun Aposta.com(d: DadosConcurso): Aposta = copy(
 
 /**
  * O volante da página da modalidade, da aposta nova ou em andamento: "Aposta Nº1" com o lápis dos
- * dados do concurso, o volante com "Completar" e "Limpar", o comprovante da Caixa, o registro e,
- * no fim, "Descartar rascunho". Vai dentro da coluna da página (não tem rolagem própria). Ao sair
- * da página, a aposta só fica em andamento com o volante completo ou com o comprovante anexado
- * ([ficaEmAndamento]).
+ * dados do concurso, o volante com "Completar" e "Limpar", o registro e, no fim, "Descartar
+ * rascunho". Vai dentro da coluna da página (não tem rolagem própria). Ao sair da página, a aposta
+ * só fica em andamento com o volante completo ([ficaEmAndamento]).
+ *
+ * Desde a 0.10 o registro não pede o comprovante da Caixa: ele é anexado depois, na aba
+ * Comprovantes (até a conferência, a aposta ainda pode ser descartada). Antes de registrar, o app
+ * confere na Caixa se o concurso da aposta ainda é o que está recebendo apostas; se já foi
+ * sorteado, a aposta passa para o próximo.
  */
 @Composable
 fun SecaoVolante(
@@ -194,7 +189,7 @@ fun SecaoVolante(
     val escopo = rememberCoroutineScope()
     val m = r.modalidade
     val federal = m.formato == Formato.FEDERAL
-    val teste by repo.modoTeste.collectAsStateWithLifecycle()
+    val individual = estado.individual
     val hoje = LocalDate.now()
     // Nas respostas que chegam depois (Caixa, arquivo escolhido), vale a aposta como está agora.
     val atual by rememberUpdatedState(r)
@@ -203,39 +198,28 @@ fun SecaoVolante(
 
     var consulta by remember { mutableStateOf<Consulta>(Consulta.Nada) }
     var editando by remember { mutableStateOf(false) }
-    var conferencia by remember { mutableStateOf<ConferenciaCaixa?>(null) }
-    var lendo by remember { mutableStateOf(false) }
+    var confirmar by remember { mutableStateOf<String?>(null) }
+    var conferindo by remember { mutableStateOf(false) }
     var confirmarExclusao by remember { mutableStateOf(false) }
     var registrando by remember { mutableStateOf(false) }
     var vendo by remember { mutableStateOf(false) }
 
-    // Sem o número do concurso: busca o próximo na Caixa assim que a tela abre.
+    // Sem o número do concurso (ou com um que já foi sorteado): busca o próximo na Caixa assim que a tela abre.
+    val proximoNosIndices = ctx.bolao.indices.itens.value[m]?.proximoNumero
     LaunchedEffect(r.id) {
-        if (atual.concurso == 0) {
+        val desatualizado = proximoNosIndices != null && Operacoes.concursoDesatualizado(atual, proximoNosIndices)
+        if (atual.concurso == 0 || desatualizado) {
             consulta = Consulta.Carregando
             consulta = try {
                 val d = dadosNaCaixa(m)
-                mudarAtual(atual.com(d))
+                if (atual.concurso == 0 || d.numero > atual.concurso) mudarAtual(atual.com(d))
                 Consulta.Ok("Dados do concurso ${d.numero} conferidos na Caixa.")
             } catch (t: Throwable) {
-                Consulta.Erro("Não foi possível consultar a Caixa (${t.message}). Toque no lápis do volante para preencher os dados do concurso.")
-            }
-        }
-    }
-
-    fun trocarComprovante(novo: Arquivo) {
-        val anterior = atual.comprovante
-        mudarAtual(atual.copy(comprovante = novo))
-        // O arquivo trocado não serve mais (só é apagado se nenhum registro o usa).
-        anterior?.takeIf { it.nome != novo.nome }?.let { repo.apagarSeSolto(it) }
-    }
-
-    val escolherComprovante = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) escopo.launch {
-            try {
-                trocarComprovante(repo.guardarArquivo(uri, "comprovante"))
-            } catch (t: Throwable) {
-                avisos.showSnackbar("Não foi possível anexar: ${t.message}")
+                if (atual.concurso == 0) {
+                    Consulta.Erro("Não foi possível consultar a Caixa (${t.message}). Toque no lápis do volante para preencher os dados do concurso.")
+                } else {
+                    Consulta.Nada
+                }
             }
         }
     }
@@ -265,63 +249,40 @@ fun SecaoVolante(
         }
     }
 
-    // Comprovante da Caixa
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                "Faça a aposta no app Loterias CAIXA com estes números e anexe o comprovante aqui.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            LinhaAnexo(
-                titulo = "Comprovante da Caixa",
-                nomeArquivo = r.comprovante?.nomeOriginal,
-                aoAnexar = { escolherComprovante.launch(arrayOf("application/pdf", "image/*")) },
-                arquivo = r.comprovante?.let { repo.arquivo(it) },
-                mime = r.comprovante?.mime,
-            )
-            if (teste) {
-                TextButton(onClick = {
-                    escopo.launch {
-                        try {
-                            trocarComprovante(ModoTeste.comprovante(ctx, atual))
-                        } catch (t: Throwable) {
-                            avisos.showSnackbar("Não foi possível criar o comprovante de exemplo: ${t.message}")
-                        }
-                    }
-                }) { Text("Usar um comprovante de exemplo") }
-            }
-        }
-    }
-
     pendencias.firstOrNull()?.let { Aviso(it, alerta = true) }
-    if (pendencias.isEmpty() && r.comprovante == null) {
-        Aviso("Falta anexar o comprovante da Caixa: sem ele publicado no grupo, a aposta não vale para o bolão.", alerta = true)
+    if (pendencias.isEmpty() && !individual) {
+        Aviso("Registre a aposta e faça o jogo no app Loterias CAIXA com estes números. Depois, anexe o comprovante da Caixa na aba Comprovantes.")
     }
     if (!ficaEmAndamento(r)) {
-        Aviso(
-            "Se sair agora, a aposta é descartada: complete o " + (if (federal) "bilhete" else "volante") +
-                " ou anexe o comprovante da Caixa.",
-        )
+        Aviso("Se sair agora, a aposta é descartada: complete o " + (if (federal) "bilhete." else "volante."))
     }
 
     BotoesDeRegistro(
-        habilitado = pendencias.isEmpty() && r.comprovante != null,
-        trabalhando = registrando || lendo,
+        habilitado = pendencias.isEmpty(),
+        trabalhando = registrando || conferindo,
         aoVisualizar = { vendo = true },
+        mostrarVisualizar = !individual,
+        textoRegistrar = "Registrar aposta",
         aoRegistrar = {
-            // Antes de registrar, confere a aposta com o comprovante da Caixa.
-            val arq = atual.comprovante ?: return@BotoesDeRegistro
-            lendo = true
+            // Antes de registrar: o concurso ainda é o que está recebendo apostas?
+            conferindo = true
             escopo.launch {
-                conferencia = conferirComCaixa(atual, repo.arquivo(arq), arq.mime)
-                lendo = false
+                val antes = atual
+                val d = runCatching { dadosNaCaixa(m) }.getOrNull()
+                val mudou = d != null && m.formato != Formato.LOTECA && m.formato != Formato.FEDERAL && d.numero > antes.concurso
+                if (mudou) mudarAtual(antes.com(d!!))
+                conferindo = false
+                confirmar = when {
+                    mudou -> "O concurso ${antes.concurso} da ${m.nome} já foi sorteado: a aposta vai para o concurso ${d!!.numero}."
+                    d == null -> "Não deu para conferir o concurso na Caixa agora: confira se o ${antes.concurso} ainda recebe apostas."
+                    else -> ""
+                }
             }
         },
     )
-    if (lendo) {
+    if (conferindo) {
         Text(
-            "Conferindo o comprovante da Caixa...",
+            "Conferindo o concurso na Caixa...",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -348,35 +309,35 @@ fun SecaoVolante(
             estado,
             titulo,
             aoFechar = { vendo = false },
-            previa = Recibos.previa(estado, TipoComprovante.APOSTA, Operacoes.textoAposta(estado, r, hoje), if (r.comprovante != null) 1 else 0),
-            anexos = listOfNotNull(r.comprovante),
+            previa = Recibos.previa(estado, TipoComprovante.APOSTA, Operacoes.textoAposta(estado, r, hoje), 1),
+            anexos = emptyList(),
         )
     }
 
-    conferencia?.let { conf ->
-        val pronta = (conf as? ConferenciaCaixa.Diverge)?.ajustada ?: r
-        // Pergunta curta; só o que foge do normal na conferência com a Caixa entra antes.
-        val antes = when (conf) {
-            is ConferenciaCaixa.Confere -> conf.faltou?.let { "Não deu para ler $it no comprovante da Caixa: confira antes." }
-            is ConferenciaCaixa.Diverge ->
-                "O comprovante da Caixa tem outra aposta:\n" +
-                    conf.diferencas.joinToString("\n") { d -> "• ${d.campo}: no app ${d.noApp}; na Caixa ${d.naCaixa}." } +
-                    "\nA aposta vai ficar como na Caixa."
-            is ConferenciaCaixa.NaoLida -> "Não deu para conferir o comprovante da Caixa (${conf.motivo}): confira os números antes."
+    confirmar?.let { antes ->
+        val explicacao = if (individual) {
+            "Desconta ${Dinheiro.rs(r.valor)} do saldo. Dá para excluir a aposta depois."
+        } else {
+            "Desconta ${Dinheiro.rs(r.valor)} do saldo. Depois, anexe o comprovante da Caixa na aba Comprovantes: " +
+                "até a conferência dele, a aposta ainda pode ser descartada."
         }
         DialogoSimNao(
             titulo = "Deseja registrar aposta?",
-            texto = listOfNotNull(antes, "A ação é irreversível.").joinToString("\n\n"),
-            aoNao = { conferencia = null },
+            texto = listOf(antes, explicacao).filter { it.isNotBlank() }.joinToString("\n\n"),
+            aoNao = { confirmar = null },
             aoSim = {
-                conferencia = null
+                confirmar = null
                 registrando = true
                 escopo.launch {
                     try {
                         val agora = System.currentTimeMillis()
-                        val final = comDadosDoConcurso(pronta, r)
-                        mudarAtual(final)
-                        registrarComprovante(ctx, { e -> Operacoes.registrarAposta(Operacoes.salvarRascunho(e, final), final.id, hoje, agora) })
+                        val final = atual
+                        val novo = repo.atualizar { e -> Operacoes.registrarAposta(Operacoes.salvarRascunho(e, final), final.id, hoje, agora) }
+                        val n = novo.apostas.firstOrNull { it.id == final.id }?.numero ?: numero
+                        avisos.showSnackbar(
+                            if (individual) "Aposta Nº$n registrada."
+                            else "Aposta Nº$n registrada. Anexe o comprovante da Caixa na aba Comprovantes.",
+                        )
                     } catch (t: Throwable) {
                         avisos.showSnackbar("Não foi possível registrar: ${t.message}")
                     } finally {
@@ -389,7 +350,7 @@ fun SecaoVolante(
     if (confirmarExclusao) {
         DialogoConfirmar(
             titulo = "Descartar este rascunho?",
-            texto = "Os números e o comprovante anexado desta aposta serão apagados do app. A aposta ainda não foi registrada.",
+            texto = "Os números desta aposta serão apagados do app. A aposta ainda não foi registrada.",
             confirmar = "Confirmar",
             aoConfirmar = {
                 confirmarExclusao = false
@@ -692,56 +653,5 @@ private fun EscolhaMes(atual: String?, aoEscolher: (String) -> Unit) {
                 })
             }
         }
-    }
-}
-
-/** Resultado da conferência da aposta com o comprovante da Caixa, antes do registro. */
-sealed interface ConferenciaCaixa {
-    /** Confere ([conferidos]: o que foi lido); [faltou]: a parte principal que não deu para ler. */
-    data class Confere(val conferidos: List<String>, val faltou: String?) : ConferenciaCaixa
-    data class Diverge(val diferencas: List<Operacoes.Divergencia>, val ajustada: Aposta) : ConferenciaCaixa
-    data class NaoLida(val motivo: String) : ConferenciaCaixa
-}
-
-/** Lê o comprovante da Caixa (reconhecimento de texto no celular) e compara com a aposta. */
-suspend fun conferirComCaixa(a: Aposta, arquivo: java.io.File, mime: String): ConferenciaCaixa = try {
-    val m = a.modalidade
-    val lida = LeituraComprovante.ler(m, LeitorComprovante.texto(arquivo, mime))
-    if (lida.vazia) {
-        ConferenciaCaixa.NaoLida("o app não achou o concurso nem os números no comprovante")
-    } else {
-        val diferencas = Operacoes.divergencias(a, lida)
-        if (diferencas.isNotEmpty()) {
-            ConferenciaCaixa.Diverge(diferencas, Operacoes.ajustarPeloComprovante(a, lida))
-        } else {
-            val principal = when (m.formato) {
-                Formato.NUMEROS, Formato.COLUNAS -> "números" to lida.numeros
-                Formato.LOTECA -> "palpites" to lida.palpitesLoteca
-                Formato.FEDERAL -> "bilhete" to lida.bilhete
-            }
-            val conferidos = listOfNotNull(
-                lida.concurso?.let { "concurso" },
-                principal.second?.let { principal.first },
-                lida.trevos?.let { "trevos" },
-                lida.extra?.let { if (m.extra == Extra.MES_DE_SORTE) "mês de sorte" else "time do coração" },
-            )
-            ConferenciaCaixa.Confere(conferidos, if (principal.second == null) "os ${principal.first}" else null)
-        }
-    }
-} catch (t: Throwable) {
-    ConferenciaCaixa.NaoLida(t.message?.takeIf { it.isNotBlank() } ?: "erro na leitura")
-}
-
-/**
- * Se a Caixa tem outro concurso no comprovante, atualiza a data do sorteio e o prêmio
- * quando o concurso é o próximo da modalidade (o que a Caixa informa).
- */
-private suspend fun comDadosDoConcurso(pronta: Aposta, antes: Aposta): Aposta {
-    if (pronta.concurso == antes.concurso) return pronta
-    val u = runCatching { CaixaApi.ultimo(pronta.modalidade) }.getOrNull() ?: return pronta
-    return if (u.proximoNumero == pronta.concurso) {
-        pronta.copy(dataSorteio = u.proximaData ?: pronta.dataSorteio, premioEstimado = u.premioEstimadoProximo ?: pronta.premioEstimado)
-    } else {
-        pronta
     }
 }

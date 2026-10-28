@@ -31,13 +31,16 @@ fun BotoesDeRegistro(
     textoVisualizar: String = "Visualizar comprovante",
     textoRegistrar: String = "Registrar e enviar",
     visualizarHabilitado: Boolean = true,
+    mostrarVisualizar: Boolean = true,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = modifier.fillMaxWidth()) {
-        OutlinedButton(
-            onClick = aoVisualizar,
-            enabled = visualizarHabilitado && !trabalhando,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(textoVisualizar) }
+        if (mostrarVisualizar) {
+            OutlinedButton(
+                onClick = aoVisualizar,
+                enabled = visualizarHabilitado && !trabalhando,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(textoVisualizar) }
+        }
         Button(
             onClick = aoRegistrar,
             enabled = habilitado && !trabalhando,

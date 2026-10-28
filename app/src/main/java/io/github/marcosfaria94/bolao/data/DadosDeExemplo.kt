@@ -20,12 +20,20 @@ import kotlin.math.ceil
 import kotlin.random.Random
 
 /**
- * Dados de exemplo do modo de teste, para experimentar todas as telas sem digitar nada:
+ * Dados de exemplo do modo de teste, para experimentar todas as telas sem digitar nada. Desde a
+ * 0.10 quase tudo é sorteado a cada exemplo novo: a quantidade de integrantes (de 2 a 5, quando
+ * não há cadastro real), o saldo inicial, o aporte, a modalidade de cada dia, quais apostas
+ * ganham (e quanto), o rateio, um aporte adicional, os horários e os valores do rateio oficial.
  *
- * - mês anterior completo: saldo inicial, aporte mensal, 10 apostas apuradas (uma premiada),
- *   um rateio no dia 14 e o extrato do mês, cada um com o seu comprovante enviado;
- * - mês atual até ontem: aporte do dia 1º e as apostas dos dias programados, todas apuradas
- *   menos a última, que fica esperando a apuração. A aposta de hoje fica para quem testa.
+ * - mês anterior completo: saldo inicial, aporte mensal, as apostas dos dias programados apuradas
+ *   (uma ou duas premiadas), às vezes um aporte adicional, o rateio e o extrato do mês, cada um
+ *   com o seu comprovante enviado;
+ * - mês atual até ontem: aporte do dia 1º e as apostas dos dias programados, todas apuradas menos
+ *   a última, que fica esperando a apuração. A aposta de hoje fica para quem testa;
+ * - às vezes, uma aposta registrada ontem esperando o comprovante da Caixa e um rateio esperando os
+ *   Pix, para experimentar a aba Comprovantes.
+ *
+ * No modo individual: só as apostas e os prêmios (sem aporte, rateio, extrato nem comprovante).
  *
  * Quando [gerar] recebe resultados reais da Caixa, a última aposta usa um concurso de verdade
  * (a apuração e a conferência automática consultam a Caixa como no uso normal).
@@ -37,32 +45,36 @@ object DadosDeExemplo {
 
     /** Começo do nome de todos os anexos fictícios. */
     const val PREFIXO = "exemplo-"
-    const val SALDO_INICIAL = 1002L
-    const val RENDIMENTO_ANTERIOR = 3L
+    const val RENDIMENTO_MAXIMO = 9L
 
-    /** Integrantes fictícios, usados enquanto não houver cadastro real. */
-    val PESSOAS = listOf(
+    /** Integrantes fictícios, usados enquanto não houver cadastro real (os primeiros N entram no exemplo). */
+    val NOMES = listOf(
         Pessoa("exemplo-1", "Fulano de Tal", "Fulano", "fulano@exemplo.com", administrador = true),
         Pessoa("exemplo-2", "Beto da Silva", "Beto", "beto@exemplo.com"),
         Pessoa("exemplo-3", "Beltrano Souza", "Beltrano", "beltrano@exemplo.com"),
+        Pessoa("exemplo-4", "Ciclano Pereira", "Ciclano", "ciclano@exemplo.com"),
+        Pessoa("exemplo-5", "Sicrano Lima", "Sicrano", "sicrano@exemplo.com"),
     )
 
-    /** Modalidade de cada dia programado (1, 4, 7, ... 28). */
-    // Depois do rateio do dia 14 sobram R$ 15,02 para as 5 apostas que faltam (R$ 15,00).
-    private val PLANO_ANTERIOR = listOf(
-        Modalidade.LOTOFACIL, Modalidade.QUINA, Modalidade.DIA_DE_SORTE, Modalidade.LOTOMANIA, Modalidade.SUPER_SETE,
-        Modalidade.DUPLA_SENA, Modalidade.QUINA, Modalidade.DIA_DE_SORTE, Modalidade.LOTOMANIA, Modalidade.LOTOFACIL,
+    /** Os 3 primeiros (o grupo do termo). */
+    val PESSOAS = NOMES.take(3)
+
+    /** Modalidades sorteadas para os dias programados (as mais repetidas saem mais). */
+    private val SORTEIO_DE_MODALIDADES = listOf(
+        Modalidade.LOTOFACIL, Modalidade.LOTOFACIL, Modalidade.QUINA, Modalidade.QUINA, Modalidade.DIA_DE_SORTE,
+        Modalidade.LOTOMANIA, Modalidade.SUPER_SETE, Modalidade.DUPLA_SENA, Modalidade.TIMEMANIA, Modalidade.MEGA_SENA,
     )
-    private val PLANO_ATUAL = listOf(
-        Modalidade.LOTOFACIL, Modalidade.QUINA, Modalidade.TIMEMANIA, Modalidade.DIA_DE_SORTE, Modalidade.LOTOMANIA,
-        Modalidade.LOTOFACIL, Modalidade.QUINA, Modalidade.SUPER_SETE, Modalidade.DUPLA_SENA, Modalidade.LOTOFACIL,
+
+    /** Modalidades em que o exemplo sabe montar um jogo premiado (nas faixas de baixo). */
+    private val PODEM_GANHAR = setOf(
+        Modalidade.LOTOFACIL, Modalidade.QUINA, Modalidade.DIA_DE_SORTE, Modalidade.LOTOMANIA, Modalidade.SUPER_SETE, Modalidade.TIMEMANIA,
     )
 
     /** Para o último jogo: modalidades com sorteio quase todo dia, então quase sempre há resultado recente. */
     private val PREFERIDAS_PARA_APURAR = listOf(Modalidade.LOTOFACIL, Modalidade.QUINA)
 
     /** Modalidades que vale consultar na Caixa antes de gerar. */
-    val MODALIDADES: List<Modalidade> = (PREFERIDAS_PARA_APURAR + PLANO_ANTERIOR + PLANO_ATUAL).distinct()
+    val MODALIDADES: List<Modalidade> = (PREFERIDAS_PARA_APURAR + SORTEIO_DE_MODALIDADES).distinct()
 
     /** Sorteios por semana (aproximado), para estimar os números de concurso. */
     private val POR_SEMANA = mapOf(
@@ -88,6 +100,11 @@ object DadosDeExemplo {
 
     /** Rateio oficial fictício de cada modalidade do exemplo (faixa, ganhadores, prêmio em centavos). */
     private val FAIXAS: Map<Modalidade, List<FaixaPremio>> = mapOf(
+        Modalidade.MEGA_SENA to listOf(
+            FaixaPremio(1, "6 acertos", 0, 0),
+            FaixaPremio(2, "5 acertos", 98, 2_543_120),
+            FaixaPremio(3, "4 acertos", 6_480, 62_870),
+        ),
         Modalidade.LOTOFACIL to listOf(
             FaixaPremio(1, "15 acertos", 1, 150_000_000),
             FaixaPremio(2, "14 acertos", 230, 160_000),
@@ -144,28 +161,64 @@ object DadosDeExemplo {
         ),
     )
 
-    private const val TIME_APOSTADO = "SANTOS/SP"
-    private const val TIME_SORTEADO = "CRUZEIRO/MG"
+    /** Prêmios fixos (as regras da Caixa): não variam de um exemplo para outro. */
+    private val FIXOS = setOf(
+        Modalidade.LOTOFACIL to 3, Modalidade.LOTOFACIL to 4, Modalidade.LOTOFACIL to 5,
+        Modalidade.DIA_DE_SORTE to 3, Modalidade.DIA_DE_SORTE to 4, Modalidade.DIA_DE_SORTE to 5,
+        Modalidade.TIMEMANIA to 4, Modalidade.TIMEMANIA to 5, Modalidade.TIMEMANIA to 6, Modalidade.SUPER_SETE to 5,
+    )
+
+    /** O rateio oficial de um concurso do exemplo: os ganhadores e os prêmios de rateio variam um pouco. */
+    private fun faixasDo(m: Modalidade, r: Random): List<FaixaPremio> = FAIXAS[m].orEmpty().map { f ->
+        if (f.ganhadores == 0 || (m to f.faixa) in FIXOS) {
+            f
+        } else {
+            val fator = 0.75 + r.nextDouble() * 0.5
+            f.copy(ganhadores = (f.ganhadores * (0.7 + r.nextDouble() * 0.6)).toInt().coerceAtLeast(1), valor = (f.valor * fator).toLong())
+        }
+    }
+
+    private val TIMES_APOSTADOS = listOf("SANTOS/SP", "CRUZEIRO/MG", "BAHIA/BA", "GREMIO/RS", "FORTALEZA/CE")
+    private const val TIME_SORTEADO = "CORITIBA/PR"
 
     private data class Planejada(
         val dia: LocalDate,
         val modalidade: Modalidade,
-        /** Acertos de um jogo premiado (Lotofácil); null = jogo sem prêmio. */
+        /** Acertos de um jogo premiado; null = jogo sem prêmio. */
         val acertosPremiados: Int? = null,
+        /** Hora e minuto do registro. */
+        val hora: Int = 10,
+        val minuto: Int = 0,
     )
 
     private sealed class Evento(val instante: Long) {
         class Aportes(instante: Long, val dia: LocalDate) : Evento(instante)
+        class Adicional(instante: Long, val dia: LocalDate, val valor: Long) : Evento(instante)
         class Apostar(instante: Long, val indice: Int) : Evento(instante)
         class Apurar(instante: Long, val indice: Int) : Evento(instante)
-        class Ratear(instante: Long, val dia: LocalDate) : Evento(instante)
-        class FecharMes(instante: Long, val mes: YearMonth) : Evento(instante)
+        class Ratear(instante: Long, val dia: LocalDate, val fracao: Double) : Evento(instante)
+        class FecharMes(instante: Long, val mes: YearMonth, val rendimento: Long) : Evento(instante)
     }
+
+    /** Acertos de um jogo premiado (as faixas de baixo, que quase sempre têm ganhador). */
+    private fun acertosComPremio(m: Modalidade, r: Random): Int = when (m) {
+        Modalidade.LOTOFACIL -> r.nextInt(11, 14)
+        Modalidade.QUINA -> r.nextInt(2, 4)
+        Modalidade.DIA_DE_SORTE -> r.nextInt(4, 6)
+        Modalidade.LOTOMANIA -> r.nextInt(15, 17)
+        Modalidade.SUPER_SETE -> r.nextInt(3, 5)
+        Modalidade.TIMEMANIA -> r.nextInt(3, 5)
+        else -> 0
+    }
+
+    /** Preço da aposta simples (o mesmo de Ajustes no exemplo). */
+    private fun preco(m: Modalidade): Long = Config().preco(m)
 
     /**
      * Gera o estado de exemplo para o dia [hoje] ([agora] em milissegundos, no fuso [fuso]).
      * [reais]: últimos concursos consultados na Caixa (pode ser vazio).
      * [pessoas]: integrantes do cadastro real, se já existir (as mensagens saem com os nomes certos).
+     * [modo]: o do cadastro real (o exemplo do modo individual não tem aporte, rateio nem comprovante).
      */
     fun gerar(
         hoje: LocalDate,
@@ -174,21 +227,34 @@ object DadosDeExemplo {
         reais: Map<Modalidade, Concurso> = emptyMap(),
         pessoas: List<Pessoa>? = null,
         semente: Long = hoje.toEpochDay(),
+        modo: Modo = Modo.BOLAO,
     ): Estado {
+        if (modo == Modo.INDIVIDUAL) return gerarIndividual(hoje, agora, fuso, reais, pessoas, semente)
         val r = Random(semente)
-        val integrantes = pessoas?.takeIf { it.size == 3 } ?: PESSOAS
+        val integrantes = pessoas?.takeIf { it.size >= MINIMO_DE_INTEGRANTES } ?: NOMES.take(r.nextInt(2, 6))
+        val n = integrantes.size
         val ultimoInstante = agora - 60_000
         fun t(d: LocalDate, hora: Int, minuto: Int = 0): Long =
             minOf(d.atTime(hora, minuto).atZone(fuso).toInstant().toEpochMilli(), ultimoInstante)
 
         val mes = YearMonth.from(hoje)
         val anterior = mes.minusMonths(1)
+        val diasAnterior = Calendario.diasProgramados(anterior)
+        val diasAtual = Calendario.diasProgramados(mes).filter { it.isBefore(hoje) }
+        // Uma ou duas premiadas no mês anterior; às vezes uma no mês atual (nunca a última, que espera a apuração).
+        val modalidadesAnterior = diasAnterior.map { SORTEIO_DE_MODALIDADES.random(r) }
+        val modalidadesAtual = diasAtual.map { SORTEIO_DE_MODALIDADES.random(r) }
+        val premiadasAnterior = modalidadesAnterior.indices.filter { modalidadesAnterior[it] in PODEM_GANHAR }.shuffled(r).take(r.nextInt(1, 3)).toSet()
+        val premiadaAtual = modalidadesAtual.indices.toList().dropLast(1).filter { modalidadesAtual[it] in PODEM_GANHAR }
+            .shuffled(r).take(if (r.nextInt(100) < 45) 1 else 0).toSet()
         val planejadas = buildList {
-            Calendario.diasProgramados(anterior).forEachIndexed { i, d ->
-                add(Planejada(d, PLANO_ANTERIOR[i], acertosPremiados = if (i == 0) 12 else null))
+            diasAnterior.forEachIndexed { i, d ->
+                val m = modalidadesAnterior[i]
+                add(Planejada(d, m, if (i in premiadasAnterior) acertosComPremio(m, r) else null, r.nextInt(9, 22), r.nextInt(0, 60)))
             }
-            Calendario.diasProgramados(mes).filter { it.isBefore(hoje) }.forEachIndexed { i, d ->
-                add(Planejada(d, PLANO_ATUAL[i], acertosPremiados = if (i == 0) 11 else null))
+            diasAtual.forEachIndexed { i, d ->
+                val m = modalidadesAtual[i]
+                add(Planejada(d, m, if (i in premiadaAtual) acertosComPremio(m, r) else null, r.nextInt(9, 22), r.nextInt(0, 60)))
             }
         }
         val pendente = planejadas.lastIndex
@@ -203,38 +269,56 @@ object DadosDeExemplo {
                 }
             }
 
+        // O aporte cobre as apostas do mês mais caro com folga (em reais inteiros por integrante).
+        fun custo(lista: List<Modalidade>) = lista.sumOf { preco(it) }
+        val maiorMes = maxOf(custo(modalidadesAnterior), custo(modalidadesAtual), 3000L)
+        val aporte = maxOf(1000L, ((maiorMes + 300 + n * 100 - 1) / (n * 100)) * 100)
+        val saldoInicial = r.nextLong(0, 1500)
+
         var e = Estado(
             cadastroConcluido = true,
             cadastradoEm = anterior.atDay(1),
             pessoas = integrantes,
-            config = Config(),
+            config = Config(aporteMensal = aporte),
             proximoRateio = 1,
-            lancamentos = listOf(
+            lancamentos = listOfNotNull(
                 Lancamento(
-                    id = novoId(), data = anterior.atDay(1), criadoEm = t(anterior.atDay(1), 8),
-                    tipo = TipoLancamento.SALDO_INICIAL, valor = SALDO_INICIAL, obs = "Saldo inicial (exemplo)",
-                ),
+                    id = novoId(), data = anterior.atDay(1), criadoEm = t(anterior.atDay(1), 8, r.nextInt(0, 30)),
+                    tipo = TipoLancamento.SALDO_INICIAL, valor = saldoInicial, obs = "Saldo inicial (exemplo)",
+                ).takeIf { saldoInicial > 0 },
             ),
             exemplo = true,
         )
 
         val eventos = buildList {
-            add(Evento.Aportes(t(anterior.atDay(1), 9), anterior.atDay(1)))
-            if (hoje.dayOfMonth > 1) add(Evento.Aportes(t(mes.atDay(1), 9), mes.atDay(1)))
-            planejadas.forEachIndexed { i, p ->
-                add(Evento.Apostar(t(p.dia, 10), i))
-                if (i != pendente) add(Evento.Apurar(t(p.dia.plusDays(2), 9), i))
+            add(Evento.Aportes(t(anterior.atDay(1), 8, r.nextInt(30, 60)), anterior.atDay(1)))
+            if (hoje.dayOfMonth > 1) add(Evento.Aportes(t(mes.atDay(1), 8, r.nextInt(30, 60)), mes.atDay(1)))
+            if (r.nextInt(100) < 30) {
+                val dia = anterior.atDay(r.nextInt(5, 26))
+                add(Evento.Adicional(t(dia, r.nextInt(9, 20), r.nextInt(0, 60)), dia, r.nextLong(5, 21) * 100))
             }
-            add(Evento.Ratear(t(anterior.atDay(14), 12), anterior.atDay(14)))
-            add(Evento.FecharMes(t(anterior.atEndOfMonth(), 20), anterior))
+            planejadas.forEachIndexed { i, p ->
+                add(Evento.Apostar(t(p.dia, p.hora, p.minuto), i))
+                if (i != pendente) add(Evento.Apurar(t(p.dia.plusDays(2), r.nextInt(8, 12), r.nextInt(0, 60)), i))
+            }
+            val diaRateio = anterior.atDay(r.nextInt(12, 21))
+            add(Evento.Ratear(t(diaRateio, r.nextInt(12, 20), r.nextInt(0, 60)), diaRateio, 0.5 + r.nextDouble() * 0.5))
+            add(Evento.FecharMes(t(anterior.atEndOfMonth(), r.nextInt(18, 23), r.nextInt(0, 60)), anterior, r.nextLong(1, RENDIMENTO_MAXIMO + 1)))
         }.sortedBy { it.instante }
 
         val ids = arrayOfNulls<String>(planejadas.size)
         val resultados = arrayOfNulls<Concurso>(planejadas.size)
 
+        /** Custo das apostas planejadas depois do instante [depois] no mesmo mês de [dia]. */
+        fun custoRestante(dia: LocalDate, depois: Long): Long = planejadas.withIndex()
+            .filter { (_, p) -> YearMonth.from(p.dia) == YearMonth.from(dia) && t(p.dia, p.hora, p.minuto) > depois }
+            .sumOf { (_, p) -> preco(p.modalidade) }
+
         for (ev in eventos) {
             e = when (ev) {
                 is Evento.Aportes -> Operacoes.registrarAporteMensal(e, ev.dia, ev.instante)
+
+                is Evento.Adicional -> enviar(Operacoes.registrarAporteAdicional(e, ev.dia, ev.valor, ev.instante), ev.instante)
 
                 is Evento.Apostar -> {
                     val p = planejadas[ev.indice]
@@ -273,9 +357,9 @@ object DadosDeExemplo {
                             mime = "image/png",
                             guardadoEm = ev.instante,
                         ),
-                        criadaEm = ev.instante - 5 * 60_000,
+                        criadaEm = ev.instante - r.nextLong(1, 20) * 60_000,
                     )
-                    enviar(Operacoes.registrarAposta(Operacoes.salvarRascunho(e, a), id, p.dia, ev.instante), ev.instante)
+                    enviar(Operacoes.registrarApostaComComprovante(Operacoes.salvarRascunho(e, a), id, p.dia, ev.instante), ev.instante)
                 }
 
                 is Evento.Apurar -> {
@@ -294,8 +378,11 @@ object DadosDeExemplo {
                 }
 
                 is Evento.Ratear -> {
+                    // Uma parte do Extra, sem mexer no que falta para as apostas do mês.
                     val extra = Operacoes.extra(e, ev.dia)
-                    if (Operacoes.calcularRateio(e, ev.dia, extra).cota <= 0) {
+                    val folga = Operacoes.saldo(e) - custoRestante(ev.dia, ev.instante) - 100
+                    val pedido = minOf((extra * ev.fracao).toLong(), extra, folga)
+                    if (pedido <= 0 || Operacoes.calcularRateio(e, ev.dia, pedido).cota <= 0) {
                         e
                     } else {
                         val numero = e.proximoRateio
@@ -307,17 +394,115 @@ object DadosDeExemplo {
                                 guardadoEm = ev.instante,
                             )
                         }
-                        enviar(Operacoes.registrarRateio(e, ev.dia, extra, comprovantes, ev.instante), ev.instante)
+                        enviar(Operacoes.registrarRateioComPix(e, ev.dia, pedido, comprovantes, ev.instante), ev.instante)
                     }
                 }
 
                 is Evento.FecharMes -> enviar(
                     Operacoes.registrarExtrato(
-                        e, ev.mes, informado = Operacoes.saldo(e) + RENDIMENTO_ANTERIOR,
+                        e, ev.mes, informado = Operacoes.saldo(e) + ev.rendimento,
                         hoje = ev.mes.atEndOfMonth(), agora = ev.instante,
                     ),
                     ev.instante,
                 )
+            }
+        }
+
+        // Para experimentar a aba Comprovantes: às vezes uma aposta de ontem esperando o comprovante
+        // da Caixa e um rateio de ontem esperando os Pix (com o de um integrante já anexado).
+        val ontem = hoje.minusDays(1)
+        if (YearMonth.from(ontem) == mes && hoje.dayOfMonth > 1) {
+            val instante = t(ontem, r.nextInt(18, 23), r.nextInt(0, 60))
+            if (r.nextInt(100) < 55) {
+                val m = listOf(Modalidade.LOTOFACIL, Modalidade.QUINA, Modalidade.MEGA_SENA).random(r)
+                val custo = e.config.preco(m)
+                if (Operacoes.saldo(e) - custo >= custoRestante(ontem, instante)) {
+                    val real = reais[m]
+                    val sorteio = real?.proximaData?.takeIf { !it.isBefore(hoje) } ?: hoje.plusDays(1)
+                    val numero = real?.proximoNumero ?: numeroEstimado(m, sorteio, reais)
+                    val palpite = palpiteLivre(m, r)
+                    val a = Aposta(
+                        id = novoId(), numero = 0, modalidade = m, concurso = numero, dataAposta = ontem, dataSorteio = sorteio,
+                        premioEstimado = real?.premioEstimadoProximo ?: PREMIO_ESTIMADO[m], valor = custo,
+                        numeros = palpite.numeros, trevos = palpite.trevos, extra = palpite.extra, criadaEm = instante - 120_000,
+                    )
+                    e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, a), a.id, ontem, instante)
+                }
+            }
+            if (r.nextInt(100) < 35) {
+                val depois = instante + 60_000
+                val extra = Operacoes.extra(e, ontem)
+                val folga = Operacoes.saldo(e) - custoRestante(ontem, depois) - 100
+                val pedido = minOf(extra, folga) / 2
+                if (pedido > 0 && Operacoes.calcularRateio(e, ontem, pedido).cota > 0) {
+                    e = Operacoes.registrarRateio(e, ontem, pedido, depois)
+                    val rt = e.rateios.last()
+                    if (r.nextBoolean()) {
+                        val p = integrantes.random(r)
+                        e = Operacoes.anexarPix(
+                            e, rt.numero, p.id,
+                            Arquivo("${PREFIXO}pix-${rt.numero}-${p.id}.png", "pix-exemplo-${p.apelido}.png", "image/png", depois),
+                        )
+                    }
+                }
+            }
+        }
+        return e
+    }
+
+    /**
+     * Exemplo do modo individual: apostas em dias sorteados dos dois meses (sem os dias programados),
+     * uma ou duas premiadas, a última esperando a apuração; sem aporte, rateio, extrato e comprovante.
+     */
+    private fun gerarIndividual(
+        hoje: LocalDate,
+        agora: Long,
+        fuso: ZoneId,
+        reais: Map<Modalidade, Concurso>,
+        pessoas: List<Pessoa>?,
+        semente: Long,
+    ): Estado {
+        val r = Random(semente)
+        val pessoa = pessoas?.firstOrNull() ?: NOMES.first()
+        val ultimoInstante = agora - 60_000
+        fun t(d: LocalDate, hora: Int, minuto: Int): Long =
+            minOf(d.atTime(hora, minuto).atZone(fuso).toInstant().toEpochMilli(), ultimoInstante)
+        val inicio = YearMonth.from(hoje).minusMonths(1).atDay(1)
+        val todos = generateSequence(inicio) { it.plusDays(1) }.takeWhile { it.isBefore(hoje) }.toList()
+        val dias = todos.shuffled(r).take(r.nextInt(8, 15).coerceAtMost(todos.size)).sorted()
+        val premiadas = dias.indices.toList().dropLast(1).shuffled(r).take(r.nextInt(1, 3)).toSet()
+        var e = Estado(
+            cadastroConcluido = true, cadastradoEm = inicio, pessoas = listOf(pessoa.copy(administrador = true)),
+            exemplo = true, modo = Modo.INDIVIDUAL,
+        )
+        dias.forEachIndexed { i, dia ->
+            val ultima = i == dias.lastIndex
+            val m = if (i in premiadas) PODEM_GANHAR.random(r) else SORTEIO_DE_MODALIDADES.random(r)
+            val registro = t(dia, r.nextInt(8, 22), r.nextInt(0, 60))
+            val real = if (ultima) (PREFERIDAS_PARA_APURAR + m).distinct().firstNotNullOfOrNull { k ->
+                reais[k]?.takeIf { c -> c.temResultado && c.data != null && !c.data.isBefore(dia) && c.data.isBefore(hoje) }
+            } else {
+                null
+            }
+            val mod = real?.modalidade ?: m
+            val sorteio = real?.data ?: minOf(dia.plusDays(1), hoje.minusDays(1)).let { if (it.isBefore(dia)) dia else it }
+            val numero = real?.numero ?: numeroEstimado(mod, sorteio, reais)
+            val (resultado, palpite) = if (ultima) {
+                null to palpiteLivre(mod, r)
+            } else {
+                sorteioFicticio(mod, numero, sorteio, if (i in premiadas) acertosComPremio(mod, r) else null, r)
+            }
+            val a = Aposta(
+                id = novoId(), numero = 0, modalidade = mod, concurso = numero, dataAposta = dia, dataSorteio = sorteio,
+                premioEstimado = PREMIO_ESTIMADO[mod], valor = e.config.preco(mod), numeros = palpite.numeros,
+                trevos = palpite.trevos, extra = palpite.extra, palpitesLoteca = palpite.loteca, criadaEm = registro - 60_000,
+            )
+            e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, a), a.id, dia, registro)
+            if (resultado != null) {
+                val conf = Conferencia.conferir(mod, a.palpite, resultado, null, null)
+                val quando = t(sorteio.plusDays(1), r.nextInt(8, 12), r.nextInt(0, 60))
+                val apurada = Operacoes.apuracaoDe(resultado, conf, conf.premio, quando)
+                e = Operacoes.confirmarApuracao(e, a.id, apurada, sorteio.plusDays(1).coerceAtMost(hoje), quando)
             }
         }
         return e
@@ -344,7 +529,7 @@ object DadosDeExemplo {
     /** Palpite sorteado, como o do botão "Completar" (com Time do Coração). */
     private fun palpiteLivre(m: Modalidade, r: Random): Palpite {
         val p = Volante.sortear(m, r)
-        return if (m.extra == Extra.TIME_DO_CORACAO) p.copy(extra = TIME_APOSTADO) else p
+        return if (m.extra == Extra.TIME_DO_CORACAO) p.copy(extra = TIMES_APOSTADOS.random(r)) else p
     }
 
     /** Acertos de um jogo sem prêmio, por modalidade (abaixo da menor faixa premiada). */
@@ -369,7 +554,7 @@ object DadosDeExemplo {
                 val sorteado = List(Volante.COLUNAS_SUPER_SETE) { r.nextInt(0, 10) }
                 val iguais = (0 until Volante.COLUNAS_SUPER_SETE).shuffled(r).take(acertos).toSet()
                 val apostado = sorteado.mapIndexed { i, n -> if (i in iguais) n else (n + 1 + r.nextInt(9)) % 10 }
-                Concurso(m, numero, data, dezenas = sorteado, faixas = FAIXAS[m].orEmpty()) to Palpite(numeros = apostado)
+                Concurso(m, numero, data, dezenas = sorteado, faixas = faixasDo(m, r)) to Palpite(numeros = apostado)
             }
             m == Modalidade.DUPLA_SENA -> {
                 val universo = Volante.universo(m).toList()
@@ -383,7 +568,7 @@ object DadosDeExemplo {
                 if (apostado.count { it in primeiro } > 2 || apostado.count { it in segundo } > 2) {
                     apostado = (universo - primeiro.toSet() - segundo.toSet()).shuffled(r).take(m.qtdAposta)
                 }
-                Concurso(m, numero, data, dezenas = primeiro, segundoSorteio = segundo, faixas = FAIXAS[m].orEmpty()) to
+                Concurso(m, numero, data, dezenas = primeiro, segundoSorteio = segundo, faixas = faixasDo(m, r)) to
                     Palpite(numeros = apostado.sorted())
             }
             else -> {
@@ -392,7 +577,7 @@ object DadosDeExemplo {
                 val fora = (universo - sorteados.toSet()).shuffled(r)
                 val apostado = (sorteados.shuffled(r).take(acertos) + fora.take(m.qtdAposta - acertos)).sorted()
                 val (extraApostado, extraSorteado) = when (m.extra) {
-                    Extra.TIME_DO_CORACAO -> TIME_APOSTADO to TIME_SORTEADO
+                    Extra.TIME_DO_CORACAO -> TIMES_APOSTADOS.random(r) to TIME_SORTEADO
                     Extra.MES_DE_SORTE -> {
                         val meses = MESES_DE_SORTE.shuffled(r)
                         meses[0] to meses[1]
@@ -405,7 +590,7 @@ object DadosDeExemplo {
                     data = data,
                     dezenas = sorteados.sorted(),
                     timeOuMes = extraSorteado,
-                    faixas = FAIXAS[m].orEmpty(),
+                    faixas = faixasDo(m, r),
                 ) to Palpite(numeros = apostado, extra = extraApostado)
             }
         }
@@ -413,7 +598,8 @@ object DadosDeExemplo {
 
     /** Anexos fictícios que o estado usa (comprovantes das apostas, imagens dos acertos e Pix do rateio). */
     fun anexos(e: Estado): List<Arquivo> =
-        e.comprovantes.flatMap { it.anexos }.filter { it.nome.startsWith(PREFIXO) }.distinctBy { it.nome }
+        (e.comprovantes.flatMap { it.anexos } + e.rateios.flatMap { it.pix.values })
+            .filter { it.nome.startsWith(PREFIXO) }.distinctBy { it.nome }
 
     /**
      * Os anexos de exemplo são desenhados no celular depois de gerar os dados: aqui entram as
@@ -433,7 +619,7 @@ object DadosDeExemplo {
         return e.copy(
             comprovantes = comprovantes,
             apostas = e.apostas.map { a -> a.copy(comprovante = a.comprovante?.let(::com)) },
-            rateios = e.rateios.map { r -> r.copy(comprovantes = r.comprovantes.map(::com)) },
+            rateios = e.rateios.map { r -> r.copy(comprovantes = r.comprovantes.map(::com), pix = r.pix.mapValues { com(it.value) }) },
         )
     }
 }

@@ -109,13 +109,20 @@ fun CartaoExtincao(estado: Estado, forcadaLiberada: Boolean, aoLiberarForcada: (
                 EmblemaIcone(Icons.Outlined.WarningAmber, MaterialTheme.colorScheme.error, 44.dp, corIcone = MaterialTheme.colorScheme.onError)
                 Spacer(Modifier.width(14.dp))
                 Text(
-                    if (forcar) "Formatar o app" else "Encerrar o bolão",
+                    when {
+                        estado.individual -> "Apagar tudo"
+                        forcar -> "Formatar o app"
+                        else -> "Encerrar o bolão"
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
             }
             Text(
-                if (forcar) {
+                if (estado.individual) {
+                    "Apaga todas as apostas e prêmios deste celular e volta ao cadastro inicial, a qualquer momento " +
+                        "(pede a confirmação e a digital)."
+                } else if (forcar) {
                     "Extinção forçada: formata o app. Apaga todos os dados deste celular, sem dividir o saldo e sem o PDF " +
                         "da auditoria, e volta ao cadastro inicial."
                 } else {
@@ -138,7 +145,15 @@ fun CartaoExtincao(estado: Estado, forcadaLiberada: Boolean, aoLiberarForcada: (
                 enabled = impedimentos.isEmpty() || forcar,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (forcar) "Extinção forçada" else "Extinção do Bolão") }
+            ) {
+                Text(
+                    when {
+                        estado.individual -> "Apagar tudo"
+                        forcar -> "Extinção forçada"
+                        else -> "Extinção do Bolão"
+                    },
+                )
+            }
         }
     }
 }
@@ -159,10 +174,24 @@ fun DialogoExtincao(estado: Estado, forcada: Boolean, aoFechar: () -> Unit) {
     val teste = estado.exemplo
     AlertDialog(
         onDismissRequest = aoFechar,
-        title = { Text(if (forcada) "Extinção forçada?" else "Extinguir o bolão?", color = MaterialTheme.colorScheme.error) },
+        title = {
+            Text(
+                when {
+                    estado.individual -> "Apagar tudo?"
+                    forcada -> "Extinção forçada?"
+                    else -> "Extinguir o bolão?"
+                },
+                color = MaterialTheme.colorScheme.error,
+            )
+        },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (forcada) {
+                if (forcada && estado.individual && !teste) {
+                    Text(
+                        "Apaga todas as apostas, prêmios e ajustes deste celular. O app volta ao cadastro inicial, " +
+                            "como recém-instalado (dá para escolher o modo de novo).",
+                    )
+                } else if (forcada) {
                     Text(
                         if (teste) {
                             "Modo de teste: apaga os dados de exemplo e volta aos dados reais, sem divisão nem auditoria."
@@ -212,8 +241,11 @@ fun DialogoExtincao(estado: Estado, forcada: Boolean, aoFechar: () -> Unit) {
                                 repo.formatar()
                                 if (teste) Vigia.esquecerAvisosDeTeste(ctx) else Vigia.esquecerTodosOsAvisos(ctx)
                                 repo.avisar(
-                                    if (teste) "Extinção de teste concluída: os dados de exemplo foram apagados."
-                                    else "App formatado: todos os dados foram apagados. Cadastre o grupo de novo.",
+                                    when {
+                                        teste -> "Extinção de teste concluída: os dados de exemplo foram apagados."
+                                        estado.individual -> "Tudo apagado. Faça o cadastro de novo."
+                                        else -> "App formatado: todos os dados foram apagados. Cadastre o grupo de novo."
+                                    },
                                 )
                             } else {
                                 repo.atualizar { Operacoes.iniciarExtincao(it, System.currentTimeMillis()) }

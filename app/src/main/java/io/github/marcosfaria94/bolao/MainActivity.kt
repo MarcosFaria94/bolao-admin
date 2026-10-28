@@ -20,12 +20,13 @@ import kotlinx.coroutines.launch
 
 /**
  * Tela única do app. Abre bloqueada pela biometria (digital, rosto ou o bloqueio do celular)
- * e volta a bloquear depois de alguns minutos fora do app.
+ * e volta a bloquear depois de alguns minutos fora do app. Tela dividida, mudar o tamanho da
+ * divisão ou girar o celular não pedem a digital de novo: o desbloqueio fica guardado no app
+ * (BolaoApp.desbloqueado), não na tela, e a tela nem é recriada nessas mudanças (manifesto).
  */
 class MainActivity : FragmentActivity() {
 
     private val bloqueado = mutableStateOf(false)
-    private var saiuEm = 0L
     private var pedindo = false
     /** Pede a digital sozinho uma vez ao abrir ou ao voltar; depois, só pelo botão. */
     private var pedirAoVoltar = false
@@ -34,7 +35,8 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) lerDestino(intent)
-        if (Biometria.disponivel(this)) {
+        // Já desbloqueado nesta abertura do app (a tela foi só recriada) e sem ter ficado muito tempo fora: segue aberto.
+        if (Biometria.disponivel(this) && !(bolao.desbloqueado && !ficouLonge())) {
             bloqueado.value = true
             pedirAoVoltar = true
         }
@@ -51,8 +53,8 @@ class MainActivity : FragmentActivity() {
     override fun onStart() {
         super.onStart()
         bolao.visivel = true
-        val longe = saiuEm > 0 && SystemClock.elapsedRealtime() - saiuEm > TEMPO_SEM_BLOQUEIO_MS
-        if (longe && !bloqueado.value && Biometria.disponivel(this)) {
+        if (ficouLonge() && !bloqueado.value && Biometria.disponivel(this)) {
+            bolao.desbloqueado = false
             bloqueado.value = true
             pedirAoVoltar = true
         }
@@ -69,20 +71,31 @@ class MainActivity : FragmentActivity() {
     override fun onStop() {
         super.onStop()
         bolao.visivel = false
-        if (!isChangingConfigurations) saiuEm = SystemClock.elapsedRealtime()
+        if (!isChangingConfigurations) bolao.saiuEm = SystemClock.elapsedRealtime()
+    }
+
+    /** Ficou fora do app mais que o tempo sem bloqueio. */
+    private fun ficouLonge(): Boolean {
+        val saiu = bolao.saiuEm
+        return saiu > 0 && SystemClock.elapsedRealtime() - saiu > TEMPO_SEM_BLOQUEIO_MS
     }
 
     private fun desbloquear() {
         if (pedindo) return
         if (!Biometria.disponivel(this)) {
             bloqueado.value = false
+            bolao.desbloqueado = true
             return
         }
         pedindo = true
         lifecycleScope.launch {
             val ok = Biometria.autorizar(this@MainActivity, getString(R.string.app_name), "Desbloqueie para abrir o bolão")
             pedindo = false
-            if (ok) bloqueado.value = false
+            if (ok) {
+                bloqueado.value = false
+                bolao.desbloqueado = true
+                bolao.saiuEm = 0L
+            }
         }
     }
 

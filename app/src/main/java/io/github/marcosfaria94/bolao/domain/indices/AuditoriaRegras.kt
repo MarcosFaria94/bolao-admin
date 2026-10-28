@@ -62,9 +62,7 @@ object AuditoriaRegras {
         val potes = LinkedHashMap<Int, Double>()
         for (f in m.faixas) {
             if (!f.rateio) continue
-            var fracao = f.fracao
-            if (f.fracaoFinalZero != null && u.numero % 10 == 0) fracao = f.fracaoFinalZero
-            potes[f.faixa] = fracao * base + (heranca[f.faixa] ?: 0.0)
+            potes[f.faixa] = f.fracaoNo(u.numero) * base + (heranca[f.faixa] ?: 0.0)
         }
         var desce = 0.0
         for (fx in m.ordemCascata) {

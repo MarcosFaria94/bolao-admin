@@ -4,6 +4,9 @@ import io.github.marcosfaria94.bolao.data.Comprovante
 import io.github.marcosfaria94.bolao.data.TipoComprovante
 import io.github.marcosfaria94.bolao.domain.Autenticacao
 import io.github.marcosfaria94.bolao.domain.Datas
+import io.github.marcosfaria94.bolao.domain.Dinheiro
+import io.github.marcosfaria94.bolao.domain.FaixaPremio
+import io.github.marcosfaria94.bolao.domain.Mensagens
 
 /**
  * Conteúdo do comprovante térmico, linha a linha (sem desenhar nada): cabeçalho com o nome
@@ -69,6 +72,50 @@ object LayoutTermico {
 
     data class Linha(val texto: String = "", val estilo: Estilo = Estilo.NORMAL)
 
+    /**
+     * O resultado do concurso, no comprovante da apuração (depois do bloco do termo, que diz
+     * "RESULTADO: (VIDE ANEXO)"): os números sorteados e o rateio oficial da Caixa, com a faixa
+     * da aposta em negativo. [sorteados]: rótulo e itens ("SORTEADOS" e os números, "TREVOS"...).
+     */
+    data class ResultadoOficial(
+        val concurso: Int,
+        val sorteados: List<Pair<String, List<String>>>,
+        val faixas: List<FaixaPremio>,
+        val premiadas: Set<Int>,
+        val acumulou: Boolean?,
+    )
+
+    /** Linhas do resultado: os sorteados, se acumulou e a tabela "FAIXA / GANHADORES / PRÊMIO". */
+    fun linhasDoResultado(r: ResultadoOficial): List<Linha> {
+        if (r.sorteados.isEmpty() && r.faixas.isEmpty()) return emptyList()
+        val tabela = r.faixas.sortedBy { it.faixa }.map { f ->
+            val desc = f.descricao.ifBlank { "${f.faixa}ª faixa" }
+            val ganhadores = Dinheiro.formatar(f.ganhadores.toLong() * 100).substringBefore(",")
+            val premio = if (f.ganhadores == 0 || f.valor <= 0) "-" else Dinheiro.rs(f.valor)
+            Triple(desc, ganhadores, premio) to (f.faixa in r.premiadas)
+        }
+        val wDesc = maxOf(16, tabela.maxOfOrNull { it.first.first.length } ?: 0)
+        val wGan = maxOf(13, (tabela.maxOfOrNull { it.first.second.length } ?: 0) + 3)
+        val wPremio = maxOf(COLUNAS - wDesc - wGan, 9, (tabela.maxOfOrNull { it.first.third.length } ?: 0) + 3)
+        return buildList {
+            add(Linha("-".repeat(maxOf(COLUNAS, wDesc + wGan + wPremio))))
+            add(Linha("RESULTADO OFICIAL - CONCURSO ${r.concurso}"))
+            r.sorteados.forEach { (rotulo, itens) ->
+                Mensagens.linhaQuebrada(rotulo, itens.ifEmpty { listOf("-") }).split("\n").forEach { add(Linha(it)) }
+            }
+            r.acumulou?.let { add(Linha("ACUMULOU: ${if (it) "SIM" else "NÃO"}")) }
+            if (tabela.isNotEmpty()) {
+                add(Linha(estilo = Estilo.ESPACO))
+                add(Linha("RATEIO OFICIAL"))
+                add(Linha("FAIXA".padEnd(wDesc) + "GANHADORES".padStart(wGan) + "PRÊMIO".padStart(wPremio)))
+                tabela.forEach { (t, destaque) ->
+                    val texto = t.first.padEnd(wDesc) + t.second.padStart(wGan) + t.third.padStart(wPremio)
+                    add(Linha(texto, if (destaque) Estilo.INVERTIDO else Estilo.NORMAL))
+                }
+            }
+        }
+    }
+
     fun subtitulo(tipo: TipoComprovante): String = when (tipo) {
         TipoComprovante.APORTE -> "COMPROVANTE DE APORTE"
         TipoComprovante.APOSTA -> "COMPROVANTE DE APOSTA"
@@ -103,9 +150,11 @@ object LayoutTermico {
         autenticacao: String?,
         teste: Boolean = false,
         previa: Boolean = false,
+        resultado: ResultadoOficial? = null,
     ): List<Linha> {
         val bloco = texto.split("\n").map { Linha(it) }
-        val largura = maxOf(COLUNAS, bloco.maxOf { it.texto.length })
+        val extras = resultado?.let { linhasDoResultado(it) }.orEmpty()
+        val largura = maxOf(COLUNAS, (bloco + extras).maxOf { it.texto.length })
         val nome = grupo.ifBlank { "Bolão dos Amigos" }.uppercase()
         return buildList {
             if (teste) add(Linha("TESTE · DADOS DE EXEMPLO", Estilo.FAIXA))
@@ -117,6 +166,7 @@ object LayoutTermico {
             add(Linha(subtitulo(tipo), Estilo.CENTRO))
             add(Linha("=".repeat(largura)))
             addAll(bloco)
+            addAll(extras)
             add(Linha("=".repeat(largura)))
             descricaoAnexos(tipo, quantidadeAnexos)?.let { add(Linha(it)) }
             // REGISTRO e AUTENTICAÇÃO sempre no fim, uma linha cada.
@@ -159,8 +209,8 @@ object LayoutTermico {
     }
 
     /** Linhas de um comprovante já registrado. */
-    fun deComprovante(grupo: String, c: Comprovante, teste: Boolean = false): List<Linha> =
-        montar(grupo, c.tipo, c.texto, c.anexos.size, c.criadoEm, c.autenticacao, teste)
+    fun deComprovante(grupo: String, c: Comprovante, teste: Boolean = false, resultado: ResultadoOficial? = null): List<Linha> =
+        montar(grupo, c.tipo, c.texto, c.anexos.size, c.criadoEm, c.autenticacao, teste, resultado = resultado)
 
     /** Colunas que o papel precisa ter para estas linhas. */
     fun colunas(linhas: List<Linha>): Int =

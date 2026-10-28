@@ -46,6 +46,7 @@ import io.github.marcosfaria94.bolao.data.Apuracao
 import io.github.marcosfaria94.bolao.data.Comprovante
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
+import io.github.marcosfaria94.bolao.data.Pendencias
 import io.github.marcosfaria94.bolao.data.TipoComprovante
 import io.github.marcosfaria94.bolao.data.palpite
 import io.github.marcosfaria94.bolao.domain.Concurso
@@ -67,9 +68,11 @@ import io.github.marcosfaria94.bolao.ui.comum.Aviso
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
+import io.github.marcosfaria94.bolao.ui.comum.LinhaAnexo
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
+import io.github.marcosfaria94.bolao.ui.tema.corConferir
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -97,7 +100,12 @@ private sealed interface Vendo {
  * tem rolagem própria). O valor do prêmio aparece aqui (o aviso do celular não traz o valor).
  */
 @Composable
-fun SecaoApostaRegistrada(estado: Estado, a: Aposta) {
+fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {}, aoSair: () -> Unit = {}) {
+    // Registrada e ainda sem a conferência do comprovante da Caixa: espera o comprovante (e pode ser descartada).
+    if (a.pendenteDeAnexo) {
+        ApostaEsperandoComprovante(estado, a, abrir, aoSair)
+        return
+    }
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
     val avisos = LocalAvisos.current
@@ -106,8 +114,10 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta) {
     val m = a.modalidade
     val ap = a.apuracao
     val apurada = ap?.confirmadaEm != null
+    val individual = estado.individual
     // Depois do sorteio (ou quando a conferência automática já chegou), a apuração entra aqui.
     val apurar = !apurada && (ap != null || (a.dataSorteio != null && !a.dataSorteio.isAfter(hoje)))
+    var excluir by remember { mutableStateOf(false) }
 
     var busca by remember(a.id) { mutableStateOf<Busca>(Busca.Carregando) }
     var premio by remember(a.id) { mutableLongStateOf(0L) }
@@ -204,7 +214,7 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta) {
                     premio = it
                     premioEditado = true
                 },
-                rotulo = "Prêmio do bolão neste jogo",
+                rotulo = if (individual) "Prêmio neste jogo" else "Prêmio do bolão neste jogo",
                 ajuda = if (conferencia.precisaConfirmarValor) "Confira o valor no app da Caixa." else "Valor calculado pela tabela de prêmios da Caixa.",
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -214,9 +224,20 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta) {
         }
     }
 
-    Spacer(Modifier.height(4.dp))
-    Text("Comprovantes", style = MaterialTheme.typography.titleMedium)
-    Card(
+    if (individual) {
+        // Modo individual: sem comprovantes; a apuração é um toque e a aposta pode ser excluída.
+        if (apNova != null) {
+            Button(onClick = { confirmar = true }, enabled = !trabalhando, modifier = Modifier.fillMaxWidth()) {
+                if (trabalhando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Apurar")
+            }
+        }
+        TextButton(onClick = { excluir = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Excluir aposta", color = MaterialTheme.colorScheme.error)
+        }
+    }
+    if (!individual) Spacer(Modifier.height(4.dp))
+    if (!individual) Text("Comprovantes", style = MaterialTheme.typography.titleMedium)
+    if (!individual) Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -276,14 +297,63 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta) {
                 estado,
                 Mensagens.tituloApuracao(a.numero, hoje),
                 aoFechar = { vendo = null },
-                previa = Recibos.previa(estado, TipoComprovante.APURACAO, Operacoes.textoApuracao(estado, a, premio, hoje), 1),
+                previa = Recibos.previa(
+                    estado, TipoComprovante.APURACAO, Operacoes.textoApuracao(estado, a, premio, hoje), 1,
+                    resultado = Recibos.resultadoDe(a, registro),
+                ),
                 imagensExtras = listOfNotNull(acertos?.let { "Anexo: imagem dos acertos" to it }),
             )
         }
         null -> Unit
     }
 
-    if (confirmar) {
+    if (excluir) {
+        DialogoConfirmar(
+            titulo = "Excluir a aposta Nº${a.numero}?",
+            texto = "A aposta sai do app" + (if ((ap?.premio ?: 0) > 0 && apurada) ", junto com o prêmio dela" else "") +
+                ", e ${Dinheiro.rs(a.valor)} volta ao saldo.",
+            confirmar = "Excluir",
+            aoConfirmar = {
+                excluir = false
+                escopo.launch {
+                    try {
+                        repo.atualizar { Operacoes.descartarAposta(it, a.id) }
+                        aoSair()
+                    } catch (t: Throwable) {
+                        avisos.showSnackbar("Não foi possível excluir: ${t.message}")
+                    }
+                }
+            },
+            aoFechar = { excluir = false },
+        )
+    }
+
+    if (confirmar && individual) {
+        val registro = apNova
+        DialogoConfirmar(
+            titulo = "Apurar a aposta Nº${a.numero}?",
+            texto = if (premio > 0) "Soma ${Dinheiro.rs(premio)} ao saldo." else "Registra que não houve prêmio.",
+            confirmar = "Apurar",
+            aoConfirmar = {
+                confirmar = false
+                if (registro != null) {
+                    trabalhando = true
+                    escopo.launch {
+                        try {
+                            repo.atualizar { Operacoes.confirmarApuracao(it, a.id, registro, hoje, System.currentTimeMillis()) }
+                        } catch (t: Throwable) {
+                            avisos.showSnackbar("Não foi possível apurar: ${t.message}")
+                        } finally {
+                            trabalhando = false
+                        }
+                    }
+                }
+            },
+            aoFechar = { confirmar = false },
+        )
+    }
+
+    if (confirmar && !individual) {
         val registro = apNova
         DialogoConfirmar(
             titulo = "Confirmar a apuração da aposta Nº${a.numero}?",
@@ -312,6 +382,86 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta) {
                 }
             },
             aoFechar = { confirmar = false },
+        )
+    }
+}
+
+/**
+ * A aposta registrada que ainda espera o comprovante da Caixa (ou a conferência dele): o registro,
+ * os números, o comprovante anexado (se já veio), o atalho para a aba Comprovantes e o descarte
+ * (até a conferência, o valor volta ao saldo).
+ */
+@Composable
+private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String) -> Unit, aoSair: () -> Unit) {
+    val ctx = LocalContext.current
+    val repo = remember { ctx.bolao.repo }
+    val avisos = LocalAvisos.current
+    val escopo = rememberCoroutineScope()
+    val hoje = LocalDate.now()
+    var descartar by remember { mutableStateOf(false) }
+    val anexado = a.comprovante
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(tituloDaAposta(a), style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp))
+            Column {
+                LinhaInfo("Registro", Datas.relativa(a.dataAposta, hoje))
+                LinhaInfo(
+                    "Situação",
+                    if (anexado == null) "Esperando o comprovante da Caixa" else "Comprovante anexado: falta a conferência",
+                    destaque = true,
+                    cor = if (anexado == null) MaterialTheme.colorScheme.error else corConferir(),
+                )
+            }
+            ImagemDaAposta(a, null)
+        }
+    }
+    a.notasDoAnexo.forEach { Aviso(it) }
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (anexado != null) {
+                LinhaAnexo(
+                    titulo = "Comprovante da Caixa",
+                    nomeArquivo = anexado.nomeOriginal,
+                    aoAnexar = { abrir(Pendencias.ABA_COMPROVANTES) },
+                    arquivo = repo.arquivo(anexado),
+                    mime = anexado.mime,
+                )
+            } else {
+                Text(
+                    "Faça a aposta no app Loterias CAIXA com estes números e anexe o comprovante na aba Comprovantes " +
+                        "(dá para escolher vários PDFs de uma vez). Sem o comprovante conferido, a aposta não vale para o bolão.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Button(onClick = { abrir(Pendencias.ABA_COMPROVANTES) }, modifier = Modifier.fillMaxWidth()) {
+                Text(if (anexado == null) "Anexar na aba Comprovantes" else "Conferir na aba Comprovantes")
+            }
+        }
+    }
+    TextButton(onClick = { descartar = true }, modifier = Modifier.fillMaxWidth()) {
+        Text("Descartar aposta", color = MaterialTheme.colorScheme.error)
+    }
+    if (descartar) {
+        DialogoConfirmar(
+            titulo = "Descartar a aposta Nº${a.numero}?",
+            texto = "A aposta ainda não foi conferida: ela sai do app e ${Dinheiro.rs(a.valor)} volta ao saldo." +
+                (if (anexado != null) " O comprovante anexado também é apagado." else ""),
+            confirmar = "Descartar",
+            aoConfirmar = {
+                descartar = false
+                escopo.launch {
+                    try {
+                        repo.atualizar { Operacoes.descartarAposta(it, a.id) }
+                        anexado?.let { repo.apagarSeSolto(it) }
+                        avisos.showSnackbar("Aposta descartada: ${Dinheiro.rs(a.valor)} voltou ao saldo.")
+                        aoSair()
+                    } catch (t: Throwable) {
+                        avisos.showSnackbar("Não foi possível descartar: ${t.message}")
+                    }
+                }
+            },
+            aoFechar = { descartar = false },
         )
     }
 }

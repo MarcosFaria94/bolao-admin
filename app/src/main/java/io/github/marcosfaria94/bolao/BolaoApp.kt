@@ -23,6 +23,17 @@ class BolaoApp : Application() {
     @Volatile
     var visivel: Boolean = false
 
+    /**
+     * A digital já foi confirmada nesta abertura do app. Fica aqui (e não na tela) para que uma
+     * tela recriada (tela dividida, mudança de tamanho, girar o celular) não peça a digital de novo.
+     */
+    @Volatile
+    var desbloqueado: Boolean = false
+
+    /** Quando o app saiu da tela pela última vez (relógio desde o boot), para bloquear depois de um tempo fora. */
+    @Volatile
+    var saiuEm: Long = 0L
+
     /** Tela pedida por uma notificação tocada (rota da navegação). */
     val destinoPendente = MutableStateFlow<String?>(null)
 

@@ -28,8 +28,11 @@ import io.github.marcosfaria94.bolao.ui.comum.FiltroHistorico
 import io.github.marcosfaria94.bolao.ui.comum.destinoDoMovimento
 import io.github.marcosfaria94.bolao.ui.comum.douradoNoHistorico
 import io.github.marcosfaria94.bolao.ui.comum.movimentosDoHistorico
-import io.github.marcosfaria94.bolao.ui.comum.nomeDoMovimento
-import io.github.marcosfaria94.bolao.ui.comum.tarjaDoMovimento
+import io.github.marcosfaria94.bolao.ui.comum.Etiqueta
+import io.github.marcosfaria94.bolao.ui.comum.TomEtiqueta
+import io.github.marcosfaria94.bolao.ui.comum.etiquetaDoMovimento
+import io.github.marcosfaria94.bolao.ui.comum.horaDoMovimento
+import io.github.marcosfaria94.bolao.ui.comum.tituloDoMovimento
 import io.github.marcosfaria94.bolao.ui.comum.valorDoMovimento
 import io.github.marcosfaria94.bolao.ui.jogos.indicesDoCartao
 import io.github.marcosfaria94.bolao.ui.jogos.linhaIndices
@@ -108,23 +111,39 @@ class TelasTest {
         val tudo = movimentosDoHistorico(e, FiltroHistorico.TUDO, mes)
         assertEquals(
             listOf(
-                "Aposta Nº2 · Sorteio amanhã", "Rateio Nº1", "Aporte Nº2 · Adicional",
-                "Prêmio Nº1", "Aposta Nº1 · Premiada", "Aporte Nº1 · Mensal",
+                "Aposta Nº2 · Lotofácil", "Rateio Nº1", "Aporte Nº2",
+                "Prêmio Nº1 · Quina", "Aposta Nº1 · Quina", "Aporte Nº1",
             ),
-            tudo.map { tarjaDoMovimento(e, it, hoje) },
+            tudo.map { tituloDoMovimento(e, it) },
         )
+        // A etiqueta da situação (embaixo do título, com a hora do registro).
+        assertEquals(
+            listOf(
+                Etiqueta("Sorteio amanhã", TomEtiqueta.AZUL), null, Etiqueta("Adicional", TomEtiqueta.NEUTRO),
+                Etiqueta("Premiada", TomEtiqueta.OURO), Etiqueta("Premiada", TomEtiqueta.OURO), Etiqueta("Mensal", TomEtiqueta.NEUTRO),
+            ),
+            tudo.map { etiquetaDoMovimento(e, it, hoje) },
+        )
+        assertEquals("00:00", horaDoMovimento(tudo[0], java.time.ZoneOffset.UTC))
+        // Aposta esperando o comprovante da Caixa e rateio esperando os Pix.
+        val esperando = e.copy(
+            apostas = e.apostas.map { if (it.id == "b") it.copy(pendenteDeAnexo = true) else it },
+            rateios = e.rateios.map { it.copy(pendenteDeAnexo = true) },
+        )
+        val tudoEsperando = movimentosDoHistorico(esperando, FiltroHistorico.TUDO, mes)
+        assertEquals(Etiqueta("Sem comprovante", TomEtiqueta.VERMELHO), etiquetaDoMovimento(esperando, tudoEsperando[0], hoje))
+        assertEquals(Etiqueta("Esperando os Pix", TomEtiqueta.VERMELHO), etiquetaDoMovimento(esperando, tudoEsperando[1], hoje))
         assertEquals(
             listOf("- R$ 3,50", "- R$ 150,48", "+ R$ 9,00", "+ R$ 7,00", "- R$ 3,00", "+ R$ 150,00"),
             tudo.map { valorDoMovimento(it) },
         )
         // A aposta premiada e o prêmio dela ficam dourados; o nome da modalidade vai embaixo da bola.
         assertEquals(listOf(false, false, false, true, true, false), tudo.map { douradoNoHistorico(e, it, hoje) })
-        assertEquals(listOf("Lotofácil", null, null, null, "Quina", null), tudo.map { nomeDoMovimento(e, it) })
         assertEquals("aposta/a1", destinoDoMovimento(e, tudo[4]))
         assertEquals("aposta/a1", destinoDoMovimento(e, tudo[3]))
 
         // O tipo e o mês não mexem um no outro.
-        assertEquals(listOf("Aposta Nº2 · Sorteio amanhã", "Aposta Nº1 · Premiada"), movimentosDoHistorico(e, FiltroHistorico.APOSTAS, mes).map { tarjaDoMovimento(e, it, hoje) })
+        assertEquals(listOf("Aposta Nº2 · Lotofácil", "Aposta Nº1 · Quina"), movimentosDoHistorico(e, FiltroHistorico.APOSTAS, mes).map { tituloDoMovimento(e, it) })
         assertEquals(2, movimentosDoHistorico(e, FiltroHistorico.APORTES, mes).size)
         assertEquals(1, movimentosDoHistorico(e, FiltroHistorico.RATEIOS, mes).size)
         assertEquals(1, movimentosDoHistorico(e, FiltroHistorico.PREMIOS, mes).size)
@@ -132,13 +151,13 @@ class TelasTest {
 
         // Extrato do mês anterior: um item só, com o rendimento (o lançamento do rendimento não se repete).
         val extratos = movimentosDoHistorico(e, FiltroHistorico.EXTRATO, null)
-        assertEquals(listOf("Extrato · Set/2026"), extratos.map { tarjaDoMovimento(e, it, hoje) })
+        assertEquals(listOf("Extrato · Set/2026"), extratos.map { tituloDoMovimento(e, it) })
         assertEquals("+ R$ 0,03", valorDoMovimento(extratos.single()))
         assertEquals("comprovante/cx", destinoDoMovimento(e, extratos.single()))
         // Mês "Tudo": os dois meses, o saldo inicial sem sinal (só aparece em "Tudo").
         val todos = movimentosDoHistorico(e, FiltroHistorico.TUDO, null)
         assertEquals(8, todos.size)
-        assertEquals("Saldo inicial", tarjaDoMovimento(e, todos.last(), hoje))
+        assertEquals("Saldo inicial", tituloDoMovimento(e, todos.last()))
         assertEquals("R$ 12,50", valorDoMovimento(todos.last()))
     }
 
@@ -240,11 +259,11 @@ class TelasTest {
         val vazia = aposta(Modalidade.QUINA, 0, 7148, registrada = false)
         val completa = vazia.copy(numeros = listOf(1, 2, 3, 4, 5))
         val metade = vazia.copy(numeros = listOf(1, 2))
-        val descartada = Saida.Descartada("Aposta descartada: o volante ficou incompleto e sem o comprovante da Caixa.")
+        val descartada = Saida.Descartada("Aposta descartada: o volante ficou incompleto.")
 
         // Aposta nova.
-        assertEquals(Saida.EmAndamento("Aposta em andamento: falta anexar o comprovante da Caixa."), saidaDaTela(completa, null, nova = true))
-        assertEquals(Saida.EmAndamento("Aposta em andamento: pronta para registrar."), saidaDaTela(completa.copy(comprovante = comprovante), completa, nova = true))
+        assertEquals(Saida.EmAndamento("Aposta em andamento: falta registrar."), saidaDaTela(completa, null, nova = true))
+        assertEquals(Saida.EmAndamento("Aposta em andamento: falta registrar."), saidaDaTela(completa.copy(comprovante = comprovante), completa, nova = true))
         assertEquals(Saida.EmAndamento("Aposta em andamento: falta completar o volante."), saidaDaTela(metade.copy(comprovante = comprovante), null, nova = true))
         assertEquals(descartada, saidaDaTela(metade, null, nova = true))
         // Nada escolhido: descarta sem aviso.
@@ -261,7 +280,7 @@ class TelasTest {
         // Federal fala do bilhete.
         val federal = aposta(Modalidade.FEDERAL, 0, 6000, registrada = false).copy(bilheteFederal = "123", fracoesFederal = null)
         assertEquals(
-            Saida.Descartada("Aposta descartada: o bilhete ficou incompleto e sem o comprovante da Caixa."),
+            Saida.Descartada("Aposta descartada: o bilhete ficou incompleto."),
             saidaDaTela(federal, null, nova = true),
         )
     }

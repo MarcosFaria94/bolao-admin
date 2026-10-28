@@ -79,13 +79,16 @@ object Integridade {
 
     /** Cada aporte, aposta, apuração, rateio, extrato e divisão final precisa do seu comprovante. */
     fun registrosSemComprovante(e: Estado, hoje: LocalDate = LocalDate.now()): List<String> = buildList {
+        // O modo individual não tem comprovante nenhum.
+        if (e.individual) return@buildList
         fun quando(d: LocalDate) = Datas.quando(d, hoje)
         val porTipo = e.comprovantes.groupBy { it.tipo }
         val aportes = porTipo[TipoComprovante.APORTE].orEmpty().map { it.criadoEm }.toMutableList()
         e.lancamentos.filter { it.tipo == TipoLancamento.APORTE && !antigo(e, it.criadoEm) }.forEach { l ->
             if (!aportes.remove(l.criadoEm)) add("Aporte ${quando(l.data)}")
         }
-        e.apostas.filter { it.registrada }.forEach { a ->
+        // As que esperam o comprovante da Caixa ou a conferência ainda não têm o comprovante do bolão (e podem ser descartadas).
+        e.apostas.filter { it.registrada && !it.pendenteDeAnexo }.forEach { a ->
             if (!antigo(e, registroDaAposta(e, a)) && porTipo[TipoComprovante.APOSTA].orEmpty().none { it.apostaId == a.id }) {
                 add("Aposta Nº${a.numero} feita ${quando(a.dataAposta)}")
             }
@@ -94,7 +97,8 @@ object Integridade {
                 add("Apuração da aposta Nº${a.numero} feita ${quando(a.dataAposta)}")
             }
         }
-        e.lancamentos.filter { it.tipo == TipoLancamento.RATEIO && !antigo(e, it.criadoEm) }.forEach { l ->
+        val rateiosEsperando = e.rateios.filter { it.pendenteDeAnexo }.map { it.numero }.toSet()
+        e.lancamentos.filter { it.tipo == TipoLancamento.RATEIO && !antigo(e, it.criadoEm) && it.rateioNumero !in rateiosEsperando }.forEach { l ->
             if (porTipo[TipoComprovante.RATEIO].orEmpty().none { it.rateioNumero == l.rateioNumero }) {
                 add("Rateio ${quando(l.data)}")
             }

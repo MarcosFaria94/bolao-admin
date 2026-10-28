@@ -133,6 +133,14 @@ data class Aposta(
     val registrada: Boolean = false,
     val criadaEm: Long,
     val apuracao: Apuracao? = null,
+    /**
+     * Desde a 0.10 a aposta é registrada sem o comprovante da Caixa: ela fica esperando o comprovante
+     * (aba Comprovantes) e a conferência dele. Enquanto isso, pode ser descartada (o valor volta ao
+     * saldo). Na conferência sai o comprovante do bolão e a aposta passa a valer como as outras.
+     */
+    val pendenteDeAnexo: Boolean = false,
+    /** O que a leitura do comprovante da Caixa mudou ou não conseguiu ler (para a conferência). */
+    val notasDoAnexo: List<String> = emptyList(),
 )
 
 @Serializable
@@ -147,6 +155,10 @@ data class Rateio(
     val criadoEm: Long,
     /** Nº do rateio no mês (Nº1 = primeiro rateio do mês), como no termo. 0 = registrado antes da 0.7. */
     val numeroNoMes: Int = 0,
+    /** Registrado sem os Pix (desde a 0.10): espera os comprovantes de cada integrante e a conferência. */
+    val pendenteDeAnexo: Boolean = false,
+    /** Comprovantes dos Pix já anexados, por integrante (id da pessoa), enquanto o rateio espera a conferência. */
+    val pix: Map<String, Arquivo> = emptyMap(),
 )
 
 @Serializable
@@ -216,6 +228,20 @@ data class Extincao(
 /** Nome do app (cabeçalho dos comprovantes, PDFs e lembretes). */
 const val NOME_DO_APP = "Bolão dos Amigos"
 
+/**
+ * Como o app é usado. [BOLAO]: o grupo (2 ou mais integrantes), com comprovantes, termo, aportes,
+ * rateios e extrato. [INDIVIDUAL] (desde a 0.10): só uma pessoa, bem enxuto: registra as apostas e
+ * os prêmios, o saldo começa em zero e cai a cada aposta (mostra o quanto se gastou), sem
+ * comprovante, sem termo, sem autenticação; tudo pode ser excluído e o app pode ser apagado a
+ * qualquer momento.
+ */
+@Serializable
+enum class Modo { BOLAO, INDIVIDUAL }
+
+/** Integrantes de um bolão: no mínimo 2. */
+const val MINIMO_DE_INTEGRANTES = 2
+const val MAXIMO_DE_INTEGRANTES = 20
+
 @Serializable
 data class Estado(
     val versao: Int = 2,
@@ -250,7 +276,10 @@ data class Estado(
     val legadoAte: Long? = null,
     /** Primeiro mês com aporte mensal ("2026-11"). Vazio = regra do dia do cadastro. */
     val inicioAportes: String? = null,
+    /** Bolão (o grupo) ou Individual. */
+    val modo: Modo = Modo.BOLAO,
 ) {
+    val individual: Boolean get() = modo == Modo.INDIVIDUAL
     val saldo: Long get() = lancamentos.sumOf { it.valor }
     val administrador: Pessoa? get() = pessoas.firstOrNull { it.administrador } ?: pessoas.firstOrNull()
     fun pessoa(id: String?): Pessoa? = pessoas.firstOrNull { it.id == id }

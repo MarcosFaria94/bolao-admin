@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.HistoryEdu
 import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.SystemUpdate
@@ -166,7 +167,18 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         verticalArrangement = Arrangement.spacedBy(18.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        item {
+        if (estado.individual) {
+            item {
+                Secao("Modo", Modifier.padding(top = 8.dp)) {
+                    LinhaAjuste(
+                        emblema = { EmblemaIcone(Icons.Outlined.Person, CoresEmblema.APORTE, TAMANHO_EMBLEMA) },
+                        titulo = "Individual",
+                        subtitulo = "Só as apostas e os prêmios, sem comprovantes. O saldo começa em zero e mostra quanto se gastou ou ganhou.",
+                    )
+                }
+            }
+        }
+        if (!estado.individual) item {
             Secao("Integrantes", Modifier.padding(top = 8.dp)) {
                 estado.pessoas.forEachIndexed { i, p ->
                     // Sem as bolas das iniciais: a linha entre um e outro vai de ponta a ponta.
@@ -176,7 +188,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
             }
         }
 
-        item {
+        if (!estado.individual) item {
             Secao("Aporte mensal") {
                 LinhaAjuste(
                     emblema = { EmblemaDesenho(Desenhos.Cofrinho, TAMANHO_EMBLEMA) },
@@ -199,7 +211,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
             }
         }
 
-        item {
+        if (!estado.individual) item {
             Secao("Termo") {
                 AnexoDoTermo(
                     titulo = "Termo sem assinaturas",
@@ -219,7 +231,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
             }
         }
 
-        item {
+        if (!estado.individual) item {
             Secao("Integridade") {
                 LinhaAjuste(
                     emblema = { EmblemaIcone(Icons.Outlined.VerifiedUser, CoresEmblema.APORTE, TAMANHO_EMBLEMA) },
@@ -231,7 +243,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
             }
         }
 
-        item {
+        if (!estado.individual) item {
             Secao("Auditoria") { Auditoria(estado) }
         }
 
@@ -364,10 +376,10 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
 
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Extinção do Bolão", style = MaterialTheme.typography.titleMedium)
+                Text(if (estado.individual) "Apagar tudo" else "Extinção do Bolão", style = MaterialTheme.typography.titleMedium)
                 CartaoExtincao(
                     estado,
-                    forcadaLiberada = forcadaLiberada,
+                    forcadaLiberada = forcadaLiberada || estado.individual,
                     aoLiberarForcada = { forcadaLiberada = true },
                     aoPedir = { pedindoExtincao = true },
                 )
@@ -378,7 +390,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
     if (pedindoExtincao) {
         DialogoExtincao(
             estado,
-            forcada = forcadaLiberada,
+            forcada = forcadaLiberada || estado.individual,
             aoFechar = { pedindoExtincao = false },
         )
     }
