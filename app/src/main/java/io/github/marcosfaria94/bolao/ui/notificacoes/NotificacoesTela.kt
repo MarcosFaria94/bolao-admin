@@ -24,14 +24,16 @@ import io.github.marcosfaria94.bolao.data.Pendencia
 import io.github.marcosfaria94.bolao.notificacoes.Notificador
 
 /**
- * Notificações (o sino da Home), bem simples: o que falta fazer em texto corrido, um item embaixo
- * do outro com espaço entre eles (o mais recente primeiro). Tocar num item abre a tela que resolve.
+ * Notificações (o sino da Home, ou deslizar o dedo para a direita a partir da Home), bem simples: o
+ * que falta fazer em texto corrido, um item embaixo do outro com espaço entre eles (o mais recente
+ * primeiro). Tocar num item abre a tela que resolve. [ativa]: a página está na tela (ao lado da
+ * Home ela também é desenhada enquanto o dedo desliza).
  */
 @Composable
-fun NotificacoesTela(pendencias: List<Pendencia>, abrir: (String) -> Unit) {
+fun NotificacoesTela(pendencias: List<Pendencia>, abrir: (String) -> Unit, ativa: Boolean = true) {
     val ctx = LocalContext.current
     // Com a lista na tela, o aviso "Ação necessária" do celular já cumpriu o papel.
-    LaunchedEffect(Unit) { Notificador.limparAcoes(ctx) }
+    LaunchedEffect(ativa) { if (ativa) Notificador.limparAcoes(ctx) }
 
     LazyColumn(
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 24.dp),

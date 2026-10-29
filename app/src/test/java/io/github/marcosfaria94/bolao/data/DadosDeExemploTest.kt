@@ -43,7 +43,8 @@ class DadosDeExemploTest {
         assertTrue(e.exemplo)
         assertTrue(e.cadastroConcluido)
         // De 2 a 5 integrantes fictícios, o Administrador primeiro.
-        assertTrue(e.pessoas.size in 2..5)
+        assertTrue(e.pessoas.size in 2..3)
+        assertTrue(e.pessoas.all { it.apelido in listOf("Fulano", "Beltrano", "Ciclano") })
         assertEquals(DadosDeExemplo.NOMES.take(e.pessoas.size), e.pessoas)
 
         // 10 apostas em setembro e 6 em outubro (dias 1 a 16); a de hoje fica para quem testa.

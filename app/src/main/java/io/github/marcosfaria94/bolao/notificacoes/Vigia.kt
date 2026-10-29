@@ -1,10 +1,12 @@
 package io.github.marcosfaria94.bolao.notificacoes
 
 import android.content.Context
+import android.os.Build
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -22,11 +24,14 @@ import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
 
 /**
- * Roda de hora em hora, mesmo com o app fechado:
+ * Roda de hora em hora e na hora marcada pelo [Despertador] (resultado do sorteio, apuração), mesmo
+ * com o app fechado:
  * 1. confere os jogos já sorteados na Caixa (e de novo, até o rateio oficial sair);
- * 2. faz a apuração sozinha no dia seguinte ao sorteio, quando não há nada a confirmar
- *    (o envio do comprovante ao grupo vira pendência);
- * 3. mostra os dois avisos do celular: "Aposta premiada" e "Ação necessária".
+ * 2. faz a apuração sozinha quando não há nada a confirmar: no bolão, a partir das 8h do dia
+ *    seguinte ao sorteio (o envio do comprovante ao grupo vira pendência); no modo individual, na
+ *    hora em que o resultado sai;
+ * 3. mostra os dois avisos do celular: "Aposta premiada" e "Ação necessária";
+ * 4. marca o próximo despertar.
  * No modo de teste faz o mesmo com os dados de exemplo e marca os avisos com "Teste".
  */
 class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(contexto, parametros) {
@@ -61,6 +66,9 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             }
         }
         e = repo.atual()
+
+        // 4. O próximo despertar (resultado que ainda não saiu, apuração da manhã seguinte).
+        Despertador.agendar(ctx, e)
 
         // 3. Avisos. Sem permissão, ficam para a próxima vez (não contam como avisados).
         if (!Notificador.permitido(ctx)) return Result.success()
@@ -101,10 +109,15 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(NOME, ExistingPeriodicWorkPolicy.KEEP, pedido)
         }
 
-        /** Confere os sorteios e as pendências agora, sem esperar a próxima hora. */
+        /**
+         * Confere os sorteios e as pendências agora, sem esperar a próxima hora. Do Android 12 em
+         * diante vai como trabalho urgente (roda na hora, mesmo com o celular em repouso).
+         */
         fun rodarAgora(context: Context) {
-            WorkManager.getInstance(context)
-                .enqueueUniqueWork(NOME_AGORA, ExistingWorkPolicy.REPLACE, OneTimeWorkRequestBuilder<Vigia>().build())
+            val pedido = OneTimeWorkRequestBuilder<Vigia>().apply {
+                if (Build.VERSION.SDK_INT >= 31) setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            }.build()
+            WorkManager.getInstance(context).enqueueUniqueWork(NOME_AGORA, ExistingWorkPolicy.REPLACE, pedido)
         }
 
         /**

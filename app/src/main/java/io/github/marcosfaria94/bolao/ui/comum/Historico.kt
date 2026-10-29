@@ -2,10 +2,10 @@ package io.github.marcosfaria94.bolao.ui.comum
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,21 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowDropDown
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,7 +36,6 @@ import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.ui.aposta.Situacao
-import io.github.marcosfaria94.bolao.ui.aposta.premiada
 import io.github.marcosfaria94.bolao.ui.aposta.situacaoCurta
 import io.github.marcosfaria94.bolao.ui.aposta.situacaoDe
 import io.github.marcosfaria94.bolao.ui.tema.Ouro
@@ -61,7 +51,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-/** O parâmetro de tipo do Histórico da Home (começa em "Tudo"). */
+/** Os tipos do Histórico da Home ("Tudo" = todos). */
 enum class FiltroHistorico(val rotulo: String) {
     TUDO("Tudo"),
     APORTES("Aportes"),
@@ -69,6 +59,50 @@ enum class FiltroHistorico(val rotulo: String) {
     RATEIOS("Rateios"),
     PREMIOS("Prêmios"),
     EXTRATO("Extrato"),
+}
+
+/** Os tipos que o filtro oferece: no modo individual, só apostas e prêmios. */
+fun tiposDoFiltro(individual: Boolean): List<FiltroHistorico> =
+    if (individual) listOf(FiltroHistorico.APOSTAS, FiltroHistorico.PREMIOS) else FiltroHistorico.entries - FiltroHistorico.TUDO
+
+/**
+ * O filtro do Histórico da Home (tela "Filtrar"): os tipos e os meses escolhidos, vários de cada
+ * vez; vazio = todos. O padrão é todos os tipos no mês atual ("Limpar filtro" volta a ele, e ele
+ * volta sozinho ao trocar de tela).
+ */
+data class FiltroHome(val tipos: Set<FiltroHistorico> = emptySet(), val meses: Set<YearMonth> = emptySet()) {
+    fun ehPadrao(hoje: LocalDate): Boolean = this == padrao(hoje)
+
+    /** Marca ou desmarca o tipo [t] (todos marcados = "Tudo"). */
+    fun comTipo(t: FiltroHistorico, todos: List<FiltroHistorico>): FiltroHome {
+        val novos = if (t in tipos) tipos - t else tipos + t
+        return copy(tipos = if (novos.containsAll(todos)) emptySet() else novos)
+    }
+
+    /** Marca ou desmarca o mês [m]. */
+    fun comMes(m: YearMonth): FiltroHome = copy(meses = if (m in meses) meses - m else meses + m)
+
+    /** "Out/2026 · Tudo", "Set/2026, Out/2026 · Apostas, Prêmios", "Todos os meses · Tudo". */
+    fun resumo(): String {
+        val m = if (meses.isEmpty()) "Todos os meses" else meses.sorted().joinToString(", ") { Datas.mesAnoCurto(it) }
+        val t = if (tipos.isEmpty()) "Tudo" else tipos.sortedBy { it.ordinal }.joinToString(", ") { it.rotulo }
+        return "$m · $t"
+    }
+
+    companion object {
+        fun padrao(hoje: LocalDate) = FiltroHome(meses = setOf(YearMonth.from(hoje)))
+
+        /** Para guardar o filtro na tela (girar o celular, ir e voltar do "Filtrar"). */
+        val Saver: Saver<FiltroHome, Any> = listSaver(
+            save = { f -> f.tipos.map { "t:${it.name}" } + f.meses.map { "m:$it" } },
+            restore = { lista ->
+                FiltroHome(
+                    tipos = lista.filter { it.startsWith("t:") }.mapNotNull { runCatching { FiltroHistorico.valueOf(it.drop(2)) }.getOrNull() }.toSet(),
+                    meses = lista.filter { it.startsWith("m:") }.mapNotNull { runCatching { YearMonth.parse(it.drop(2)) }.getOrNull() }.toSet(),
+                )
+            },
+        )
+    }
 }
 
 /** Um item do Histórico: um lançamento ou o extrato de um mês. */
@@ -119,7 +153,17 @@ fun filtroDe(mv: Movimento): FiltroHistorico? = when (mv) {
  * Itens do Histórico do [filtro] e do [mes] (null = todos os meses), o mais recente primeiro.
  * O rendimento entra no item do extrato do mês (sem extrato registrado, ele aparece sozinho).
  */
-fun movimentosDoHistorico(e: Estado, filtro: FiltroHistorico, mes: YearMonth?): List<Movimento> {
+fun movimentosDoHistorico(e: Estado, filtro: FiltroHistorico, mes: YearMonth?): List<Movimento> =
+    movimentosDoHistorico(
+        e,
+        FiltroHome(tipos = if (filtro == FiltroHistorico.TUDO) emptySet() else setOf(filtro), meses = setOfNotNull(mes)),
+    )
+
+/**
+ * Itens do Histórico com o [filtro] (os tipos e os meses escolhidos), o mais recente primeiro.
+ * O rendimento entra no item do extrato do mês (sem extrato registrado, ele aparece sozinho).
+ */
+fun movimentosDoHistorico(e: Estado, filtro: FiltroHome): List<Movimento> {
     val extratos = e.extratos.mapNotNull { x ->
         val m = runCatching { YearMonth.parse(x.mes) }.getOrNull() ?: return@mapNotNull null
         val c = e.comprovantes.lastOrNull { it.tipo == TipoComprovante.EXTRATO && it.mes == x.mes }
@@ -131,8 +175,8 @@ fun movimentosDoHistorico(e: Estado, filtro: FiltroHistorico, mes: YearMonth?): 
         .filterNot { it.tipo == TipoLancamento.RENDIMENTO && YearMonth.from(it.data) in comExtrato }
         .map { Movimento.DeLancamento(it) }
     return (lancamentos + extratos)
-        .filter { filtro == FiltroHistorico.TUDO || filtroDe(it) == filtro }
-        .filter { mes == null || YearMonth.from(it.data) == mes }
+        .filter { filtro.tipos.isEmpty() || filtroDe(it) in filtro.tipos }
+        .filter { filtro.meses.isEmpty() || YearMonth.from(it.data) in filtro.meses }
         .sortedWith(compareByDescending<Movimento> { it.data }.thenByDescending { it.ordem })
 }
 
@@ -184,8 +228,8 @@ fun etiquetaDoMovimento(e: Estado, mv: Movimento, hoje: LocalDate): Etiqueta? {
                     val tom = when (s) {
                         Situacao.AGUARDANDO -> TomEtiqueta.AZUL
                         Situacao.APURACAO -> TomEtiqueta.LARANJA
-                        Situacao.PREMIADA, Situacao.PREMIADA_A_APURAR -> TomEtiqueta.OURO
-                        Situacao.NAO_PREMIADA -> TomEtiqueta.NEUTRO
+                        // O dourado fica só no item do prêmio; a aposta premiada diz "Premiada" sem ele.
+                        Situacao.PREMIADA, Situacao.PREMIADA_A_APURAR, Situacao.NAO_PREMIADA -> TomEtiqueta.NEUTRO
                     }
                     Etiqueta(situacaoCurta(a, s, hoje), tom)
                 }
@@ -223,15 +267,10 @@ fun valorDoMovimento(mv: Movimento): String = when (mv) {
         if (mv.l.tipo == TipoLancamento.SALDO_INICIAL) Dinheiro.rs(mv.l.valor) else valorComSinal(mv.l.valor)
 }
 
-/** Aposta premiada (já apurada ou esperando a apuração) e o prêmio dela: o item fica todo dourado. */
-fun douradoNoHistorico(e: Estado, mv: Movimento, hoje: LocalDate): Boolean {
-    val l = (mv as? Movimento.DeLancamento)?.l ?: return false
-    return when (l.tipo) {
-        TipoLancamento.PREMIO -> true
-        TipoLancamento.APOSTA -> l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }?.let { premiada(situacaoDe(it, hoje)) } == true
-        else -> false
-    }
-}
+/** Só o prêmio fica dourado (o valor e a etiqueta); a aposta premiada, não. */
+@Suppress("UNUSED_PARAMETER")
+fun douradoNoHistorico(e: Estado, mv: Movimento, hoje: LocalDate): Boolean =
+    (mv as? Movimento.DeLancamento)?.l?.tipo == TipoLancamento.PREMIO
 
 /** Nome da modalidade, embaixo da bola (só nas apostas). */
 fun nomeDoMovimento(e: Estado, mv: Movimento): String? {
@@ -251,89 +290,50 @@ fun destinoDoMovimento(e: Estado, mv: Movimento): String? = when (mv) {
 /** "+ R$ 30,00" ou "- R$ 3,00". */
 fun valorComSinal(centavos: Long): String = (if (centavos < 0) "- " else "+ ") + Dinheiro.rs(kotlin.math.abs(centavos))
 
-/** Data que separa os grupos da lista: "Hoje", "Ontem" ou "13/10/2026", em negrito, na cor do texto. */
-@Composable
-fun CabecalhoDia(data: LocalDate, hoje: LocalDate = LocalDate.now(), modifier: Modifier = Modifier, total: String? = null) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp, start = 4.dp, end = 4.dp)) {
-        Text(
-            Datas.relativa(data, hoje),
-            style = MaterialTheme.typography.titleSmall.copy(fontSize = 14.sp),
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
-        )
-        if (total != null) {
-            Text(
-                total,
-                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
 /**
- * Parâmetro de lista suspensa ("Tudo", "Out/2026"...): o botão com o escolhido e, ao tocar, a
- * lista das [opcoes].
+ * Data que separa os dias da lista: "Hoje", "Ontem" ou "13/10/2026" em negrito numa etiqueta, com
+ * uma linha até o fim (sem o total do dia).
  */
 @Composable
-fun <T> SeletorOpcoes(
-    opcoes: List<T>,
-    escolhido: T,
-    rotulo: (T) -> String,
-    aoEscolher: (T) -> Unit,
-    descricao: String,
-    modifier: Modifier = Modifier,
-) {
-    var aberto by remember { mutableStateOf(false) }
-    Box(modifier) {
-        OutlinedButton(
-            onClick = { aberto = true },
-            contentPadding = PaddingValues(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-        ) {
-            Text(rotulo(escolhido), style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
-            Icon(Icons.Outlined.ArrowDropDown, contentDescription = descricao)
-        }
-        DropdownMenu(expanded = aberto, onDismissRequest = { aberto = false }) {
-            opcoes.forEach { o ->
-                DropdownMenuItem(
-                    text = { Text(rotulo(o), fontWeight = if (o == escolhido) FontWeight.Bold else FontWeight.Normal) },
-                    onClick = {
-                        aoEscolher(o)
-                        aberto = false
-                    },
-                )
-            }
-        }
+fun CabecalhoDia(data: LocalDate, hoje: LocalDate = LocalDate.now(), modifier: Modifier = Modifier, primeiro: Boolean = false) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth().padding(top = if (primeiro) 10.dp else 22.dp, bottom = 10.dp),
+    ) {
+        Text(
+            Datas.relativa(data, hoje),
+            style = MaterialTheme.typography.titleSmall.copy(fontSize = 14.sp, lineHeight = 18.sp),
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(8.dp))
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        HorizontalDivider(Modifier.weight(1f), thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
     }
 }
 
-/** Raio dos cantos do cartão de cada dia do Histórico. */
-private val CANTO = 14.dp
-
-/** Um pedaço do cartão do dia (cada item da lista é um pedaço; o primeiro e o último arredondam os cantos). */
+/** Cartão de cada item do Histórico. */
 @Composable
-private fun Modifier.trechoDoCartao(primeiro: Boolean, ultimo: Boolean): Modifier {
-    val forma = RoundedCornerShape(
-        topStart = if (primeiro) CANTO else 0.dp,
-        topEnd = if (primeiro) CANTO else 0.dp,
-        bottomStart = if (ultimo) CANTO else 0.dp,
-        bottomEnd = if (ultimo) CANTO else 0.dp,
-    )
-    return fillMaxWidth().clip(forma).background(MaterialTheme.colorScheme.surfaceContainerLow)
+private fun Modifier.cartaoDoItem(): Modifier {
+    val forma = RoundedCornerShape(14.dp)
+    return fillMaxWidth()
+        .clip(forma)
+        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, forma)
 }
 
 /** Tamanho do emblema dos itens do Histórico. */
 private val TAMANHO_EMBLEMA = 44.dp
 
-/** Onde começa o texto dos itens (a linha entre dois itens começa aqui). */
-private val RECUO_TEXTO = 12.dp + TAMANHO_EMBLEMA + 12.dp
+/** Espaço entre um item e outro do mesmo dia. */
+private val ESPACO_ITENS = 8.dp
 
 /**
- * O Histórico separado por dia (o mais recente primeiro): cada dia num cartão, com a data e o
- * total do dia em cima e uma linha fina entre um item e outro. Cada dia e cada item são itens da
+ * O Histórico separado por dia (o mais recente primeiro): a data numa etiqueta com uma linha até o
+ * fim e, embaixo, cada item no seu cartão, com espaço entre eles. Cada dia e cada item são itens da
  * lista (ela só desenha o que aparece na tela).
  */
 fun LazyListScope.itensDoHistorico(
@@ -345,22 +345,19 @@ fun LazyListScope.itensDoHistorico(
 ) {
     if (movimentos.isEmpty()) {
         item(key = "historico-vazio") {
-            Box(Modifier.trechoDoCartao(primeiro = true, ultimo = true).padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Box(Modifier.padding(top = 10.dp).cartaoDoItem().padding(horizontal = 16.dp, vertical = 14.dp)) {
                 TextoVazio(vazio)
             }
         }
         return
     }
     val dias = movimentos.groupBy { it.data }.entries.toList()
-    dias.forEach { (dia, lista) ->
-        item(key = "dia-$dia") {
-            CabecalhoDia(dia, hoje, total = valorComSinal(lista.sumOf { centavosDoMovimento(it) }))
-        }
+    dias.forEachIndexed { i, (dia, lista) ->
+        item(key = "dia-$dia") { CabecalhoDia(dia, hoje, primeiro = i == 0) }
         lista.forEachIndexed { j, mv ->
             item(key = mv.chave) {
-                Column(Modifier.trechoDoCartao(primeiro = j == 0, ultimo = j == lista.lastIndex)) {
-                    if (j > 0) HorizontalDivider(Modifier.padding(start = RECUO_TEXTO), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-                    val destino = destinoDoMovimento(estado, mv)
+                val destino = destinoDoMovimento(estado, mv)
+                Box(Modifier.padding(bottom = if (j < lista.lastIndex) ESPACO_ITENS else 0.dp).cartaoDoItem()) {
                     ItemDoHistorico(
                         emblema = { EmblemaMovimento(estado, mv, TAMANHO_EMBLEMA) },
                         titulo = tituloDoMovimento(estado, mv),
@@ -380,7 +377,7 @@ fun LazyListScope.itensDoHistorico(
 /**
  * Um item do Histórico: o emblema (nas apostas, a bola da modalidade com o concurso); ao lado, o
  * título ("Aposta Nº8 · Mega-Sena") e, embaixo, a etiqueta da situação e a hora do registro; no
- * fim, o valor (as entradas em verde). [dourado] (aposta premiada e prêmio): o valor em ouro.
+ * fim, o valor (as entradas em verde). [dourado] (o prêmio): o valor em ouro.
  */
 @Composable
 fun ItemDoHistorico(

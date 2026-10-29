@@ -1,6 +1,14 @@
 package io.github.marcosfaria94.bolao.ui.home
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material.icons.outlined.ConfirmationNumber
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.text.style.TextOverflow
+import io.github.marcosfaria94.bolao.ui.comum.FiltroHome
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +55,6 @@ import io.github.marcosfaria94.bolao.domain.Calendario
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.ui.comum.Desenhos
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaDesenho
-import io.github.marcosfaria94.bolao.ui.comum.FiltroHistorico
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.Indicador
 import io.github.marcosfaria94.bolao.ui.comum.Quadro
@@ -57,9 +64,7 @@ import io.github.marcosfaria94.bolao.ui.comum.valorComSinal
 import io.github.marcosfaria94.bolao.ui.tema.AmareloSino
 import io.github.marcosfaria94.bolao.ui.tema.Barra
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
-import io.github.marcosfaria94.bolao.ui.comum.SeletorOpcoes
 import io.github.marcosfaria94.bolao.ui.comum.itensDoHistorico
-import io.github.marcosfaria94.bolao.ui.comum.mesesComDados
 import io.github.marcosfaria94.bolao.ui.comum.movimentosDoHistorico
 import java.time.LocalDate
 import java.time.YearMonth
@@ -69,28 +74,39 @@ private val ESPACO = 14.dp
 
 /**
  * Home: o saldo (com o provisionado e o extra à direita), os atalhos de Aporte, Rateio e Extrato,
- * a próxima aposta e o Histórico de tudo o que entrou e saiu, com o sino das notificações e os
- * parâmetros de tipo e de mês. No modo individual: só o saldo (que começa em zero e cai a cada
- * aposta) e o Histórico das apostas e dos prêmios.
+ * a próxima aposta e o Histórico de tudo o que entrou e saiu, com o sino das notificações, os jogos
+ * não sorteados ("A sortear") e o "Filtrar". No modo individual: só o saldo (que começa em zero e
+ * cai a cada aposta) e o Histórico das apostas e dos prêmios.
  *
- * [visita] muda a cada vez que se vai para outra aba: aí os parâmetros do Histórico (e a rolagem)
- * recomeçam. Ao voltar de uma tela aberta daqui (uma aposta, um comprovante), ficam como estavam.
+ * O [filtro] fica na raiz do app (a tela "Filtrar" muda ele); ele volta ao padrão sozinho ao trocar
+ * de tela, menos nos Jogos não sorteados. [visita] muda a cada vez que se vai para outra aba: aí a
+ * rolagem recomeça.
  */
 @Composable
-fun HomeTela(estado: Estado, visita: Int, pendencias: Int, abrir: (String) -> Unit, apostar: () -> Unit) {
+fun HomeTela(
+    estado: Estado,
+    visita: Int,
+    pendencias: Int,
+    filtro: FiltroHome,
+    abrir: (String) -> Unit,
+    apostar: () -> Unit,
+) {
     val hoje = LocalDate.now()
     val provisao = Operacoes.provisao(estado, hoje)
     val saldo = Operacoes.saldo(estado)
     val individual = estado.individual
-    // Os dois parâmetros do Histórico: começam em "Tudo" e no mês atual; mudar um não mexe no outro.
-    // Com a [visita] na chave e nas entradas: numa visita nova (depois de outra aba), nada do que foi
-    // guardado volta, esteja a Home ainda na tela ou não.
-    var filtro by rememberSaveable(visita, key = "filtro-$visita") { mutableStateOf(FiltroHistorico.TUDO) }
-    var mes by rememberSaveable(visita, key = "mes-$visita") { mutableStateOf<YearMonth?>(YearMonth.from(hoje)) }
     val rolagem = rememberSaveable(visita, saver = LazyListState.Saver, key = "rolagem-$visita") { LazyListState() }
-    val meses: List<YearMonth?> = listOf(null) + mesesComDados(estado.lancamentos.map { it.data }, hoje)
-    val movimentos = movimentosDoHistorico(estado, filtro, mes)
-    val tipos = if (individual) listOf(FiltroHistorico.TUDO, FiltroHistorico.APOSTAS, FiltroHistorico.PREMIOS) else FiltroHistorico.entries
+    val movimentos = movimentosDoHistorico(estado, filtro)
+    val naoSorteados = quantosNaoSorteados(estado, hoje)
+    // Filtro mudado (na tela "Filtrar"): a lista volta para o começo do Histórico.
+    var filtroVisto by rememberSaveable(visita, key = "filtro-visto-$visita") { mutableStateOf(filtro.resumo()) }
+    LaunchedEffect(filtro) {
+        if (filtro.resumo() != filtroVisto) {
+            filtroVisto = filtro.resumo()
+            val titulo = if (individual) 1 else 3
+            if (rolagem.firstVisibleItemIndex > titulo) rolagem.scrollToItem(titulo)
+        }
+    }
 
     LazyColumn(state = rolagem, contentPadding = PaddingTela, modifier = Modifier.fillMaxSize()) {
         if (individual) {
@@ -112,30 +128,88 @@ fun HomeTela(estado: Estado, visita: Int, pendencias: Int, abrir: (String) -> Un
             }
         }
         item(key = "titulo-historico") {
-            // "Histórico", o sino das notificações, o tipo e o mês (com "Tudo" nos dois).
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Histórico", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Sino(pendencias) { abrir("notificacoes") }
-                Spacer(Modifier.width(4.dp))
-                SeletorOpcoes(tipos, filtro, { it.rotulo }, { filtro = it }, descricao = "Escolher o tipo")
-                Spacer(Modifier.width(6.dp))
-                SeletorOpcoes(meses, mes, { m -> m?.let { Datas.mesAnoCurto(it) } ?: "Tudo" }, { mes = it }, descricao = "Escolher o mês")
+            // "Histórico", o sino das notificações, os jogos não sorteados e o "Filtrar"; embaixo, o que o filtro mostra.
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("Histórico", style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
+                    Sino(pendencias) { abrir("notificacoes") }
+                    Spacer(Modifier.width(4.dp))
+                    BotaoDoHistorico(
+                        "A sortear",
+                        Icons.Outlined.ConfirmationNumber,
+                        descricao = "Jogos não sorteados",
+                        destaque = false,
+                        contador = naoSorteados,
+                    ) { abrir("nao-sorteados") }
+                    Spacer(Modifier.width(6.dp))
+                    BotaoDoHistorico("Filtrar", Icons.Outlined.FilterList, descricao = "Filtrar o histórico", destaque = !filtro.ehPadrao(hoje)) {
+                        abrir("filtro")
+                    }
+                }
+                Text(
+                    filtro.resumo(),
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         itensDoHistorico(
             estado,
             movimentos,
             hoje,
-            vazio = "Nada registrado" + (mes?.let { " em ${Datas.mesAnoCurto(it)}" } ?: "") + ".",
+            vazio = if (filtro.ehPadrao(hoje)) "Nada registrado em ${Datas.mesAnoCurto(YearMonth.from(hoje))}." else "Nada encontrado com este filtro.",
             abrir = abrir,
         )
     }
 }
 
-/** Sino das notificações (no Histórico, entre o título e os parâmetros): todo amarelo, com o contador vermelho de pendências. */
+/**
+ * Botão compacto da linha do Histórico ("A sortear", "Filtrar"). [destaque]: o filtro está fora do
+ * padrão (o botão fica preenchido).
+ */
+@Composable
+private fun BotaoDoHistorico(
+    rotulo: String,
+    icone: ImageVector,
+    descricao: String,
+    destaque: Boolean,
+    contador: Int = 0,
+    aoTocar: () -> Unit,
+) {
+    val conteudo: @Composable RowScope.() -> Unit = {
+        Icon(icone, contentDescription = descricao, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(rotulo, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
+    }
+    val recheio = PaddingValues(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+    // O número (quantos jogos esperam o sorteio) fica num contador em cima do botão, sem alargá-lo.
+    BadgedBox(badge = {
+        if (contador > 0) {
+            Badge(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
+                Text(if (contador > 99) "99+" else contador.toString(), fontWeight = FontWeight.Bold)
+            }
+        }
+    }) {
+        if (destaque) {
+            Button(onClick = aoTocar, contentPadding = recheio, modifier = Modifier.height(36.dp), content = conteudo)
+        } else {
+            OutlinedButton(
+                onClick = aoTocar,
+                contentPadding = recheio,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+                modifier = Modifier.height(36.dp),
+                content = conteudo,
+            )
+        }
+    }
+}
+
+/** Sino das notificações (no Histórico, ao lado do título): grande, todo amarelo, com o contador vermelho de pendências. */
 @Composable
 private fun Sino(pendencias: Int, aoTocar: () -> Unit) {
-    IconButton(onClick = aoTocar, modifier = Modifier.size(44.dp)) {
+    IconButton(onClick = aoTocar, modifier = Modifier.size(52.dp)) {
         BadgedBox(badge = {
             if (pendencias > 0) {
                 Badge(containerColor = Barra.contador, contentColor = Color.White) {
@@ -143,7 +217,7 @@ private fun Sino(pendencias: Int, aoTocar: () -> Unit) {
                 }
             }
         }) {
-            Icon(Icons.Filled.Notifications, contentDescription = "Notificações", tint = AmareloSino, modifier = Modifier.size(26.dp))
+            Icon(Icons.Filled.Notifications, contentDescription = "Notificações", tint = AmareloSino, modifier = Modifier.size(36.dp))
         }
     }
 }

@@ -47,6 +47,7 @@ import io.github.marcosfaria94.bolao.data.Comprovante
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.Pendencias
+import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.data.TipoComprovante
 import io.github.marcosfaria94.bolao.data.palpite
 import io.github.marcosfaria94.bolao.domain.Concurso
@@ -78,6 +79,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /** Resultado do sorteio para a apuração: da Caixa ou digitado pelo Administrador. */
 private sealed interface Busca {
@@ -141,6 +143,13 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
     val conferencia = pronto?.let { Conferencia.conferir(m, a.palpite, it.concurso, a.bilheteFederal, a.fracoesFederal) }
     // Mesmo instante enquanto o resultado não muda (evita refazer a imagem a cada toque).
     val instante = remember(conferencia) { System.currentTimeMillis() }
+    // A apuração automática cuida desta aposta: resultado da Caixa com o rateio oficial e nada a
+    // confirmar. Aí não há botão de apurar: no modo individual ela sai na hora; no bolão, às 8h do
+    // dia seguinte ao sorteio (como no termo), mesmo com o app fechado.
+    val automatica = pronto != null && conferencia != null && !pronto.manual && pronto.concurso.faixas.isNotEmpty() &&
+        !conferencia.precisaConfirmarValor && conferencia.observacoes.isEmpty()
+    val apuracaoEm = Pendencias.apuracaoAutomaticaEm(estado, a)
+    val apurandoJa = automatica && apuracaoEm != null && !LocalDateTime.now().isBefore(apuracaoEm)
     LaunchedEffect(conferencia) {
         if (conferencia != null && !premioEditado) premio = conferencia.premio
         // Guarda a conferência (sem confirmar): é ela que muda a situação na lista de apostas.
@@ -149,6 +158,8 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
             repo.enfileirar { Operacoes.guardarConferencia(it, a.id, nova) }
         }
     }
+    // Já é hora: a apuração automática sai agora (o Vigia apura, avisa e marca o próximo despertar).
+    LaunchedEffect(a.id, apurandoJa) { if (apurandoJa) Vigia.rodarAgora(ctx) }
     // Apuração montada agora (ainda sem registrar). Resultado digitado não diz se acumulou.
     val apNova: Apuracao? = if (pronto != null && conferencia != null) {
         Operacoes.apuracaoDe(pronto.concurso, conferencia, premio, instante).let { if (pronto.manual) it.copy(acumulou = null) else it }
@@ -196,7 +207,21 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
             }
             is Busca.Pronto -> Unit
         }
-        if (pronto != null && conferencia != null) {
+        if (pronto != null && conferencia != null && automatica) {
+            // Sem botão: a apuração sai sozinha.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (apurandoJa) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("  Apurando...", style = MaterialTheme.typography.bodyMedium)
+                } else if (apuracaoEm != null) {
+                    Text(
+                        "A apuração sai sozinha ${quandoSai(apuracaoEm, hoje)}, mesmo com o app fechado.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        } else if (pronto != null && conferencia != null) {
             if (pronto.manual) {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -226,7 +251,7 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
 
     if (individual) {
         // Modo individual: sem comprovantes; a apuração é um toque e a aposta pode ser excluída.
-        if (apNova != null) {
+        if (apNova != null && !automatica) {
             Button(onClick = { confirmar = true }, enabled = !trabalhando, modifier = Modifier.fillMaxWidth()) {
                 if (trabalhando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Apurar")
             }
@@ -263,6 +288,16 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
                     aoVisualizar = { cApuracao?.let { vendo = Vendo.Registrado(it) } },
                     aoEnviar = { cApuracao?.let { c -> escopo.launch { Compartilhar.comprovante(ctx, estado, c) } } },
                     textoEnviar = if (cApuracao != null && estado.enviado(cApuracao)) "Enviar de novo" else "Enviar",
+                )
+                apNova != null && automatica -> LinhaComprovante(
+                    titulo = "Comprovante da apuração",
+                    detalhe = if (apurandoJa || apuracaoEm == null) "Apurando..." else "Sai sozinho ${quandoSai(apuracaoEm, hoje)}",
+                    enviado = false,
+                    habilitado = true,
+                    podeEnviar = false,
+                    aoVisualizar = { vendo = Vendo.PreviaApuracao },
+                    aoEnviar = {},
+                    textoEnviar = "Enviar",
                 )
                 apNova != null -> LinhaComprovante(
                     titulo = "Comprovante da apuração",
@@ -484,6 +519,7 @@ private fun LinhaComprovante(
     aoEnviar: () -> Unit,
     textoEnviar: String,
     trabalhando: Boolean = false,
+    podeEnviar: Boolean = habilitado,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -506,13 +542,20 @@ private fun LinhaComprovante(
             ) { Text("Visualizar") }
             Button(
                 onClick = aoEnviar,
-                enabled = habilitado && !trabalhando,
+                enabled = podeEnviar && !trabalhando,
                 modifier = Modifier.weight(1f),
             ) {
                 if (trabalhando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(textoEnviar)
             }
         }
     }
+}
+
+/** "hoje às 21h", "amanhã às 8h", "em 30/10/2026 às 8h": quando a apuração automática sai. */
+private fun quandoSai(quando: LocalDateTime, hoje: LocalDate): String {
+    val dia = Datas.quando(quando.toLocalDate(), hoje)
+    val hora = if (quando.minute == 0) "${quando.hour}h" else "%dh%02d".format(quando.hour, quando.minute)
+    return "$dia às $hora"
 }
 
 private fun concursoVazio(a: Aposta) = Concurso(

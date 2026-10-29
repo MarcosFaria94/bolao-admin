@@ -57,6 +57,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.outlined.BatteryFull
+import androidx.compose.material.icons.outlined.PowerSettingsNew
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import io.github.marcosfaria94.bolao.notificacoes.SegundoPlano
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -320,51 +325,55 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         }
 
         item {
-            Secao("Notificações no HyperOS") {
+            // A apuração automática e o aviso do prêmio com o app fechado: o que o celular precisa liberar.
+            // A situação é lida de novo ao voltar dos ajustes do Android.
+            var conferido by remember { mutableIntStateOf(0) }
+            LifecycleResumeEffect(Unit) {
+                conferido++
+                onPauseOrDispose {}
+            }
+            val avisosPermitidos = remember(conferido) { Notificador.permitido(ctx) }
+            val bateriaLivre = remember(conferido) { SegundoPlano.bateriaLivre(ctx) }
+            Secao("Apuração com o app fechado") {
+                Text(
+                    "O app confere o resultado, apura e avisa do prêmio sozinho, na hora do sorteio. " +
+                        "Para isso o celular não pode pausar o app:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
                 LinhaAjuste(
                     emblema = { EmblemaIcone(Icons.Outlined.NotificationsActive, CoresEmblema.PREMIO, TAMANHO_EMBLEMA) },
-                    titulo = "Avisos na hora certa",
-                    subtitulo = "Os avisos (ação necessária e aposta premiada) só chegam na hora se o app puder iniciar sozinho " +
-                        "e não for limitado pela economia de bateria.",
+                    titulo = "Avisos",
+                    subtitulo = if (avisosPermitidos) "Permitidos" else "Desligados: o aviso do prêmio não chega",
+                    final = {
+                        if (avisosPermitidos) {
+                            OutlinedButton(onClick = { Notificador.teste(ctx) }) { Text("Testar") }
+                        } else {
+                            Button(onClick = {
+                                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                    pedirPermissao.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    SegundoPlano.abrirAjustesDoApp(ctx)
+                                }
+                            }) { Text("Permitir") }
+                        }
+                    },
                 )
-                Text(
-                    "Em Ajustes do app: ative \"Inicialização automática\" e, em \"Economia de bateria\", escolha \"Sem restrições\".",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = RECUO_TEXTO),
+                Divisoria()
+                LinhaAjuste(
+                    emblema = { EmblemaIcone(Icons.Outlined.BatteryFull, CoresEmblema.APORTE, TAMANHO_EMBLEMA) },
+                    titulo = "Bateria",
+                    subtitulo = if (bateriaLivre) "Sem restrições" else "Com restrição: a apuração pode atrasar",
+                    final = if (bateriaLivre) null else ({ Button(onClick = { SegundoPlano.pedirBateriaLivre(ctx) }) { Text("Liberar") } }),
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp),
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            ctx.startActivity(
-                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
-                        },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    ) { TextoQueCabe("Ajustes do app", MaterialTheme.typography.labelLarge, menor = 11.sp) }
-                    OutlinedButton(
-                        onClick = {
-                            if (Notificador.permitido(ctx)) {
-                                Notificador.teste(ctx)
-                            } else if (android.os.Build.VERSION.SDK_INT >= 33) {
-                                pedirPermissao.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        TextoQueCabe(
-                            if (Notificador.permitido(ctx)) "Testar aviso" else "Permitir avisos",
-                            MaterialTheme.typography.labelLarge,
-                            menor = 11.sp,
-                        )
-                    }
-                }
+                Divisoria()
+                LinhaAjuste(
+                    emblema = { EmblemaIcone(Icons.Outlined.PowerSettingsNew, AzulMarinhoEmblema, TAMANHO_EMBLEMA) },
+                    titulo = "Inicialização automática",
+                    subtitulo = "No HyperOS: ative para o app acordar sozinho na hora do resultado",
+                    final = { OutlinedButton(onClick = { SegundoPlano.abrirInicioAutomatico(ctx) }) { Text("Abrir") } },
+                )
             }
         }
 

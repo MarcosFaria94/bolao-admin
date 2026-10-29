@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -64,6 +65,8 @@ fun BarraTitulo(
     aoVoltar: (() -> Unit)? = null,
     subtitulo: String? = null,
     acoes: @Composable RowScope.() -> Unit = {},
+    iconeVoltar: ImageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+    descricaoVoltar: String = "Voltar",
 ) {
     TopAppBar(
         title = {
@@ -83,7 +86,7 @@ fun BarraTitulo(
         },
         navigationIcon = {
             if (aoVoltar != null) {
-                IconButton(onClick = aoVoltar) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Voltar") }
+                IconButton(onClick = aoVoltar) { Icon(iconeVoltar, contentDescription = descricaoVoltar) }
             }
         },
         actions = acoes,

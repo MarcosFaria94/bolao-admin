@@ -9,6 +9,23 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
+import io.github.marcosfaria94.bolao.notificacoes.Despertador
+import io.github.marcosfaria94.bolao.notificacoes.SegundoPlano
+import io.github.marcosfaria94.bolao.ui.comum.BarraDaTela
+import io.github.marcosfaria94.bolao.ui.comum.FiltroHome
+import io.github.marcosfaria94.bolao.ui.comum.LocalBarraDaTela
+import io.github.marcosfaria94.bolao.ui.home.FiltroTela
+import io.github.marcosfaria94.bolao.ui.home.NaoSorteadosTela
+import java.time.LocalDate
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Column
@@ -100,18 +117,29 @@ import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.YearMonth
 
-private enum class Aba(val rota: String, val rotulo: String, val icone: ImageVector, val iconeEscolhido: ImageVector) {
+/**
+ * As páginas que se trocam deslizando o dedo. As Notificações ficam à esquerda da Home (deslizar
+ * para a direita a partir da Home abre; para a esquerda, volta) e não aparecem na barra de baixo.
+ */
+private enum class Aba(val rota: String, val rotulo: String, val icone: ImageVector, val iconeEscolhido: ImageVector, val naBarra: Boolean = true) {
+    NOTIFICACOES("notificacoes", "Notificações", Icons.Outlined.Notifications, Icons.Filled.Notifications, naBarra = false),
     HOME("home", "Home", Icons.Outlined.Home, Icons.Filled.Home),
     JOGOS("jogos", "Jogos", Icones.Trevo, Icones.TrevoCheio),
     COMPROVANTES(Pendencias.ABA_COMPROVANTES, "Comprovantes", Icons.AutoMirrored.Outlined.ReceiptLong, Icons.AutoMirrored.Filled.ReceiptLong),
     AJUSTES("ajustes", "Ajustes", Icons.Outlined.Settings, Icons.Filled.Settings),
 }
 
-/** As abas do modo: o individual não tem comprovantes. */
-private fun abasDe(e: Estado): List<Aba> = if (e.individual) listOf(Aba.HOME, Aba.JOGOS, Aba.AJUSTES) else Aba.entries
+/** As páginas do modo: o individual não tem comprovantes. */
+private fun abasDe(e: Estado): List<Aba> =
+    if (e.individual) listOf(Aba.NOTIFICACOES, Aba.HOME, Aba.JOGOS, Aba.AJUSTES) else Aba.entries
+
+/** Telas que não limpam o filtro do Histórico: o próprio "Filtrar" e os Jogos não sorteados. */
+private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_NAO_SORTEADOS)
 
 /** A tela das abas (as páginas que se trocam deslizando o dedo para os lados). */
 private const val ROTA_ABAS = "abas"
+private const val ROTA_FILTRO = "filtro"
+private const val ROTA_NAO_SORTEADOS = "nao-sorteados"
 
 /** Endereços antigos (avisos de versões anteriores): "financeiro" e "apostas" eram abas; "apostar", a Nova aposta. */
 private val PARA_A_HOME = setOf("painel", "financeiro", "apostas")
@@ -123,6 +151,7 @@ fun AppRaiz() {
     val estado by repo.estado.collectAsStateWithLifecycle()
     val aviso by repo.aviso.collectAsStateWithLifecycle()
     val teste by repo.modoTeste.collectAsStateWithLifecycle()
+    val recomeco by repo.recomecos.collectAsStateWithLifecycle()
     val avisos = remember { SnackbarHostState() }
     val atualizacao: AtualizacaoViewModel = viewModel()
 
@@ -139,7 +168,7 @@ fun AppRaiz() {
             e == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             // Extinção em andamento: só a tela da extinção, até o fim.
             e.extincao != null -> ExtincaoTela(e)
-            !e.cadastroConcluido -> CadastroTela()
+            !e.cadastroConcluido -> CadastroTela(recomeco)
             // Ao entrar ou sair do modo de teste (ou trocar de modo), a navegação recomeça da Home.
             else -> key(teste, e.modo) { Principal(e, atualizacao, teste) }
         }
@@ -169,16 +198,20 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         Vigia.rodarAgora(ctx)
         ctx.bolao.indices.atualizar()
     }
+    // O despertador da apuração acompanha as apostas (registrar, apurar e descartar mudam a hora de acordar).
+    LaunchedEffect(estado.apostas) { runCatching { Despertador.agendar(ctx, estado) } }
     // O concurso das apostas que ainda não valem (em andamento ou esperando o comprovante) acompanha a Caixa.
     val itens by ctx.bolao.indices.itens.collectAsStateWithLifecycle()
     LaunchedEffect(itens) { atualizarConcursos(ctx, itens) }
 
     val abas = abasDe(estado)
-    val paginas = rememberPagerState { abas.size }
+    val paginaDaHome = abas.indexOf(Aba.HOME)
+    val paginas = rememberPagerState(initialPage = paginaDaHome) { abas.size }
+    val barra = remember { BarraDaTela() }
 
     /** Vai para a aba [aba], fechando o que estiver aberto por cima. */
     fun irParaAba(aba: Aba) {
-        val i = abas.indexOf(aba).takeIf { it >= 0 } ?: 0
+        val i = abas.indexOf(aba).takeIf { it >= 0 } ?: paginaDaHome
         if (nav.currentBackStackEntry?.destination?.route != ROTA_ABAS) nav.popBackStack(ROTA_ABAS, inclusive = false)
         escopo.launch { paginas.scrollToPage(i) }
     }
@@ -206,17 +239,25 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         }
     }
 
-    // Android 13+: pede a permissão de notificação uma vez, logo depois do cadastro.
+    // Uma vez, logo depois do cadastro: a permissão de notificação (Android 13+) e, em seguida, o
+    // pedido para a economia de bateria não pausar o app (a apuração e o aviso do prêmio com o app fechado).
+    val prefs = remember { ctx.getSharedPreferences("app", Context.MODE_PRIVATE) }
+    fun pedirBateria() {
+        if (!prefs.getBoolean("pediu_bateria", false) && !SegundoPlano.bateriaLivre(ctx)) {
+            prefs.edit().putBoolean("pediu_bateria", true).apply()
+            SegundoPlano.pedirBateriaLivre(ctx)
+        }
+    }
     val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) Vigia.rodarAgora(ctx)
+        pedirBateria()
     }
     LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= 33 && !Notificador.permitido(ctx)) {
-            val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
-            if (!prefs.getBoolean("pediu_notificacao", false)) {
-                prefs.edit().putBoolean("pediu_notificacao", true).apply()
-                pedirPermissao.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
+        if (Build.VERSION.SDK_INT >= 33 && !Notificador.permitido(ctx) && !prefs.getBoolean("pediu_notificacao", false)) {
+            prefs.edit().putBoolean("pediu_notificacao", true).apply()
+            pedirPermissao.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            pedirBateria()
         }
     }
 
@@ -224,9 +265,12 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     val rota = entrada?.destination?.route ?: ROTA_ABAS
     val ehAba = rota == ROTA_ABAS
     val abaAtual = abas.getOrElse(paginas.currentPage) { Aba.HOME }
-    val titulo = when (rota) {
+    // A ação que a tela de cima pôs na barra (o "Detalhes →" da página do jogo).
+    val acao = barra.acao?.takeIf { !ehAba && it.dono === entrada }
+    val titulo = acao?.titulo ?: when (rota) {
         ROTA_ABAS -> abaAtual.rotulo
-        "notificacoes" -> "Notificações"
+        ROTA_FILTRO -> "Filtrar"
+        ROTA_NAO_SORTEADOS -> "Jogos não sorteados"
         "aporte" -> "Aporte"
         "rateio" -> "Rateio"
         "extrato", "extrato/{mes}" -> "Extrato"
@@ -238,19 +282,51 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         else -> ""
     }
 
-    // Os parâmetros do Histórico da Home recomeçam quando se vai para outra aba; ao voltar de uma
-    // tela aberta a partir da Home (uma aposta, um comprovante, as notificações), ficam como estavam.
+    // A rolagem da Home recomeça quando se vai para outra aba (ou para as Notificações).
     var visitaDaHome by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(paginas.currentPage) { if (abaAtual != Aba.HOME) visitaDaHome++ }
+
+    // O filtro do Histórico (tela "Filtrar"): começa no padrão (todos os tipos no mês atual) e volta a
+    // ele sozinho ao trocar de tela; só o "Filtrar" e os Jogos não sorteados o mantêm.
+    var filtro by rememberSaveable(stateSaver = FiltroHome.Saver) { mutableStateOf(FiltroHome.padrao(LocalDate.now())) }
+    val naHome = ehAba && abas.getOrNull(paginas.settledPage) == Aba.HOME
+    LaunchedEffect(naHome, rota) {
+        if (!naHome && rota !in MANTEM_O_FILTRO) filtro = FiltroHome.padrao(LocalDate.now())
+    }
 
     // Na aba Comprovantes, o número do que espera: comprovante, Pix ou a conferência.
     val paraAnexar = if (estado.individual) 0 else Operacoes.apostasSemComprovante(estado).size + Operacoes.rateiosSemPix(estado).size +
         Operacoes.apostasParaConferir(estado).size + Operacoes.rateiosParaConferir(estado).size
 
+    CompositionLocalProvider(LocalBarraDaTela provides barra) {
     Scaffold(
         topBar = {
             Column {
-                BarraTitulo(titulo, aoVoltar = if (ehAba) null else ({ nav.popBackStack() }))
+                val fechar = rota == ROTA_NAO_SORTEADOS
+                BarraTitulo(
+                    titulo,
+                    aoVoltar = when {
+                        ehAba && abaAtual == Aba.NOTIFICACOES -> {
+                            { escopo.launch { paginas.scrollToPage(paginaDaHome) }; Unit }
+                        }
+                        ehAba -> null
+                        acao?.aoVoltar != null -> acao.aoVoltar
+                        else -> {
+                            { nav.popBackStack(); Unit }
+                        }
+                    },
+                    acoes = {
+                        acao?.botao?.let { rotulo ->
+                            TextButton(onClick = acao.aoTocarBotao) {
+                                Text(rotulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.width(4.dp))
+                                Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null)
+                            }
+                        }
+                    },
+                    iconeVoltar = if (fechar) Icons.Outlined.Close else Icons.AutoMirrored.Outlined.ArrowBack,
+                    descricaoVoltar = if (fechar) "Fechar" else "Voltar",
+                )
                 if (teste) FaixaModoTeste(aoSair = { sairDoTeste = true })
             }
         },
@@ -259,7 +335,9 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                 // Azul-noite do ícone, com a aba escolhida em dourado.
                 NavigationBar(containerColor = Barra.fundo(), contentColor = Barra.outras()) {
                     abas.forEachIndexed { i, aba ->
-                        val escolhida = paginas.currentPage == i
+                        if (!aba.naBarra) return@forEachIndexed
+                        // As Notificações são uma extensão da Home: a Home continua marcada.
+                        val escolhida = abaAtual == aba || (aba == Aba.HOME && abaAtual == Aba.NOTIFICACOES)
                         NavigationBarItem(
                             selected = escolhida,
                             onClick = { escopo.launch { paginas.scrollToPage(i) } },
@@ -307,12 +385,13 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         ) {
             // As abas: Home, Jogos, Comprovantes e Ajustes, uma do lado da outra (deslizar o dedo troca de aba).
             composable(ROTA_ABAS) {
-                // O voltar do celular numa aba que não é a Home volta para a Home.
-                BackHandler(enabled = paginas.currentPage != 0) { escopo.launch { paginas.scrollToPage(0) } }
+                // O voltar do celular numa página que não é a Home (inclusive as Notificações) volta para a Home.
+                BackHandler(enabled = paginas.currentPage != paginaDaHome) { escopo.launch { paginas.scrollToPage(paginaDaHome) } }
                 HorizontalPager(state = paginas, key = { abas[it].rota }, modifier = Modifier.fillMaxSize()) { i ->
                     when (abas[i]) {
+                        Aba.NOTIFICACOES -> NotificacoesTela(pendencias, abrir = ::abrir, ativa = abaAtual == Aba.NOTIFICACOES)
                         Aba.HOME -> HomeTela(
-                            estado, visitaDaHome, pendencias = pendencias.size,
+                            estado, visitaDaHome, pendencias = pendencias.size, filtro = filtro,
                             abrir = ::abrir, apostar = { irParaAba(Aba.JOGOS) },
                         )
                         Aba.JOGOS -> JogosTela(estado, abrirModalidade = { abrir("modalidade/${it.name}") })
@@ -321,7 +400,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     }
                 }
             }
-            composable("notificacoes") { NotificacoesTela(pendencias, abrir = ::abrir) }
+            composable(ROTA_FILTRO) { e -> FiltroTela(estado, filtro, mudar = { filtro = it }, aoFechar = { fechar(nav, e) }) }
+            composable(ROTA_NAO_SORTEADOS) { e -> NaoSorteadosTela(estado, abrir = ::abrir, aoFechar = { fechar(nav, e) }) }
             composable("saldo") { SaldoTela(estado) }
             composable("integridade") { IntegridadeTela(estado) }
             composable("aporte") { AporteTela(estado) }
@@ -347,6 +427,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             // A apuração fica na aposta (avisos antigos ainda podem abrir este endereço).
             composable("apuracao/{id}") { e -> PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty(), ::abrir) { fechar(nav, e) } }
         }
+    }
     }
 
     if (sairDoTeste) DialogoSairDoTeste(aoFechar = { sairDoTeste = false })

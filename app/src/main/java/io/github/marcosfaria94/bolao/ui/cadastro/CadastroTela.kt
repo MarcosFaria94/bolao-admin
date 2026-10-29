@@ -270,7 +270,11 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun CadastroTela(vm: CadastroViewModel = viewModel()) {
+fun CadastroTela(recomeco: Int = 0) {
+    // Cada volta ao cadastro (depois de apagar tudo) tem um cadastro novo, sem nada do anterior,
+    // e começa no "Como vai usar o app?" (as boas-vindas ficam para o app recém-instalado).
+    val vm: CadastroViewModel = viewModel(key = "cadastro-$recomeco")
+    remember(vm) { if (recomeco > 0 && vm.passo == 0) vm.passo = 1 }
     val ctx = LocalContext.current
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()

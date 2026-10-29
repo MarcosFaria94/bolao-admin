@@ -21,8 +21,8 @@ import kotlin.random.Random
 
 /**
  * Dados de exemplo do modo de teste, para experimentar todas as telas sem digitar nada. Desde a
- * 0.10 quase tudo é sorteado a cada exemplo novo: a quantidade de integrantes (de 2 a 5, quando
- * não há cadastro real), o saldo inicial, o aporte, a modalidade de cada dia, quais apostas
+ * 0.10 quase tudo é sorteado a cada exemplo novo: a quantidade de integrantes (2 ou 3: Fulano, Beltrano e
+ * Ciclano, quando não há cadastro real), o saldo inicial, o aporte, a modalidade de cada dia, quais apostas
  * ganham (e quanto), o rateio, um aporte adicional, os horários e os valores do rateio oficial.
  *
  * - mês anterior completo: saldo inicial, aporte mensal, as apostas dos dias programados apuradas
@@ -50,13 +50,11 @@ object DadosDeExemplo {
     /** Integrantes fictícios, usados enquanto não houver cadastro real (os primeiros N entram no exemplo). */
     val NOMES = listOf(
         Pessoa("exemplo-1", "Fulano de Tal", "Fulano", "fulano@exemplo.com", administrador = true),
-        Pessoa("exemplo-2", "Beto da Silva", "Beto", "beto@exemplo.com"),
-        Pessoa("exemplo-3", "Beltrano Souza", "Beltrano", "beltrano@exemplo.com"),
-        Pessoa("exemplo-4", "Ciclano Pereira", "Ciclano", "ciclano@exemplo.com"),
-        Pessoa("exemplo-5", "Sicrano Lima", "Sicrano", "sicrano@exemplo.com"),
+        Pessoa("exemplo-2", "Beltrano Souza", "Beltrano", "beltrano@exemplo.com"),
+        Pessoa("exemplo-3", "Ciclano Pereira", "Ciclano", "ciclano@exemplo.com"),
     )
 
-    /** Os 3 primeiros (o grupo do termo). */
+    /** Os 3 (o grupo do termo). */
     val PESSOAS = NOMES.take(3)
 
     /** Modalidades sorteadas para os dias programados (as mais repetidas saem mais). */
@@ -231,7 +229,7 @@ object DadosDeExemplo {
     ): Estado {
         if (modo == Modo.INDIVIDUAL) return gerarIndividual(hoje, agora, fuso, reais, pessoas, semente)
         val r = Random(semente)
-        val integrantes = pessoas?.takeIf { it.size >= MINIMO_DE_INTEGRANTES } ?: NOMES.take(r.nextInt(2, 6))
+        val integrantes = pessoas?.takeIf { it.size >= MINIMO_DE_INTEGRANTES } ?: NOMES.take(r.nextInt(2, NOMES.size + 1))
         val n = integrantes.size
         val ultimoInstante = agora - 60_000
         fun t(d: LocalDate, hora: Int, minuto: Int = 0): Long =

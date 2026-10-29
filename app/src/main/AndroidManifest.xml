@@ -4,6 +4,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Apuração e aviso do prêmio com o app fechado: o despertador na hora do resultado, a volta
+         depois de ligar o celular e o pedido para a economia de bateria não pausar o app. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Para abrir o WhatsApp com a mensagem e o anexo prontos. -->
     <queries>
@@ -33,6 +39,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Despertador do Vigia (resultado do sorteio, apuração), o celular ligado e o app atualizado. -->
+        <receiver
+            android:name=".notificacoes.Despertado"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- O modelo de leitura de texto (comprovante da Caixa) já vem com a instalação, pela Play Store. -->
         <meta-data

@@ -6,6 +6,7 @@ import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import java.time.DayOfWeek
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.YearMonth
@@ -55,8 +56,18 @@ object Pendencias {
     /** Aba que recebe os comprovantes da Caixa e dos Pix e faz a conferência. */
     const val ABA_COMPROVANTES = "comprovantes"
 
-    /** A apuração automática sai a partir das 8h do dia seguinte ao sorteio (como no termo). */
+    /**
+     * No bolão, a apuração automática sai a partir das 8h do dia seguinte ao sorteio (como no
+     * termo). No modo individual (sem termo), sai assim que a Caixa publica o rateio oficial.
+     */
     const val HORA_APURACAO = 8
+
+    /** Hora em que o resultado costuma estar na Caixa (os sorteios são às 20h; aos domingos, às 11h). */
+    const val HORA_RESULTADO = 21
+    const val HORA_RESULTADO_DOMINGO = 12
+
+    /** Enquanto o resultado (ou o rateio oficial) não sai, confere de novo a cada meia hora. */
+    const val MINUTOS_NOVA_CONFERENCIA = 30L
 
     /** Sem apuração dois dias depois do sorteio: a Caixa não ajudou, o Administrador apura à mão. */
     const val DIAS_PARA_APURAR_A_MAO = 2L
@@ -249,23 +260,61 @@ object Pendencias {
     fun aguardandoResultado(e: Estado, agora: LocalDateTime): List<Aposta> = e.apostas.filter { a ->
         val sorteio = a.dataSorteio ?: return@filter false
         if (!a.registrada || a.pendenteDeAnexo || a.apuracao?.confirmadaEm != null) return@filter false
-        val ap = a.apuracao
-        if (ap != null && ap.rateioOficial.isNotEmpty() && !ap.precisaConfirmar) return@filter false
-        val horaResultado = if (sorteio.dayOfWeek == DayOfWeek.SUNDAY) 12 else 22
-        !agora.isBefore(sorteio.atTime(horaResultado, 0))
+        if (conferenciaCompleta(a)) return@filter false
+        !agora.isBefore(horaDoResultado(sorteio))
+    }
+
+    /** Quando o resultado do sorteio do dia [sorteio] costuma estar na Caixa. */
+    fun horaDoResultado(sorteio: LocalDate): LocalDateTime =
+        sorteio.atTime(if (sorteio.dayOfWeek == DayOfWeek.SUNDAY) HORA_RESULTADO_DOMINGO else HORA_RESULTADO, 0)
+
+    /** Conferida com o rateio oficial e sem nada a confirmar: a apuração automática pode sair. */
+    private fun conferenciaCompleta(a: Aposta): Boolean {
+        val ap = a.apuracao ?: return false
+        return ap.rateioOficial.isNotEmpty() && !ap.precisaConfirmar
     }
 
     /**
-     * Apostas prontas para a apuração automática: conferidas com o rateio oficial publicado,
-     * sem nada a confirmar, a partir das 8h do dia seguinte ao sorteio.
+     * A partir de quando a apuração automática da aposta [a] pode sair: no bolão, às 8h do dia
+     * seguinte ao sorteio (como no termo); no modo individual, na hora em que a conferência fica
+     * completa.
+     */
+    fun apuracaoAutomaticaEm(e: Estado, a: Aposta): LocalDateTime? {
+        val sorteio = a.dataSorteio ?: return null
+        return if (e.individual) sorteio.atStartOfDay() else sorteio.plusDays(1).atTime(HORA_APURACAO, 0)
+    }
+
+    /**
+     * Apostas prontas para a apuração automática: conferidas com o rateio oficial publicado e sem
+     * nada a confirmar; no bolão, a partir das 8h do dia seguinte ao sorteio; no modo individual, já.
      */
     fun prontasParaApurar(e: Estado, agora: LocalDateTime): List<Aposta> {
         if (!e.cadastroConcluido || e.extincao != null) return emptyList()
         return e.apostas.filter { a ->
-            val ap = a.apuracao ?: return@filter false
-            val sorteio = a.dataSorteio ?: return@filter false
-            a.registrada && !a.pendenteDeAnexo && ap.confirmadaEm == null && !ap.precisaConfirmar && ap.rateioOficial.isNotEmpty() &&
-                !agora.isBefore(sorteio.plusDays(1).atTime(HORA_APURACAO, 0))
+            val quando = apuracaoAutomaticaEm(e, a) ?: return@filter false
+            a.registrada && !a.pendenteDeAnexo && a.apuracao?.confirmadaEm == null && conferenciaCompleta(a) && !agora.isBefore(quando)
         }
+    }
+
+    /**
+     * Quando o app precisa acordar (mesmo fechado) para conferir e apurar sozinho: na hora do
+     * resultado de cada aposta que espera o sorteio; a cada meia hora enquanto o resultado (ou o
+     * rateio oficial) não sai; e na hora da apuração automática. null = nada a esperar.
+     */
+    fun proximoDespertar(e: Estado, agora: LocalDateTime): LocalDateTime? {
+        if (!e.cadastroConcluido || e.extincao != null) return null
+        val vezes = e.apostas.mapNotNull { a ->
+            val sorteio = a.dataSorteio ?: return@mapNotNull null
+            if (!a.registrada || a.pendenteDeAnexo || a.apuracao?.confirmadaEm != null) return@mapNotNull null
+            val resultado = horaDoResultado(sorteio)
+            // Dois dias depois do sorteio sem apuração, quem resolve é o Administrador (a pendência pede).
+            if (!agora.isBefore(sorteio.plusDays(DIAS_PARA_APURAR_A_MAO + 1).atStartOfDay())) return@mapNotNull null
+            when {
+                agora.isBefore(resultado) -> resultado
+                !conferenciaCompleta(a) -> agora.plusMinutes(MINUTOS_NOVA_CONFERENCIA)
+                else -> apuracaoAutomaticaEm(e, a)?.let { if (agora.isBefore(it)) it else agora.plusMinutes(MINUTOS_NOVA_CONFERENCIA) }
+            }
+        }
+        return vezes.minOrNull()
     }
 }

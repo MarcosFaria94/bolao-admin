@@ -25,6 +25,11 @@ import io.github.marcosfaria94.bolao.ui.aposta.situacaoCurta
 import io.github.marcosfaria94.bolao.ui.aposta.situacaoDe
 import io.github.marcosfaria94.bolao.ui.aposta.tituloDaAposta
 import io.github.marcosfaria94.bolao.ui.comum.FiltroHistorico
+import io.github.marcosfaria94.bolao.domain.Datas
+import io.github.marcosfaria94.bolao.ui.comum.FiltroHome
+import io.github.marcosfaria94.bolao.ui.comum.tiposDoFiltro
+import io.github.marcosfaria94.bolao.ui.home.jogosNaoSorteados
+import io.github.marcosfaria94.bolao.ui.home.quantosNaoSorteados
 import io.github.marcosfaria94.bolao.ui.comum.destinoDoMovimento
 import io.github.marcosfaria94.bolao.ui.comum.douradoNoHistorico
 import io.github.marcosfaria94.bolao.ui.comum.movimentosDoHistorico
@@ -120,7 +125,8 @@ class TelasTest {
         assertEquals(
             listOf(
                 Etiqueta("Sorteio amanhã", TomEtiqueta.AZUL), null, Etiqueta("Adicional", TomEtiqueta.NEUTRO),
-                Etiqueta("Premiada", TomEtiqueta.OURO), Etiqueta("Premiada", TomEtiqueta.OURO), Etiqueta("Mensal", TomEtiqueta.NEUTRO),
+                // O dourado fica só no prêmio; a aposta premiada diz "Premiada" sem ele.
+                Etiqueta("Premiada", TomEtiqueta.OURO), Etiqueta("Premiada", TomEtiqueta.NEUTRO), Etiqueta("Mensal", TomEtiqueta.NEUTRO),
             ),
             tudo.map { etiquetaDoMovimento(e, it, hoje) },
         )
@@ -137,8 +143,8 @@ class TelasTest {
             listOf("- R$ 3,50", "- R$ 150,48", "+ R$ 9,00", "+ R$ 7,00", "- R$ 3,00", "+ R$ 150,00"),
             tudo.map { valorDoMovimento(it) },
         )
-        // A aposta premiada e o prêmio dela ficam dourados; o nome da modalidade vai embaixo da bola.
-        assertEquals(listOf(false, false, false, true, true, false), tudo.map { douradoNoHistorico(e, it, hoje) })
+        // Só o prêmio fica dourado (a aposta premiada, não).
+        assertEquals(listOf(false, false, false, true, false, false), tudo.map { douradoNoHistorico(e, it, hoje) })
         assertEquals("aposta/a1", destinoDoMovimento(e, tudo[4]))
         assertEquals("aposta/a1", destinoDoMovimento(e, tudo[3]))
 
@@ -159,6 +165,55 @@ class TelasTest {
         assertEquals(8, todos.size)
         assertEquals("Saldo inicial", tituloDoMovimento(e, todos.last()))
         assertEquals("R$ 12,50", valorDoMovimento(todos.last()))
+    }
+
+    @Test
+    fun filtroDoHistorico() {
+        val e = mesCompleto()
+        val mes = YearMonth.from(hoje)
+        val anterior = mes.minusMonths(1)
+        // Padrão: todos os tipos no mês atual.
+        val padrao = FiltroHome.padrao(hoje)
+        assertTrue(padrao.ehPadrao(hoje))
+        assertEquals("${Datas.mesAnoCurto(mes)} · Tudo", padrao.resumo())
+        assertEquals(6, movimentosDoHistorico(e, padrao).size)
+        // Vários tipos e vários meses de uma vez.
+        val tipos = tiposDoFiltro(individual = false)
+        val apostasEPremios = padrao.comTipo(FiltroHistorico.APOSTAS, tipos).comTipo(FiltroHistorico.PREMIOS, tipos)
+        assertEquals(
+            listOf("Aposta Nº2 · Lotofácil", "Prêmio Nº1 · Quina", "Aposta Nº1 · Quina"),
+            movimentosDoHistorico(e, apostasEPremios).map { tituloDoMovimento(e, it) },
+        )
+        assertEquals("${Datas.mesAnoCurto(mes)} · Apostas, Prêmios", apostasEPremios.resumo())
+        val doisMeses = padrao.comMes(anterior).comTipo(FiltroHistorico.EXTRATO, tipos)
+        assertEquals(listOf("Extrato · ${Datas.mesAnoCurto(anterior)}"), movimentosDoHistorico(e, doisMeses).map { tituloDoMovimento(e, it) })
+        // Desmarcar o último mês = todos os meses; marcar todos os tipos = "Tudo".
+        assertEquals(8, movimentosDoHistorico(e, padrao.comMes(mes)).size)
+        val todos = tipos.fold(padrao) { f, t -> f.comTipo(t, tipos) }
+        assertTrue(todos.tipos.isEmpty())
+        // O modo individual só tem apostas e prêmios.
+        assertEquals(listOf(FiltroHistorico.APOSTAS, FiltroHistorico.PREMIOS), tiposDoFiltro(individual = true))
+    }
+
+    @Test
+    fun jogosAindaNaoSorteados() {
+        val q1 = aposta(Modalidade.QUINA, 1, 7150).copy(id = "q1", dataSorteio = hoje.plusDays(2), numeros = listOf(5, 1, 33, 47, 71))
+        val q2 = q1.copy(id = "q2", numero = 2, criadaEm = 5)
+        val m = aposta(Modalidade.MEGA_SENA, 3, 2950).copy(id = "m", dataSorteio = hoje)
+        val l = aposta(Modalidade.LOTOFACIL, 4, 3600).copy(id = "l", dataSorteio = hoje.plusDays(2))
+        val sorteada = aposta(Modalidade.QUINA, 5, 7140).copy(id = "s", dataSorteio = hoje.minusDays(1))
+        val semComprovante = aposta(Modalidade.DIA_DE_SORTE, 6, 1130).copy(id = "d", dataSorteio = hoje.plusDays(1), pendenteDeAnexo = true)
+        val rascunho = aposta(Modalidade.MEGA_SENA, 0, 2950).copy(id = "r", registrada = false, dataSorteio = hoje)
+        val e = Estado(apostas = listOf(q1, q2, m, l, sorteada, semComprovante, rascunho))
+        val grupos = jogosNaoSorteados(e, hoje)
+        // Agrupados por modalidade/concurso/data, o sorteio mais próximo primeiro (sem as sorteadas e os rascunhos).
+        assertEquals(
+            listOf("Mega-Sena 2950", "Dia de Sorte 1130", "Lotofácil 3600", "Quina 7150"),
+            grupos.map { "${it.modalidade.nome} ${it.concurso}" },
+        )
+        assertEquals(listOf("q1", "q2"), grupos.last().apostas.map { it.id })
+        assertEquals(hoje.plusDays(2), grupos.last().sorteio)
+        assertEquals(5, quantosNaoSorteados(e, hoje))
     }
 
     @Test

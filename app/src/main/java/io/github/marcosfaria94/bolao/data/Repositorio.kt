@@ -64,6 +64,13 @@ class Repositorio(private val context: Context) {
     /** null enquanto carrega. */
     val estado: StateFlow<Estado?> = _estado.asStateFlow()
 
+    private val _recomecos = MutableStateFlow(0)
+    /**
+     * Quantas vezes os dados reais foram apagados nesta abertura do app ("Apagar tudo", fim da
+     * extinção, formatação). O cadastro que vem depois começa do zero, no "Como vai usar o app?".
+     */
+    val recomecos: StateFlow<Int> = _recomecos.asStateFlow()
+
     /** Aviso para mostrar na tela (arquivo de dados ilegível, modo de teste...). */
     private val _aviso = MutableStateFlow<String?>(null)
     val aviso: StateFlow<String?> = _aviso.asStateFlow()
@@ -289,6 +296,7 @@ class Repositorio(private val context: Context) {
             } else {
                 File(context.filesDir, "dados").deleteRecursively()
                 File(context.filesDir, "arquivos").deleteRecursively()
+                _recomecos.value++
                 _estado.value = Estado()
                 _aviso.value = null
             }
@@ -311,6 +319,7 @@ class Repositorio(private val context: Context) {
                 File(context.filesDir, "arquivos").deleteRecursively()
                 apagarTeste()
                 context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+                _recomecos.value++
                 _estado.value = Estado()
                 _aviso.value = null
             }
