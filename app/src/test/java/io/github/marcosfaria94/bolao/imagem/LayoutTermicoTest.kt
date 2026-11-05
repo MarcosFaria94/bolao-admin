@@ -51,7 +51,7 @@ class LayoutTermicoTest {
         assertEquals(partes, linhas.subList(4, 4 + partes.size).map { it.texto })
         assertEquals("=".repeat(48), linhas[4 + partes.size].texto)
         val textos = linhas.map { it.texto }
-        assertTrue(textos.contains("RESULTADO: APOSTA PREMIADA"))
+        assertTrue(textos.contains("RESULTADO: 11/15 (PREMIADA)"))
         // Sem a tabela do rateio oficial: o resultado vai na imagem anexada.
         assertFalse(textos.any { it.startsWith("RATEIO OFICIAL") })
         assertTrue(textos.contains("ANEXO: IMAGEM DOS ACERTOS"))
@@ -119,7 +119,7 @@ class LayoutTermicoTest {
         assertEquals(null, LayoutTermico.descricaoAnexos(TipoComprovante.EXTRATO, 0))
     }
     @Test
-    fun apuracaoComOsSorteadosEORateioOficial() {
+    fun apuracaoComORateioOficial() {
         val a = io.github.marcosfaria94.bolao.data.Aposta(
             id = "a", numero = 1, modalidade = Modalidade.QUINA, concurso = 7150, dataAposta = LocalDate.of(2026, 6, 1),
             valor = 300, numeros = listOf(1, 2, 3, 4, 5), registrada = true, criadaEm = 0,
@@ -135,13 +135,12 @@ class LayoutTermicoTest {
         val resultado = Recibos.resultadoDe(a, ap)!!
         val linhas = LayoutTermico.montar("Bolão dos Amigos", TipoComprovante.APURACAO, bloco, 1, null, null, previa = true, resultado = resultado)
         val textos = linhas.map { it.texto }
-        // O bloco do termo (com o "RESULTADO" e os "ACERTOS") e, embaixo, o resultado oficial.
-        assertTrue(textos.contains("RESULTADO: APOSTA PREMIADA"))
-        assertTrue(textos.contains("ACERTOS: 11/15"))
+        // O bloco do termo (com o "RESULTADO") e, embaixo, o resultado oficial, sem os números sorteados (desde a 0.19).
+        assertTrue(textos.contains("RESULTADO: 11/15 (PREMIADA)"))
+        assertTrue(textos.none { it.startsWith("ACERTOS") || it.startsWith("SORTEADOS") })
         val i = textos.indexOf("RESULTADO OFICIAL - CONCURSO 7150")
-        assertTrue(i > textos.indexOf("ACERTOS: 11/15"))
-        assertEquals("SORTEADOS: 01 02 33 47 71", textos[i + 1])
-        assertEquals("ACUMULOU: SIM", textos[i + 2])
+        assertTrue(i > textos.indexOf("RESULTADO: 11/15 (PREMIADA)"))
+        assertEquals("ACUMULOU: SIM", textos[i + 1])
         assertTrue(textos.contains("RATEIO OFICIAL"))
         // A faixa da aposta em negativo.
         val premiada = linhas.single { it.texto.startsWith("2 acertos") }

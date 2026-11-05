@@ -109,19 +109,30 @@ fun BarraTitulo(
     descricaoVoltar: String = "Voltar",
     /** O título também volta (ex.: "← Voltar", "← Aposta" na página do jogo). */
     tituloVolta: Boolean = false,
+    /** A cor do título (o Painel de Jogos usa a cor de destaque). */
+    corTitulo: Color = Color.Unspecified,
+    /** Um desenho antes do título (o ícone do Painel de Jogos). */
+    antesDoTitulo: (@Composable () -> Unit)? = null,
 ) {
     TopAppBar(
         title = {
             Column {
-                Text(
-                    titulo,
-                    fontSize = 26.sp,
-                    lineHeight = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = if (tituloVolta && aoVoltar != null) Modifier.clickable(onClick = aoVoltar) else Modifier,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (antesDoTitulo != null) {
+                        antesDoTitulo()
+                        Spacer(Modifier.width(12.dp))
+                    }
+                    Text(
+                        titulo,
+                        fontSize = 26.sp,
+                        lineHeight = 32.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = corTitulo,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = if (tituloVolta && aoVoltar != null) Modifier.clickable(onClick = aoVoltar) else Modifier,
+                    )
+                }
                 if (subtitulo != null) {
                     Text(subtitulo, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

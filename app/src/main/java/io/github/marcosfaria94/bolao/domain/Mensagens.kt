@@ -28,9 +28,23 @@ object Mensagens {
     /** Banco da caixinha do bolão, em nome do Administrador (termo, Parte 2: caixinha Nubank). */
     const val BANCO_DO_CAIXA = "NUBANK"
 
-    /** Linha RESULTADO da apuração. */
-    const val APOSTA_PREMIADA = "APOSTA PREMIADA"
-    const val APOSTA_NAO_PREMIADA = "APOSTA NÃO PREMIADA"
+    /**
+     * O fim da linha RESULTADO da apuração (desde a 0.19, "RESULTADO: 10/15 (SEM PRÊMIO)"; até a 0.18,
+     * "RESULTADO: APOSTA PREMIADA" e, embaixo, "ACERTOS: 10/15").
+     */
+    const val PREMIADA = "PREMIADA"
+    const val SEM_PREMIO = "SEM PRÊMIO"
+
+    /**
+     * A linha RESULTADO: os acertos ("10/15", "3/7 + TIME DO CORAÇÃO", "0/6 (1º SORTEIO) E 0/6 (2º
+     * SORTEIO)"...) e, entre parênteses, PREMIADA ou SEM PRÊMIO, quebrando em mais linhas (alinhadas)
+     * quando passa de [COLUNAS]. Na Federal sem prêmio, só o bilhete ("BILHETE 012345 (SEM PRÊMIO)").
+     */
+    fun linhaResultado(acertos: String, premiada: Boolean): String {
+        val texto = acertos.trim().replace(Regex("^nenhum prêmio \\((.*)\\)$", RegexOption.IGNORE_CASE), "$1").ifBlank { "-" }.uppercase()
+        val palavras = texto.split(" ").filter { it.isNotEmpty() }
+        return linhaQuebrada("RESULTADO", palavras + "(${if (premiada) PREMIADA else SEM_PREMIO})")
+    }
 
     // ---------- títulos (o texto enviado no WhatsApp) ----------
 
@@ -181,9 +195,9 @@ object Mensagens {
 
     /**
      * 3. Apuração (no dia do sorteio, assim que sai o resultado): identifica a aposta e o jogo, a
-     * data da apuração, o resultado ("APOSTA PREMIADA" ou "APOSTA NÃO PREMIADA"), os acertos
-     * ([acertos]: "11/15", acertos sobre o total sorteado; "3/6 (1º sorteio) e 2/6 (2º sorteio)"...)
-     * e soma o prêmio. A imagem dos acertos vai anexada.
+     * data da apuração, o resultado numa linha só ([linhaResultado]: os acertos sobre o total sorteado,
+     * "11/15", "3/6 (1º sorteio) e 2/6 (2º sorteio)"..., e PREMIADA ou SEM PRÊMIO) e soma o prêmio. A
+     * imagem dos acertos vai anexada.
      */
     fun apuracao(
         numero: Int,
@@ -201,8 +215,7 @@ object Mensagens {
             "DATA: ${Datas.longa(dataAposta)}\n" +
             identificacao(modalidade, concurso, premioEstimado) +
             "APURAÇÃO: ${Datas.longa(dataApuracao)}\n" +
-            "RESULTADO: ${if (premiada) APOSTA_PREMIADA else APOSTA_NAO_PREMIADA}\n" +
-            "ACERTOS: ${acertos.trim().ifBlank { "-" }.uppercase()}\n" +
+            linhaResultado(acertos, premiada) + "\n" +
             "\n" +
             financeiro("PRÊMIO", '+', saldoAtual, premio, saldoAtual + premio)
 

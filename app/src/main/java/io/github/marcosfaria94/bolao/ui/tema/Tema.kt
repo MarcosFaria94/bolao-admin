@@ -1,6 +1,7 @@
 package io.github.marcosfaria94.bolao.ui.tema
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -108,6 +109,42 @@ fun BolaoTema(conteudo: @Composable () -> Unit) {
         colorScheme = if (isSystemInDarkTheme()) Escuro else Claro,
         typography = Tipografia,
         content = conteudo,
+    )
+}
+
+/**
+ * As cores do Painel de Jogos (desde a 0.19): o mesmo esquema do app, com os fundos puxados para o
+ * azul-marinho do ícone do painel, para a tela abrir com uma cara própria. No escuro, fundo azul-noite
+ * e cartões azul-marinho; no claro, fundo azul-gelo e cartões brancos. O destaque (primary) continua o
+ * do tema: dourado no escuro, azul-marinho no claro.
+ */
+fun coresDoPainel(base: ColorScheme, escuro: Boolean): ColorScheme = if (escuro) {
+    base.copy(
+        background = Color(0xFF0C1A2E),
+        surface = Color(0xFF0C1A2E),
+        surfaceContainerLowest = Color(0xFF08131F),
+        surfaceContainerLow = Color(0xFF132640),
+        surfaceContainer = Color(0xFF172C49),
+        surfaceContainerHigh = Color(0xFF1C3352),
+        surfaceContainerHighest = Color(0xFF233D60),
+        surfaceVariant = Color(0xFF233D60),
+        onSurfaceVariant = Color(0xFFA9B9D1),
+        outline = Color(0xFF6F85A6),
+        outlineVariant = Color(0xFF263E61),
+    )
+} else {
+    base.copy(
+        background = Color(0xFFE5ECF6),
+        surface = Color(0xFFE5ECF6),
+        surfaceContainerLowest = Color(0xFFFFFFFF),
+        surfaceContainerLow = Color(0xFFFFFFFF),
+        surfaceContainer = Color(0xFFEDF2F9),
+        surfaceContainerHigh = Color(0xFFE2E9F3),
+        surfaceContainerHighest = Color(0xFFD7E0EE),
+        surfaceVariant = Color(0xFFD7E0EE),
+        onSurfaceVariant = Color(0xFF4E5B71),
+        outline = Color(0xFF8292AA),
+        outlineVariant = Color(0xFFD0DAE8),
     )
 }
 

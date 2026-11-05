@@ -6,7 +6,6 @@ import io.github.marcosfaria94.bolao.domain.Autenticacao
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.FaixaPremio
-import io.github.marcosfaria94.bolao.domain.Mensagens
 
 /**
  * Conteúdo do comprovante térmico, linha a linha (sem desenhar nada): cabeçalho com o nome
@@ -74,20 +73,19 @@ object LayoutTermico {
 
     /**
      * O resultado do concurso, no comprovante da apuração (depois do bloco do termo, com o
-     * "RESULTADO" e os "ACERTOS" da aposta): os números sorteados e o rateio oficial da Caixa, com a
-     * faixa da aposta em negativo. [sorteados]: rótulo e itens ("SORTEADOS" e os números, "TREVOS"...).
+     * "RESULTADO" da aposta): se acumulou e o rateio oficial da Caixa, com a faixa da aposta em
+     * negativo. Desde a 0.19 sem os números sorteados (eles ficam na imagem dos acertos, anexada).
      */
     data class ResultadoOficial(
         val concurso: Int,
-        val sorteados: List<Pair<String, List<String>>>,
         val faixas: List<FaixaPremio>,
         val premiadas: Set<Int>,
         val acumulou: Boolean?,
     )
 
-    /** Linhas do resultado: os sorteados, se acumulou e a tabela "FAIXA / GANHADORES / PRÊMIO". */
+    /** Linhas do resultado: se acumulou e a tabela "FAIXA / GANHADORES / PRÊMIO". */
     fun linhasDoResultado(r: ResultadoOficial): List<Linha> {
-        if (r.sorteados.isEmpty() && r.faixas.isEmpty()) return emptyList()
+        if (r.faixas.isEmpty() && r.acumulou == null) return emptyList()
         val tabela = r.faixas.sortedBy { it.faixa }.map { f ->
             val desc = f.descricao.ifBlank { "${f.faixa}ª faixa" }
             val ganhadores = Dinheiro.formatar(f.ganhadores.toLong() * 100).substringBefore(",")
@@ -100,9 +98,6 @@ object LayoutTermico {
         return buildList {
             add(Linha("-".repeat(maxOf(COLUNAS, wDesc + wGan + wPremio))))
             add(Linha("RESULTADO OFICIAL - CONCURSO ${r.concurso}"))
-            r.sorteados.forEach { (rotulo, itens) ->
-                Mensagens.linhaQuebrada(rotulo, itens.ifEmpty { listOf("-") }).split("\n").forEach { add(Linha(it)) }
-            }
             r.acumulou?.let { add(Linha("ACUMULOU: ${if (it) "SIM" else "NÃO"}")) }
             if (tabela.isNotEmpty()) {
                 add(Linha(estilo = Estilo.ESPACO))

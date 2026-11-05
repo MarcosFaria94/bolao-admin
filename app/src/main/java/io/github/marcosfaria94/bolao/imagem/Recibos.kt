@@ -8,9 +8,6 @@ import io.github.marcosfaria94.bolao.data.Apuracao
 import io.github.marcosfaria94.bolao.data.Comprovante
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.TipoComprovante
-import io.github.marcosfaria94.bolao.domain.Extra
-import io.github.marcosfaria94.bolao.domain.Formato
-import io.github.marcosfaria94.bolao.domain.Modalidade
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -27,40 +24,17 @@ object Recibos {
     fun linhas(e: Estado, c: Comprovante): List<LayoutTermico.Linha> =
         LayoutTermico.deComprovante(e.nomeExibicao, c, teste = e.exemplo, resultado = resultadoDo(e, c))
 
-    /** O resultado oficial que vai no comprovante da apuração (os números sorteados e o rateio da Caixa). */
+    /** O resultado oficial que vai no comprovante da apuração (o rateio da Caixa e se acumulou). */
     fun resultadoDo(e: Estado, c: Comprovante): LayoutTermico.ResultadoOficial? {
         if (c.tipo != TipoComprovante.APURACAO) return null
         val a = e.apostas.firstOrNull { it.id == c.apostaId } ?: return null
         return a.apuracao?.let { resultadoDe(a, it) }
     }
 
-    /** Os números sorteados de cada modalidade, como a Caixa divulga, e o rateio oficial da apuração [ap]. */
+    /** O rateio oficial da apuração [ap] e se acumulou (desde a 0.19, sem os números sorteados). */
     fun resultadoDe(a: Aposta, ap: Apuracao): LayoutTermico.ResultadoOficial? {
-        val m = a.modalidade
-        fun nums(l: List<Int>) = l.map { if (m.formato == Formato.COLUNAS) it.toString() else m.rotulo(it) }
-        val sorteados = buildList {
-            when (m.formato) {
-                Formato.NUMEROS -> {
-                    if (m == Modalidade.DUPLA_SENA) {
-                        add("1º SORTEIO" to nums(ap.dezenasSorteadas))
-                        add("2º SORTEIO" to nums(ap.segundoSorteio))
-                    } else {
-                        add("SORTEADOS" to nums(ap.dezenasSorteadas))
-                    }
-                    if (m.trevos > 0) add("TREVOS" to ap.trevosSorteados.map { it.toString() })
-                    when (m.extra) {
-                        Extra.TIME_DO_CORACAO -> add("TIME DO CORAÇÃO" to listOfNotNull(ap.extraSorteado?.uppercase()))
-                        Extra.MES_DE_SORTE -> add("MÊS DE SORTE" to listOfNotNull(ap.extraSorteado?.uppercase()))
-                        Extra.NENHUM -> Unit
-                    }
-                }
-                Formato.COLUNAS -> add("SORTEADOS" to nums(ap.dezenasSorteadas))
-                Formato.LOTECA -> add("RESULTADOS" to ap.resultadosLoteca.map { it.ifBlank { "-" } })
-                Formato.FEDERAL -> ap.premiosFederal.forEachIndexed { i, b -> add("${i + 1}º PRÊMIO" to listOf(b)) }
-            }
-        }.filter { it.second.isNotEmpty() }
-        if (sorteados.isEmpty() && ap.rateioOficial.isEmpty()) return null
-        return LayoutTermico.ResultadoOficial(a.concurso, sorteados, ap.rateioOficial, ap.faixasPremiadas.toSet(), ap.acumulou)
+        if (ap.rateioOficial.isEmpty() && ap.acumulou == null) return null
+        return LayoutTermico.ResultadoOficial(a.concurso, ap.rateioOficial, ap.faixasPremiadas.toSet(), ap.acumulou)
     }
 
     /** Arquivo PNG do comprovante, desenhado agora se ainda não existir (fora da tela principal). */

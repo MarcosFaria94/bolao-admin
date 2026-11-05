@@ -54,6 +54,12 @@ import io.github.marcosfaria94.bolao.ui.aposta.OrdemDosTimes
 import io.github.marcosfaria94.bolao.ui.aposta.nomeDoTime
 import io.github.marcosfaria94.bolao.ui.aposta.timesEmOrdem
 import io.github.marcosfaria94.bolao.ui.aposta.timeAleatorio
+import io.github.marcosfaria94.bolao.ui.aposta.mesAleatorio
+import io.github.marcosfaria94.bolao.ui.aposta.mesDaLista
+import io.github.marcosfaria94.bolao.ui.aposta.siglaDoMes
+import io.github.marcosfaria94.bolao.ui.aposta.valorSemQuebra
+import io.github.marcosfaria94.bolao.domain.MESES_DE_SORTE
+import io.github.marcosfaria94.bolao.imagem.ImagemDosJogos
 import io.github.marcosfaria94.bolao.data.Pendencias
 import io.github.marcosfaria94.bolao.ui.home.emOrdemDeSorteioEK1
 import io.github.marcosfaria94.bolao.ui.painel.TipoDoResumo
@@ -441,6 +447,38 @@ class TelasTest {
         // Só ele na busca: fica ele mesmo; a busca sem nenhum time: todos.
         assertEquals(vasco, timeAleatorio(listOf(vasco), vasco.caixa, sorteio))
         assertTrue(timeAleatorio(emptyList(), null, sorteio) in TIMES)
+    }
+
+    @Test
+    fun sortearOMesDeSorte() {
+        val sorteio = Random(7)
+        repeat(30) { assertTrue(mesAleatorio(null, sorteio) in MESES_DE_SORTE) }
+        // Não repete o mês de agora (sem diferença de acento ou de maiúscula).
+        repeat(30) { assertTrue(mesAleatorio("Março", sorteio) != "Março") }
+        repeat(30) { assertTrue(mesAleatorio("MARCO", sorteio) != "Março") }
+        // Em 60 sorteios aparecem vários meses.
+        assertTrue((1..60).map { mesAleatorio(null, sorteio) }.toSet().size > 6)
+        assertEquals("Março", mesDaLista("MARÇO"))
+        assertEquals(null, mesDaLista("Marte"))
+        assertEquals(listOf("JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"), MESES_DE_SORTE.map { siglaDoMes(it) })
+    }
+
+    @Test
+    fun cabecalhoDaImagemDosJogosComOSorteio() {
+        val q = aposta(Modalidade.QUINA, 1, 7149)
+        assertEquals("QUINA · CONCURSO 7149 · SORTEIO HOJE", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = hoje), hoje))
+        assertEquals("QUINA · CONCURSO 7149 · SORTEIO AMANHÃ", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = hoje.plusDays(1)), hoje))
+        val longe = hoje.plusDays(5)
+        assertEquals("QUINA · CONCURSO 7149 · SORTEIO ${Datas.longa(longe)}", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = longe), hoje))
+        // Sem a data divulgada: só a modalidade e o concurso.
+        assertEquals("QUINA · CONCURSO 7149", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = null), hoje))
+    }
+
+    @Test
+    fun valorEmDinheiroNaoSeParte() {
+        // "(R$ 118,69)" vai inteiro para a linha de baixo: o espaço depois do R$ não quebra.
+        assertEquals("Aposta premiada (R\$\u00A0118,69)", valorSemQuebra("Aposta premiada (R\$ 118,69)"))
+        assertEquals("Ontem", valorSemQuebra("Ontem"))
     }
 
     @Test

@@ -198,8 +198,11 @@ fun abrirClaudeNaLoja(ctx: Context) {
     }
 }
 
+/** O título do quadro do "Apoie". */
+const val APOIE_TITULO = "Doação"
+
 /**
- * O "Apoie": a xícara de café sorrindo, o texto, o nome e a chave Pix, e o botão dourado que copia a
+ * O "Apoie": o título "Doação" (desde a 0.19), a xícara de café sorrindo, o texto, o nome e a chave Pix, e o botão dourado que copia a
  * chave (a partir do Android 13 o sistema confirma a cópia; o botão também mostra "Pix copiado").
  */
 @Composable
@@ -221,6 +224,14 @@ private fun Apoie() {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
         ) {
+            // Desde a 0.19, o título "Doação" em cima da xícara.
+            Text(
+                APOIE_TITULO,
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp),
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(6.dp))
             Image(Desenhos.Xicara, contentDescription = "Xícara de café sorrindo", modifier = Modifier.size(84.dp))
             Spacer(Modifier.height(8.dp))
             Text(

@@ -15,9 +15,10 @@ import java.time.LocalDate
 import kotlin.math.max
 
 /**
- * A imagem do "Compartilhar jogos" (Painel de Jogos, desde a 0.18): uma imagem só, compacta e leve
+ * A imagem do "Compartilhar" (Painel de Jogos, desde a 0.18): uma imagem só, compacta e leve
  * (PNG de 720 px de largura), com um cartão por aposta no estilo da conferência do site da Caixa: o
- * fundo na cor da modalidade, em cima "QUINA · CONCURSO 7149" e as dezenas em círculos com o contorno
+ * fundo na cor da modalidade, em cima "QUINA · CONCURSO 7149 · SORTEIO HOJE" (desde a 0.19, com o dia
+ * do sorteio: hoje, amanhã ou a data) e as dezenas em círculos com o contorno
  * branco (os trevos em quadradinhos, o time do coração, o mês de sorte, as colunas da Super Sete, os
  * palpites da Loteca, o bilhete da Federal). No alto, "Jogos em andamento" e a data de hoje; no modo
  * de teste, o aviso de que é um teste.
@@ -38,7 +39,7 @@ object ImagemDosJogos {
         val titulo = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, true); textSize = 30f; color = Color.WHITE }
         val data = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, false); textSize = 24f; color = Color.argb(170, 255, 255, 255) }
         val teste = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, true); textSize = 22f; color = Color.rgb(0xF2, 0xB6, 0x30) }
-        val cabecalho = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, false); textSize = 23f; letterSpacing = 0.04f }
+        val cabecalho = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, false); textSize = TAMANHO_DO_CABECALHO; letterSpacing = 0.04f }
         val bola = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, true); color = Color.WHITE }
         val texto = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, false); textSize = 25f; color = Color.WHITE }
         val textoNegrito = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, true); textSize = 25f; color = Color.WHITE }
@@ -117,9 +118,14 @@ object ImagemDosJogos {
             c.drawRoundRect(RectF(MARGEM, y, LARGURA - MARGEM, y + h), 26f, 26f, p.fundo)
             val x0 = MARGEM + PREENCHIMENTO
             var yy = y + PREENCHIMENTO
-            // "QUINA · CONCURSO 7149" (branco translúcido, como no site da Caixa).
+            // "QUINA · CONCURSO 7149 · SORTEIO HOJE" (branco translúcido, como no site da Caixa); se não
+            // couber na largura do cartão, a letra diminui.
             p.cabecalho.color = Color.argb(200, 255, 255, 255)
-            val cabecalho = listOf(m.nome.uppercase(), "CONCURSO ${a.concurso}").joinToString(" · ")
+            val cabecalho = cabecalhoDe(a, hoje)
+            p.cabecalho.textSize = TAMANHO_DO_CABECALHO
+            val cabe = LARGURA - 2 * MARGEM - 2 * PREENCHIMENTO
+            val largura = p.cabecalho.measureText(cabecalho)
+            if (largura > cabe) p.cabecalho.textSize = TAMANHO_DO_CABECALHO * cabe / largura
             c.drawText(cabecalho, x0, yy + 22f, p.cabecalho)
             yy += 26f + 14f
 
@@ -155,6 +161,18 @@ object ImagemDosJogos {
         }
         return bmp
     }
+
+    private const val TAMANHO_DO_CABECALHO = 23f
+
+    /**
+     * "QUINA · CONCURSO 7149 · SORTEIO HOJE": a modalidade, o concurso e o dia do sorteio ("HOJE",
+     * "AMANHÃ" ou "07/11/2026"; sem a data divulgada, só a modalidade e o concurso).
+     */
+    fun cabecalhoDe(a: Aposta, hoje: LocalDate): String = listOfNotNull(
+        a.modalidade.nome.uppercase(),
+        "CONCURSO ${a.concurso}",
+        a.dataSorteio?.let { "SORTEIO ${Datas.relativa(it, hoje).uppercase()}" },
+    ).joinToString(" · ")
 
     /** Gera e grava a imagem em [destino] (PNG). */
     fun salvar(context: Context, apostas: List<Aposta>, hoje: LocalDate, teste: Boolean, destino: File): File {

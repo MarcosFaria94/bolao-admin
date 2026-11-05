@@ -85,12 +85,20 @@ class MensagensTest {
         )
         val semPremio = Mensagens.apuracao(1, d(1), Modalidade.QUINA, 7146, null, d(4), saldoAtual = 3652, premio = 0, acertos = "1/5")
         assertTrue(semPremio.lines().contains("PRÊMIO PRINCIPAL: A CONFIRMAR"))
-        assertTrue(semPremio.lines().contains("RESULTADO: APOSTA NÃO PREMIADA"))
-        assertTrue(semPremio.lines().contains("ACERTOS: 1/5"))
+        assertTrue(semPremio.lines().contains("RESULTADO: 1/5 (SEM PRÊMIO)"))
+        // Desde a 0.19, sem a linha dos acertos (eles vão no RESULTADO).
+        assertTrue(semPremio.lines().none { it.startsWith("ACERTOS") })
         // Os acertos de cada modalidade, em maiúsculas (o Time do Coração, os dois sorteios da Dupla Sena...).
         val timemania = Mensagens.apuracao(2, d(1), Modalidade.TIMEMANIA, 2290, null, d(4), saldoAtual = 3652, premio = 750, acertos = "3/7 + Time do Coração")
-        assertTrue(timemania.lines().contains("RESULTADO: APOSTA PREMIADA"))
-        assertTrue(timemania.lines().contains("ACERTOS: 3/7 + TIME DO CORAÇÃO"))
+        assertTrue(timemania.lines().contains("RESULTADO: 3/7 + TIME DO CORAÇÃO (PREMIADA)"))
+        // A Dupla Sena passa das 48 colunas: o resto vai para a linha de baixo, alinhado.
+        val dupla = Mensagens.apuracao(3, d(1), Modalidade.DUPLA_SENA, 2860, null, d(4), saldoAtual = 3652, premio = 0, acertos = "0/6 (1º sorteio) e 2/6 (2º sorteio)")
+        val i = dupla.lines().indexOf("RESULTADO: 0/6 (1º SORTEIO) E 2/6 (2º SORTEIO)")
+        assertTrue(dupla, i >= 0)
+        assertEquals("           (SEM PRÊMIO)", dupla.lines()[i + 1])
+        // A Federal sem prêmio: só o bilhete.
+        assertEquals("RESULTADO: BILHETE 012345 (SEM PRÊMIO)", Mensagens.linhaResultado("nenhum prêmio (bilhete 012345)", premiada = false))
+        assertEquals("RESULTADO: 1º PRÊMIO (PREMIADA)", Mensagens.linhaResultado("1º prêmio", premiada = true))
         assertEquals("PRÊMIO.....: + R$  0,00", semPremio.lines().last { it.startsWith("PRÊMIO.") })
     }
 

@@ -307,17 +307,21 @@ fun IndicadorDoPuxao(
     }
 }
 
+/** O aviso do puxão para baixo nas telas por cima das abas. */
+const val AVISO_SAIR = "Sair"
+
 /**
  * Puxar a tela para baixo (do alto da lista) volta para a tela de antes ([aoVoltar]). O aviso diz
- * "Voltar" enquanto se puxa e, quando soltar já volta, o nome da tela de antes ([voltaPara]).
+ * sempre "Sair" (desde a 0.19; até a 0.18, "Voltar" e, pronto, o nome da tela de antes); quando
+ * soltar já sai, ele fica na cor de destaque.
  */
 @Composable
-fun PuxarParaVoltar(voltaPara: String, aoVoltar: () -> Unit, modifier: Modifier = Modifier, conteudo: @Composable () -> Unit) {
+fun PuxarParaVoltar(aoVoltar: () -> Unit, modifier: Modifier = Modifier, conteudo: @Composable () -> Unit) {
     val puxao = rememberPuxaoAlemDaBorda(vertical = true, noInicio = aoVoltar)
     Box(modifier.fillMaxSize().nestedScroll(puxao)) {
         Box(Modifier.fillMaxSize().acompanharPuxao(puxao)) { conteudo() }
         IndicadorDoPuxao(
-            puxao, puxando = "Voltar", pronto = voltaPara, icone = Icons.Outlined.KeyboardArrowDown,
+            puxao, puxando = AVISO_SAIR, pronto = AVISO_SAIR, icone = Icons.Outlined.KeyboardArrowDown,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp),
         )
     }

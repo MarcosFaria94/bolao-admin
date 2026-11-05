@@ -31,6 +31,10 @@ import io.github.marcosfaria94.bolao.ui.comum.PuxarParaVoltar
 import io.github.marcosfaria94.bolao.ui.comum.soltarDasPaginas
 import io.github.marcosfaria94.bolao.ui.painel.PainelDeJogosTela
 import io.github.marcosfaria94.bolao.ui.painel.ROTA_PAINEL
+import io.github.marcosfaria94.bolao.ui.tema.coresDoPainel
+import androidx.compose.foundation.isSystemInDarkTheme
+import io.github.marcosfaria94.bolao.ui.jogos.IndicesTela
+import io.github.marcosfaria94.bolao.ui.jogos.ROTA_INDICES
 import io.github.marcosfaria94.bolao.ui.painel.IconeDoPainel
 import io.github.marcosfaria94.bolao.ui.painel.quantasPendencias
 import io.github.marcosfaria94.bolao.ui.painel.resumoDasPendencias
@@ -164,6 +168,7 @@ private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_PAINEL)
 /** Telas sem a seta de voltar na barra de cima (fecham deslizando o dedo, puxando para baixo ou pelo voltar do celular). */
 private val SEM_SETA = setOf(
     "aporte", "rateio", "extrato", "extrato/{mes}", ROTA_FILTRO, "saldo", ROTA_COMPROVANTES, ROTA_PAINEL, ROTA_SECAO_AJUSTES, "integridade",
+    ROTA_INDICES,
 )
 
 /** A página do jogo (o volante, a aposta aberta ou os Detalhes): o título "← Voltar" também volta. */
@@ -345,20 +350,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         in ROTAS_DO_JOGO -> "Voltar"
         "saldo" -> "Saldo"
         "integridade" -> "Verificar integridade"
+        ROTA_INDICES -> "k1 e k2"
         else -> ""
-    }
-
-    /** O nome da tela [e] para o aviso do puxão ("Home", "Jogos", "Quina"...). */
-    fun nomeDaTela(e: NavBackStackEntry?): String {
-        val r = e?.destination?.route ?: return abaAtual.rotulo
-        if (r == ROTA_ABAS) return abaAtual.rotulo
-        if (r in ROTAS_DO_JOGO) {
-            val a = e.arguments
-            val m = runCatching { Modalidade.valueOf(a?.getString("nome").orEmpty()) }.getOrNull()
-                ?: estado.apostas.firstOrNull { it.id == a?.getString("id") }?.modalidade
-            return m?.nome ?: "Voltar"
-        }
-        return tituloDa(r, e).ifEmpty { "Voltar" }
     }
 
     val titulo = acao?.titulo ?: tituloDa(rota, entrada)
@@ -383,13 +376,27 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     // O contador vermelho do ícone do Painel de Jogos: as pendências.
     val noContador = quantasPendencias(resumo)
 
+    // O Painel de Jogos abre com as cores próprias (azul-marinho e dourado, como o ícone): o esquema
+    // muda só enquanto ele está na tela (a barra do título e o fundo também).
+    val doPainel = rota == ROTA_PAINEL
+    val esquema = MaterialTheme.colorScheme
+    val escuro = isSystemInDarkTheme()
+    val cores = remember(esquema, doPainel, escuro) { if (doPainel) coresDoPainel(esquema, escuro) else esquema }
+
     CompositionLocalProvider(LocalBarraDaTela provides barra) {
+    MaterialTheme(colorScheme = cores) {
     Scaffold(
         topBar = {
             Column {
                 BarraTitulo(
                     titulo,
                     tituloVolta = rota in ROTAS_DO_JOGO,
+                    corTitulo = if (doPainel) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                    antesDoTitulo = if (doPainel) {
+                        { IconeDoPainel(32.dp) }
+                    } else {
+                        null
+                    },
                     aoVoltar = when {
                         ehAba || rota in SEM_SETA -> null
                         acao?.aoVoltar != null -> acao.aoVoltar
@@ -492,6 +499,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                                 abrirModalidade = { abrir("modalidade/${it.name}") },
                                 abrirDetalhes = { abrir("detalhes/${it.name}") },
                                 paraOTopo = toques[aba.ordinal],
+                                abrirIndices = { abrir(ROTA_INDICES) },
                             )
                             Aba.AJUSTES -> AjustesTela(estado, atualizacao, abrir = ::abrir, paraOTopo = toques[aba.ordinal])
                         }
@@ -503,16 +511,16 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                 }
             }
             // Todas as telas por cima das abas voltam puxando para baixo (do alto da lista): o aviso diz
-            // "Voltar" e, quando soltar já volta, o nome da tela de baixo. Muitas também fecham deslizando
-            // o dedo para os lados.
+            // "Sair" (desde a 0.19; antes, "Voltar" e o nome da tela de baixo). Muitas também fecham
+            // deslizando o dedo para os lados.
             composable(ROTA_FILTRO) { e ->
-                TelaDeCima(nav, e, ::nomeDaTela) { FiltroTela(estado, filtro, mudar = { filtro = it }, aoFechar = { fechar(nav, e) }) }
+                TelaDeCima(nav, e) { FiltroTela(estado, filtro, mudar = { filtro = it }, aoFechar = { fechar(nav, e) }) }
             }
             // Comprovantes (as pendências do resumo do Painel de Jogos): voltam para a tela de antes.
             composable(ROTA_COMPROVANTES) { e ->
                 // A leitura dos comprovantes continua mesmo fechando a tela: o modelo fica com as abas.
                 val dono = remember(e) { nav.getBackStackEntry(ROTA_ABAS) }
-                TelaDeCima(nav, e, ::nomeDaTela) {
+                TelaDeCima(nav, e) {
                     Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) {
                         ComprovantesTela(estado, abrir = ::abrir, vm = viewModel(dono))
                     }
@@ -520,7 +528,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             }
             // Painel de Jogos, com o resumo das pendências (o ícone da barra de cima, ou puxando qualquer aba para baixo).
             composable(ROTA_PAINEL) { e ->
-                TelaDeCima(nav, e, ::nomeDaTela) {
+                TelaDeCima(nav, e) {
                     Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) {
                         PainelDeJogosTela(estado, resumo, abrir = ::abrir, apostar = { irParaAba(Aba.JOGOS) })
                     }
@@ -528,70 +536,75 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             }
             // O Saldo atual (tocar no quadro do saldo): deslizar o dedo para qualquer lado volta para a Home.
             composable("saldo") { e ->
-                TelaDeCima(nav, e, ::nomeDaTela, aoVoltar = { irParaAba(Aba.HOME) }) {
+                TelaDeCima(nav, e, aoVoltar = { irParaAba(Aba.HOME) }) {
                     Box(Modifier.fillMaxSize().deslizarParaFechar { irParaAba(Aba.HOME) }) { SaldoTela(estado) }
                 }
             }
+            // Como é o cálculo do k1 e do k2 (tocar na Legenda dos Jogos).
+            composable(ROTA_INDICES) { e ->
+                TelaDeCima(nav, e) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { IndicesTela() } }
+            }
             composable("integridade") { e ->
-                TelaDeCima(nav, e, ::nomeDaTela) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { IntegridadeTela(estado) } }
+                TelaDeCima(nav, e) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { IntegridadeTela(estado) } }
             }
             // Cada item do menu dos Ajustes que tem tela própria.
             composable(ROTA_SECAO_AJUSTES) { e ->
                 val secao = SecaoAjuste.de(e.arguments?.getString("secao"))
-                TelaDeCima(nav, e, ::nomeDaTela) {
+                TelaDeCima(nav, e) {
                     Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) {
                         if (secao != null) AjustesSecaoTela(estado, secao, atualizacao, abrir = ::abrir)
                     }
                 }
             }
             composable("aporte") { e ->
-                TelaDeCima(nav, e, ::nomeDaTela) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { AporteTela(estado) } }
+                TelaDeCima(nav, e) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { AporteTela(estado) } }
             }
             composable("rateio") { e ->
-                TelaDeCima(nav, e, ::nomeDaTela) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { RateioTela(estado, abrir = ::abrir) } }
+                TelaDeCima(nav, e) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { RateioTela(estado, abrir = ::abrir) } }
             }
             composable("extrato") { e ->
-                TelaDeCima(nav, e, ::nomeDaTela) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { ExtratoTela(estado) } }
+                TelaDeCima(nav, e) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { ExtratoTela(estado) } }
             }
             composable("extrato/{mes}") { e ->
                 val mes = runCatching { YearMonth.parse(e.arguments?.getString("mes").orEmpty()) }.getOrNull()
-                TelaDeCima(nav, e, ::nomeDaTela) {
+                TelaDeCima(nav, e) {
                     Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { ExtratoTela(estado, mesInicial = mes) }
                 }
             }
             composable("comprovante/{id}") { e ->
-                TelaDeCima(nav, e, ::nomeDaTela) { ComprovanteTela(estado, e.arguments?.getString("id").orEmpty()) }
+                TelaDeCima(nav, e) { ComprovanteTela(estado, e.arguments?.getString("id").orEmpty()) }
             }
             // A página do jogo: o volante (a aposta em andamento da modalidade ou uma nova).
             composable("modalidade/{nome}") { e ->
                 val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
-                TelaDeCima(nav, e, ::nomeDaTela) {
+                TelaDeCima(nav, e) {
                     if (m != null) ModalidadeTela(estado, m, aoSair = { fechar(nav, e) }, abrir = ::abrir)
                 }
             }
             // Segurar a modalidade em Jogos: a página do jogo já nos Detalhes.
             composable("detalhes/{nome}") { e ->
                 val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
-                TelaDeCima(nav, e, ::nomeDaTela) {
+                TelaDeCima(nav, e) {
                     if (m != null) ModalidadeTela(estado, m, aoSair = { fechar(nav, e) }, abrir = ::abrir, detalhes = true)
                 }
             }
             // Endereço antigo da aposta nova: a página do jogo.
             composable("nova/{nome}") { e ->
                 val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
-                TelaDeCima(nav, e, ::nomeDaTela) {
+                TelaDeCima(nav, e) {
                     if (m != null) ModalidadeTela(estado, m, aoSair = { fechar(nav, e) }, abrir = ::abrir)
                 }
             }
             // Uma aposta (do Histórico ou de um aviso): a página do jogo dela, com a aposta no lugar do volante.
             composable("aposta/{id}") { e ->
-                TelaDeCima(nav, e, ::nomeDaTela) { PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty(), ::abrir) { fechar(nav, e) } }
+                TelaDeCima(nav, e) { PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty(), ::abrir) { fechar(nav, e) } }
             }
             // A apuração fica na aposta (avisos antigos ainda podem abrir este endereço).
             composable("apuracao/{id}") { e ->
-                TelaDeCima(nav, e, ::nomeDaTela) { PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty(), ::abrir) { fechar(nav, e) } }
+                TelaDeCima(nav, e) { PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty(), ::abrir) { fechar(nav, e) } }
             }
         }
+    }
     }
     }
 
@@ -638,18 +651,16 @@ private suspend fun atualizarConcursos(ctx: Context, itens: Map<Modalidade, Indi
 
 /**
  * Uma tela por cima das abas: puxar para baixo (do alto da lista) volta ([aoVoltar]; sem ele, fecha a
- * tela), com o nome da tela de baixo no aviso ([nome] da entrada de baixo).
+ * tela), com o aviso "Sair".
  */
 @Composable
 private fun TelaDeCima(
     nav: NavHostController,
     entrada: NavBackStackEntry,
-    nome: (NavBackStackEntry?) -> String,
     aoVoltar: (() -> Unit)? = null,
     conteudo: @Composable () -> Unit,
 ) {
-    val anterior = remember(entrada) { nav.previousBackStackEntry }
-    PuxarParaVoltar(nome(anterior), aoVoltar ?: { fechar(nav, entrada) }, conteudo = conteudo)
+    PuxarParaVoltar(aoVoltar ?: { fechar(nav, entrada) }, conteudo = conteudo)
 }
 
 /** Fecha a tela [entrada], só se ela ainda for a de cima (nunca fecha outra por engano). */

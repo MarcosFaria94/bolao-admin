@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Estado
@@ -44,10 +46,17 @@ import io.github.marcosfaria94.bolao.ui.tema.Dourado
  * Jogos: as modalidades em ordem de k1 (melhor retorno matemático primeiro). A Caixa é consultada
  * de novo a cada vez que se entra aqui (a raiz do app cuida disso); puxar a lista para baixo abre os
  * Painel de Jogos. Tocar numa modalidade abre a página do jogo; segurar, os Detalhes dela. Tocar em
- * "Jogos" na barra de baixo, já nos Jogos ([paraOTopo]), volta a lista ao começo.
+ * "Jogos" na barra de baixo, já nos Jogos ([paraOTopo]), volta a lista ao começo. Tocar na Legenda
+ * abre a página que explica o cálculo do k1 e do k2 ([abrirIndices], desde a 0.19).
  */
 @Composable
-fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit, abrirDetalhes: (Modalidade) -> Unit, paraOTopo: Int = 0) {
+fun JogosTela(
+    estado: Estado,
+    abrirModalidade: (Modalidade) -> Unit,
+    abrirDetalhes: (Modalidade) -> Unit,
+    paraOTopo: Int = 0,
+    abrirIndices: () -> Unit = {},
+) {
     val ctx = LocalContext.current
     val indices = remember { ctx.bolao.indices }
     val itens by indices.itens.collectAsStateWithLifecycle()
@@ -65,7 +74,7 @@ fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit, abrirDetalh
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            item { Legenda() }
+            item { Legenda(abrirIndices) }
             // Preço de Ajustes diferente do dos parâmetros ou regras da Caixa que mudaram.
             items(avisos, key = { it.chave }) { a -> Aviso(a.titulo, alerta = true) }
             if (falhou && !atualizando) {
@@ -106,13 +115,15 @@ private val LEGENDA = listOf(
  * · k1   : Retorno médio
  * · k2   : Retorno médio frequente
  * · odds : Chance de prêmio
+ * O quadro inteiro é um botão (desde a 0.19): abre a página do cálculo ("Ver cálculo ›").
  */
 @Composable
-private fun Legenda() {
+private fun Legenda(aoTocar: () -> Unit) {
     val estilo = MaterialTheme.typography.bodyLarge
     val cor = MaterialTheme.colorScheme.onSurface
     val suave = MaterialTheme.colorScheme.onSurfaceVariant
     Card(
+        onClick = aoTocar,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
@@ -121,7 +132,9 @@ private fun Legenda() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Info, contentDescription = null, tint = Dourado, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Legenda", style = MaterialTheme.typography.titleMedium, color = cor)
+                Text("Legenda", style = MaterialTheme.typography.titleMedium, color = cor, modifier = Modifier.weight(1f))
+                Text("Ver cálculo", style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp), color = MaterialTheme.colorScheme.primary)
+                Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             }
             LEGENDA.forEach { (sigla, texto) ->
                 Row {

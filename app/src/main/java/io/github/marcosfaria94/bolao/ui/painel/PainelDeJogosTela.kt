@@ -1,6 +1,7 @@
 package io.github.marcosfaria94.bolao.ui.painel
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,7 +46,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -111,16 +115,17 @@ const val ROTA_PAINEL = "meus-jogos"
 
 /**
  * Painel de Jogos (até a 0.17, "Meus jogos"; desde a 0.17, também o lugar das pendências: as
- * Notificações saíram). No alto, as pendências (desde a 0.18, uma lista compacta): cada tipo numa linha
- * com o ícone, o nome e a quantidade, que abre a tela que resolve ([resumo]), e quantos jogos estão em
- * andamento e quantos OK. Depois, o título "JOGOS EM ANDAMENTO" (com o "Compartilhar jogos", que manda
- * uma imagem leve com as apostas registradas) e os jogos num bloco só, uma linha entre um concurso e
- * outro (registrados esperando o sorteio e os que falta registrar): o sorteio mais próximo primeiro e,
- * no mesmo dia, o maior k1. Em cada concurso, a bola (sigla e concurso, como nas outras telas), o nome,
- * o k1, o k2 e as odds, o sorteio e o prêmio estimado; e cada aposta com as dezenas em bolas coloridas
- * (como no volante) e, à direita, OK ou Pendente. Tocar numa aposta abre a página dela; sem jogos, o
- * "Apostar" vai para os Jogos ([apostar]). A raiz cuida de voltar (puxando para baixo ou deslizando
- * para o lado).
+ * Notificações saíram). Desde a 0.19 abre com as cores próprias (azul-marinho e dourado, como o ícone:
+ * a raiz troca o esquema de cores, ver coresDoPainel). No alto, as pendências (desde a 0.18, uma lista
+ * compacta): cada tipo numa linha com o ícone, o nome e a quantidade, que abre a tela que resolve
+ * ([resumo]). Depois, o título "MEUS JOGOS" (com o "Compartilhar", que manda uma imagem leve com as
+ * apostas registradas) e os jogos num bloco só (registrados esperando o sorteio e os que falta
+ * registrar): o sorteio mais próximo primeiro e, no mesmo dia, o maior k1. Cada concurso tem uma faixa
+ * na cor da modalidade (a bola com a sigla e o concurso, o nome, o k1, o k2 e as odds, o sorteio e o
+ * prêmio estimado) e um filete da mesma cor à esquerda que acompanha as apostas dele; cada aposta, no
+ * fundo neutro, com as dezenas em bolas coloridas (como no volante) e, à direita, OK ou Pendente.
+ * Tocar numa aposta abre a página dela; sem jogos, o "Apostar" vai para os Jogos ([apostar]). A raiz
+ * cuida de voltar (puxando para baixo ou deslizando para o lado).
  */
 @Composable
 fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String) -> Unit, apostar: () -> Unit) {
@@ -131,8 +136,7 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
     val hoje = LocalDate.now()
     val grupos = emOrdemDeSorteioEK1(jogosEmAndamento(estado, hoje)) { k1DoConcurso(itens[it.modalidade], it.concurso) }
     val todas = grupos.flatMap { it.apostas }
-    val ok = todas.count { pendenciaDoJogo(estado, it) == null }
-    // O "Compartilhar jogos" manda só as apostas registradas (as que falta registrar ainda não valem).
+    // O "Compartilhar" manda só as apostas registradas (as que falta registrar ainda não valem).
     val registradas = todas.filter { it.registrada }
     val escopo = rememberCoroutineScope()
 
@@ -141,7 +145,7 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item(key = "resumo") { CartaoDoResumo(resumo, todas.size, ok, abrir) }
+        item(key = "resumo") { CartaoDoResumo(resumo, abrir) }
         item(key = "titulo-jogos") {
             TituloDosJogos(compartilhar = if (registradas.isEmpty()) null else {
                 { escopo.launch { compartilharJogos(ctx, registradas) } }
@@ -157,7 +161,7 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     grupos.forEachIndexed { i, g ->
-                        // Uma linha entre um concurso e outro (mais forte que a linha entre as apostas).
+                        // Uma linha entre um concurso e outro (a faixa colorida já marca o começo de cada um).
                         if (i > 0) HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
                         BlocoDoConcurso(estado, g, itens[g.modalidade], hoje, abrir)
                     }
@@ -175,12 +179,13 @@ private suspend fun compartilharJogos(ctx: Context, apostas: List<Aposta>) {
     val arquivo = withContext(Dispatchers.Default) {
         ImagemDosJogos.salvar(ctx, apostas, LocalDate.now(), ctx.bolao.repo.emTeste, File(Compartilhar.pastaTemporaria(ctx), "jogos.png"))
     }
-    Compartilhar.enviarArquivo(ctx, Compartilhar.uri(ctx, arquivo), "image/png", "Compartilhar jogos")
+    Compartilhar.enviarArquivo(ctx, Compartilhar.uri(ctx, arquivo), "image/png", "Compartilhar")
 }
 
 /**
- * O título dos jogos ("JOGOS EM ANDAMENTO", como os grupos dos Ajustes), separando-os das pendências; à
- * direita, o "Compartilhar jogos" (só com alguma aposta registrada).
+ * O título dos jogos ("MEUS JOGOS", como os grupos dos Ajustes, na cor de destaque do painel; até a
+ * 0.18, "JOGOS EM ANDAMENTO"), separando-os das pendências; à direita, o "Compartilhar" (só com alguma
+ * aposta registrada; até a 0.18, "Compartilhar jogos").
  */
 @Composable
 private fun TituloDosJogos(compartilhar: (() -> Unit)?) {
@@ -189,10 +194,10 @@ private fun TituloDosJogos(compartilhar: (() -> Unit)?) {
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 40.dp),
     ) {
         Text(
-            "JOGOS EM ANDAMENTO",
-            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp, letterSpacing = 0.8.sp),
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            TITULO_DOS_JOGOS,
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, letterSpacing = 0.9.sp),
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(start = 16.dp, end = 8.dp),
@@ -205,11 +210,14 @@ private fun TituloDosJogos(compartilhar: (() -> Unit)?) {
             ) {
                 Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(5.dp))
-                Text("Compartilhar jogos", style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.5.sp), maxLines = 1, softWrap = false)
+                Text("Compartilhar", style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp), maxLines = 1, softWrap = false)
             }
         }
     }
 }
+
+/** O título dos jogos no Painel de Jogos. */
+const val TITULO_DOS_JOGOS = "MEUS JOGOS"
 
 /** O k1 do concurso [concurso] (só se os índices de agora são dele). */
 fun k1DoConcurso(item: Indices.Item?, concurso: Int): Double? = item?.k?.takeIf { it.numero == concurso }?.k1
@@ -240,12 +248,12 @@ private fun visualDo(tipo: TipoDoResumo): Pair<ImageVector, Color> = when (tipo)
 }
 
 /**
- * As pendências (desde a 0.18, uma lista compacta; na 0.17 eram quadrinhos): "Pendências" e, à direita,
- * quantos jogos e quantos OK; embaixo, uma linha por tipo (o ícone, o nome, a quantidade e a seta), que
- * abre a tela que resolve. Sem pendência, "Tudo em dia".
+ * As pendências (desde a 0.18, uma lista compacta; na 0.17 eram quadrinhos): "Pendências" e, embaixo,
+ * uma linha por tipo (o ícone, o nome, a quantidade e a seta), que abre a tela que resolve. Sem
+ * pendência, "Tudo em dia". (Até a 0.18, à direita do título, quantos jogos e quantos OK.)
  */
 @Composable
-private fun CartaoDoResumo(resumo: List<ItemDoResumo>, jogos: Int, ok: Int, abrir: (String) -> Unit) {
+private fun CartaoDoResumo(resumo: List<ItemDoResumo>, abrir: (String) -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         shape = RoundedCornerShape(16.dp),
@@ -257,12 +265,6 @@ private fun CartaoDoResumo(resumo: List<ItemDoResumo>, jogos: Int, ok: Int, abri
                 style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 23.sp),
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
-            )
-            Text(
-                (if (jogos == 1) "1 jogo" else "$jogos jogos") + if (jogos > 0) " · $ok OK" else "",
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
             )
         }
         if (resumo.isEmpty()) {
@@ -325,49 +327,73 @@ private fun premioDoConcurso(g: GrupoEmAndamento, item: Indices.Item?): String {
     return valor?.let { Dinheiro.porExtenso(it) } ?: NAO_DIVULGADO
 }
 
+/** Largura do filete na cor da modalidade, à esquerda de cada concurso. */
+private val FILETE = 5.dp
+
 /**
- * Um concurso (dentro do bloco dos jogos): a bola (sigla e concurso), o nome e os índices; o sorteio e
- * o prêmio; e as apostas, cada uma com as dezenas em bolas e OK ou Pendente.
+ * A cor da modalidade para a faixa e o filete do concurso: no tema escuro, um pouco mais clara (a
+ * Quina, a +Milionária e a Federal são azuis escuros, que sumiriam no fundo azul-marinho).
+ */
+@Composable
+private fun corDoConcurso(g: GrupoEmAndamento): Color {
+    val cor = corModalidade(g.modalidade.cor)
+    return if (isSystemInDarkTheme()) lerp(cor, Color.White, 0.22f) else cor
+}
+
+/**
+ * Um concurso (dentro do bloco dos jogos; desde a 0.19, com a modalidade separada das apostas): a
+ * faixa na cor da modalidade com a bola (sigla e concurso), o nome, os índices, o sorteio e o prêmio;
+ * embaixo, no fundo neutro, as apostas, cada uma com as dezenas em bolas e OK ou Pendente. Um filete
+ * da cor da modalidade, à esquerda, acompanha o concurso inteiro.
  */
 @Composable
 private fun BlocoDoConcurso(estado: Estado, g: GrupoEmAndamento, item: Indices.Item?, hoje: LocalDate, abrir: (String) -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp)) {
-            EmblemaModalidade(g.modalidade, g.concurso.takeIf { it > 0 }, tamanho = 58.dp)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    g.modalidade.nome,
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 23.sp),
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (item != null) IndicesNaLinha(indicesDoConcurso(item, g.concurso))
+    val cor = corDoConcurso(g)
+    val faixa = cor.copy(alpha = if (isSystemInDarkTheme()) 0.26f else 0.12f)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .drawBehind { drawRect(cor, size = Size(FILETE.toPx(), size.height)) }
+            .padding(start = FILETE),
+    ) {
+        Column(Modifier.fillMaxWidth().background(faixa)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp, end = 14.dp, top = 14.dp)) {
+                EmblemaModalidade(g.modalidade, g.concurso.takeIf { it > 0 }, tamanho = 58.dp)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        g.modalidade.nome,
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp, lineHeight = 24.sp),
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (item != null) IndicesNaLinha(indicesDoConcurso(item, g.concurso))
+                }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
+            ) {
+                Informacao(Icons.Outlined.Event, "Sorteio", g.sorteio?.let { Datas.relativa(it, hoje) } ?: NAO_DIVULGADO)
+                Informacao(Icons.Outlined.EmojiEvents, "Prêmio estimado", premioDoConcurso(g, item))
             }
         }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-        ) {
-            Informacao(Icons.Outlined.Event, "Sorteio", g.sorteio?.let { Datas.relativa(it, hoje) } ?: NAO_DIVULGADO)
-            Informacao(Icons.Outlined.EmojiEvents, "Prêmio estimado", premioDoConcurso(g, item))
-        }
-        g.apostas.forEach { a ->
-            HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        g.apostas.forEachIndexed { i, a ->
+            if (i > 0) HorizontalDivider(Modifier.padding(start = 12.dp, end = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
             LinhaDaAposta(a, ok = pendenciaDoJogo(estado, a) == null) { abrir("aposta/${a.id}") }
         }
     }
 }
 
-/** O sorteio ou o prêmio: o ícone, o rótulo pequeno e o valor, num quadrinho. */
+/** O sorteio ou o prêmio: o ícone, o rótulo pequeno e o valor, num quadrinho (sobre a faixa da modalidade). */
 @Composable
 private fun RowScope.Informacao(icone: ImageVector, rotulo: String, valor: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .weight(1f)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(12.dp))
             .padding(horizontal = 10.dp, vertical = 9.dp),
     ) {
         Icon(icone, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
@@ -393,7 +419,7 @@ private fun LinhaDaAposta(a: Aposta, ok: Boolean, aoTocar: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = aoTocar)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(start = 12.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(

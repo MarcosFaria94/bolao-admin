@@ -9,7 +9,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,8 +31,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,7 +72,6 @@ import io.github.marcosfaria94.bolao.data.palpite
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Extra
 import io.github.marcosfaria94.bolao.domain.Formato
-import io.github.marcosfaria94.bolao.domain.MESES_DE_SORTE
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Palpite
 import io.github.marcosfaria94.bolao.domain.Volante
@@ -121,13 +117,20 @@ private fun TituloDoVolante(numero: Int, aoEditar: () -> Unit, carregando: Boole
     }
 }
 
+/**
+ * O valor em dinheiro não se parte no fim da linha: "(R$ 118,69)" vai inteiro para a linha de baixo
+ * (até a 0.18 ficava "(R$" numa linha e "118,69)" na outra). Só na tela: as mensagens e os
+ * comprovantes continuam com o espaço normal.
+ */
+fun valorSemQuebra(texto: String): String = texto.replace("R$ ", "R$\u00A0")
+
 /** Linha "Rótulo: valor" alinhada, como no esboço da tela. */
 @Composable
 fun LinhaInfo(rotulo: String, valor: String, destaque: Boolean = false, cor: Color = Color.Unspecified) {
     Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
         Text("$rotulo: ", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
-            valor,
+            valorSemQuebra(valor),
             style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp),
             fontWeight = if (destaque) FontWeight.Bold else FontWeight.SemiBold,
             color = cor,
@@ -557,7 +560,7 @@ private fun VolanteEditavel(
             }
             when (m.extra) {
                 Extra.TIME_DO_CORACAO -> BotaoTimeDoCoracao(r.extra) { mudar(r.copy(extra = it)) }
-                Extra.MES_DE_SORTE -> EscolhaMes(r.extra) { mudar(r.copy(extra = it)) }
+                Extra.MES_DE_SORTE -> BotaoMesDeSorte(r.extra) { mudar(r.copy(extra = it)) }
                 Extra.NENHUM -> Unit
             }
         }
@@ -634,24 +637,6 @@ private fun VolanteEditavel(
                 )
                 mudarPalpite(vazio)
             }) { Text("Limpar") }
-        }
-    }
-}
-
-@Composable
-private fun EscolhaMes(atual: String?, aoEscolher: (String) -> Unit) {
-    var aberto by remember { mutableStateOf(false) }
-    Box {
-        OutlinedButton(onClick = { aberto = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("Mês de Sorte: ${atual ?: "escolher"}")
-        }
-        DropdownMenu(expanded = aberto, onDismissRequest = { aberto = false }) {
-            MESES_DE_SORTE.forEach { mes ->
-                DropdownMenuItem(text = { Text(mes) }, onClick = {
-                    aoEscolher(mes)
-                    aberto = false
-                })
-            }
         }
     }
 }
