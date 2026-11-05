@@ -1,9 +1,30 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +92,136 @@ private const val FRACAO_PARA_FECHAR = 0.3f
 
 /** Pixels por segundo. */
 private const val VELOCIDADE_PARA_FECHAR = 1200f
+
+/**
+ * Puxar além da borda dispara uma ação: a borda é o começo ou o fim de uma lista ([vertical]) ou a
+ * primeira ou a última página de um pager. A tela acompanha o dedo (com resistência) e, solta depois
+ * do [limite] (ou num puxão rápido), a ação acontece; antes disso, ela volta ao lugar.
+ * [noInicio]: puxar para baixo (ou para a direita) antes do começo; [noFim]: para cima (ou para a
+ * esquerda) depois do fim. null = nada acontece naquela borda.
+ *
+ * Usar com Modifier.nestedScroll(puxao) em volta da lista (ou do pager) e desenhar o conteúdo
+ * deslocado de [deslocamento] (ex.: graphicsLayer { translationY = puxao.deslocamento }).
+ */
+class PuxaoAlemDaBorda(val vertical: Boolean, val limite: Float) : NestedScrollConnection {
+    var noInicio: (() -> Unit)? = null
+    var noFim: (() -> Unit)? = null
+
+    /** Quanto a tela andou com o dedo, em pixels (positivo = para baixo ou para a direita). */
+    var deslocamento by mutableFloatStateOf(0f)
+        private set
+
+    /** De 0 (parada) a 1 (já dispara ao soltar). */
+    val progresso: Float get() = (abs(deslocamento) / limite).coerceIn(0f, 1f)
+
+    private fun eixo(o: Offset) = if (vertical) o.y else o.x
+    private fun eixo(v: Velocity) = if (vertical) v.y else v.x
+    private fun offset(d: Float) = if (vertical) Offset(0f, d) else Offset(d, 0f)
+
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        val antes = deslocamento
+        if (source != NestedScrollSource.UserInput || antes == 0f) return Offset.Zero
+        val d = eixo(available)
+        // O dedo voltando (contra o puxão): primeiro desfaz o puxão, só depois a lista rola.
+        if (!(antes > 0f && d < 0f) && !(antes < 0f && d > 0f)) return Offset.Zero
+        val novo = if (antes > 0f) (antes + d * RESISTENCIA).coerceAtLeast(0f) else (antes + d * RESISTENCIA).coerceAtMost(0f)
+        deslocamento = novo
+        return offset((novo - antes) / RESISTENCIA)
+    }
+
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+        if (source != NestedScrollSource.UserInput) return Offset.Zero
+        val d = eixo(available)
+        val puxa = (d > 0f && deslocamento >= 0f && noInicio != null) || (d < 0f && deslocamento <= 0f && noFim != null)
+        if (!puxa) return Offset.Zero
+        deslocamento += d * RESISTENCIA
+        return offset(d)
+    }
+
+    override suspend fun onPreFling(available: Velocity): Velocity {
+        val x = deslocamento
+        if (x == 0f) return Velocity.Zero
+        val v = eixo(available)
+        val acao = if (x > 0f) noInicio else noFim
+        val rapido = abs(x) > limite / 4 && abs(v) > VELOCIDADE_PARA_FECHAR && sign(v) == sign(x)
+        if (acao != null && (abs(x) >= limite || rapido)) {
+            deslocamento = 0f
+            acao()
+        } else {
+            animate(x, 0f, animationSpec = spring()) { valor, _ -> deslocamento = valor }
+        }
+        // A lista (ou o pager) não sai rolando com o resto do puxão.
+        return available
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        // Segurança: um gesto cancelado no meio não deixa a tela fora do lugar.
+        if (deslocamento != 0f) animate(deslocamento, 0f, animationSpec = spring()) { valor, _ -> deslocamento = valor }
+        return Velocity.Zero
+    }
+
+    private companion object {
+        /** A tela anda metade do que o dedo anda. */
+        const val RESISTENCIA = 0.5f
+    }
+}
+
+/** Quanto a tela precisa andar (já com a resistência) para o puxão disparar a ação. */
+val LIMITE_DO_PUXAO = 72.dp
+
+/** [PuxaoAlemDaBorda] guardado na tela, com as ações de agora. */
+@Composable
+fun rememberPuxaoAlemDaBorda(vertical: Boolean, noInicio: (() -> Unit)? = null, noFim: (() -> Unit)? = null): PuxaoAlemDaBorda {
+    val densidade = LocalDensity.current
+    val puxao = remember(vertical, densidade) { PuxaoAlemDaBorda(vertical, with(densidade) { LIMITE_DO_PUXAO.toPx() }) }
+    SideEffect {
+        puxao.noInicio = noInicio
+        puxao.noFim = noFim
+    }
+    return puxao
+}
+
+/**
+ * O aviso do puxão (para cima ou para baixo): aparece aos poucos enquanto se puxa ("Puxe para..."),
+ * e diz [pronto] ("Solte para...") quando soltar já dispara a ação.
+ */
+@Composable
+fun IndicadorDoPuxao(puxao: PuxaoAlemDaBorda, puxando: String, pronto: String, icone: ImageVector, modifier: Modifier = Modifier) {
+    val p = puxao.progresso
+    if (p <= 0f) return
+    val cheio = p >= 1f
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .graphicsLayer {
+                alpha = p
+                val escala = 0.85f + 0.15f * p
+                scaleX = escala
+                scaleY = escala
+            }
+            .background(
+                if (cheio) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                RoundedCornerShape(20.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        val cor = if (cheio) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+        Icon(icone, contentDescription = null, tint = cor, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(if (cheio) pronto else puxando, style = MaterialTheme.typography.labelLarge, color = cor, maxLines = 1)
+    }
+}
+
+/** A tela acompanhando o puxão: anda junto com o dedo e, para os lados, vai sumindo. */
+fun Modifier.acompanharPuxao(puxao: PuxaoAlemDaBorda): Modifier = graphicsLayer {
+    val x = puxao.deslocamento
+    if (puxao.vertical) {
+        translationY = x
+    } else {
+        translationX = x
+        alpha = 1f - puxao.progresso * 0.35f
+    }
+}
 
 /**
  * O que a tela aberta põe na barra de cima (a do título): um botão à direita ("Detalhes →"), um

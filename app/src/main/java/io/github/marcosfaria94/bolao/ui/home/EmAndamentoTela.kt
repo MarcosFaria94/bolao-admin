@@ -53,62 +53,83 @@ import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.TextoVazio
 import io.github.marcosfaria94.bolao.ui.comum.TomEtiqueta
 import io.github.marcosfaria94.bolao.ui.comum.bola3D
+import io.github.marcosfaria94.bolao.ui.comum.IndicadorDoPuxao
+import io.github.marcosfaria94.bolao.ui.comum.acompanharPuxao
 import io.github.marcosfaria94.bolao.ui.comum.deslizarParaFechar
+import io.github.marcosfaria94.bolao.ui.comum.rememberPuxaoAlemDaBorda
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import io.github.marcosfaria94.bolao.ui.comum.estiloNaBola
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import java.time.LocalDate
 
-/** Os jogos de um mesmo concurso que ainda esperam o sorteio. */
-data class GrupoNaoSorteado(val modalidade: Modalidade, val concurso: Int, val sorteio: LocalDate?, val apostas: List<Aposta>)
+/** Os jogos de um mesmo concurso que ainda estão em andamento (antes do sorteio). */
+data class GrupoEmAndamento(val modalidade: Modalidade, val concurso: Int, val sorteio: LocalDate?, val apostas: List<Aposta>)
 
 /**
- * As apostas registradas que ainda não foram sorteadas (inclusive as que esperam o comprovante),
- * agrupadas por modalidade, concurso e data do sorteio, o sorteio mais próximo primeiro (sem data
- * no fim). Dentro do grupo, na ordem de registro.
+ * Os jogos em andamento: as apostas registradas que ainda não foram sorteadas (inclusive as que
+ * esperam o comprovante) e as que ainda falta registrar (volante pronto), agrupadas por modalidade,
+ * concurso e data do sorteio, o sorteio mais próximo primeiro (sem data no fim). Dentro do grupo, as
+ * registradas na ordem de registro e, depois, as que falta registrar.
  */
-fun jogosNaoSorteados(e: Estado, hoje: LocalDate): List<GrupoNaoSorteado> =
+fun jogosEmAndamento(e: Estado, hoje: LocalDate): List<GrupoEmAndamento> =
     e.apostas
-        .filter { it.registrada && situacaoDe(it, hoje) == Situacao.AGUARDANDO }
+        .filter { !it.registrada || situacaoDe(it, hoje) == Situacao.AGUARDANDO }
         .groupBy { Triple(it.modalidade, it.concurso, it.dataSorteio) }
         .map { (k, lista) ->
-            GrupoNaoSorteado(k.first, k.second, k.third, lista.sortedWith(compareBy<Aposta>({ it.dataAposta }, { it.criadaEm }, { it.numero })))
+            GrupoEmAndamento(
+                k.first, k.second, k.third,
+                lista.sortedWith(compareBy<Aposta>({ !it.registrada }, { it.dataAposta }, { it.criadaEm }, { it.numero })),
+            )
         }
         .sortedWith(
-            compareBy<GrupoNaoSorteado> { it.sorteio == null }
+            compareBy<GrupoEmAndamento> { it.sorteio == null }
                 .thenBy { it.sorteio }
                 .thenBy { it.modalidade.ordinal }
                 .thenBy { it.concurso },
         )
 
-/** Quantas apostas esperam o sorteio (o número no botão da Home). */
-fun quantosNaoSorteados(e: Estado, hoje: LocalDate): Int = jogosNaoSorteados(e, hoje).sumOf { it.apostas.size }
+/** Quantos jogos estão em andamento (o número no botão da barra de cima). */
+fun quantosEmAndamento(e: Estado, hoje: LocalDate): Int = jogosEmAndamento(e, hoje).sumOf { it.apostas.size }
 
 /**
- * "Jogos não sorteados" (o botão ao lado do Histórico): cada concurso num cartão, com a modalidade,
- * o concurso, a data do sorteio e as dezenas escolhidas em cada aposta. Fecha pelo "X" ou
- * deslizando o dedo para qualquer lado (e volta para a Home, com o filtro do Histórico como estava).
+ * "Jogos em andamento" (o botão da barra de cima, ou puxar a Home, os Jogos, os Comprovantes ou os
+ * Ajustes para baixo): cada concurso num cartão, com a modalidade, o concurso, a data do sorteio e as
+ * dezenas escolhidas em cada aposta. Fecha pelo "X", deslizando o dedo para qualquer lado ou, no fim
+ * da lista, empurrando para cima (e volta para onde estava, com o filtro do Histórico como estava).
  */
 @Composable
-fun NaoSorteadosTela(estado: Estado, abrir: (String) -> Unit, aoFechar: () -> Unit) {
+fun EmAndamentoTela(estado: Estado, abrir: (String) -> Unit, aoFechar: () -> Unit) {
     val hoje = LocalDate.now()
-    val grupos = jogosNaoSorteados(estado, hoje)
+    val grupos = jogosEmAndamento(estado, hoje)
+    // No fim da lista (ou numa lista curta), empurrar para cima fecha.
+    val puxao = rememberPuxaoAlemDaBorda(vertical = true, noFim = aoFechar)
     Box(Modifier.fillMaxSize().deslizarParaFechar(aoFechar)) {
-        LazyColumn(contentPadding = PaddingTela, verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            contentPadding = PaddingTela,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize().nestedScroll(puxao).acompanharPuxao(puxao),
+        ) {
             if (grupos.isEmpty()) {
                 item(key = "vazio") {
-                    TextoVazio("Nenhum jogo esperando o sorteio.", Modifier.padding(horizontal = 4.dp, vertical = 12.dp))
+                    TextoVazio("Nenhum jogo em andamento.", Modifier.padding(horizontal = 4.dp, vertical = 12.dp))
                 }
             }
             items(grupos, key = { "${it.modalidade}-${it.concurso}-${it.sorteio}" }) { g ->
                 CartaoDoConcurso(estado, g, hoje, abrir)
             }
         }
+        IndicadorDoPuxao(
+            puxao, puxando = "Empurre para fechar", pronto = "Solte para fechar", icone = Icons.Outlined.KeyboardArrowUp,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+        )
     }
 }
 
 /** Um concurso: a bola da modalidade, o nome, o concurso e o sorteio; embaixo, cada aposta com as dezenas. */
 @Composable
-private fun CartaoDoConcurso(estado: Estado, g: GrupoNaoSorteado, hoje: LocalDate, abrir: (String) -> Unit) {
+private fun CartaoDoConcurso(estado: Estado, g: GrupoEmAndamento, hoje: LocalDate, abrir: (String) -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -150,7 +171,11 @@ private fun CartaoDoConcurso(estado: Estado, g: GrupoNaoSorteado, hoje: LocalDat
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(tituloDaAposta(a), style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp), fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (a.registrada) tituloDaAposta(a) else "Nova aposta",
+                            style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp),
+                            fontWeight = FontWeight.SemiBold,
+                        )
                         etiquetaDoAnexo(a)?.let { EtiquetaSituacao(it) }
                     }
                     NumerosEscolhidos(a)
@@ -168,8 +193,9 @@ private fun dataDoSorteio(d: LocalDate?, hoje: LocalDate): String {
     return if (r == data) data else "$r · $data"
 }
 
-/** A aposta que ainda espera o comprovante da Caixa (ou a conferência dele). */
+/** A aposta que ainda falta registrar, ou que espera o comprovante da Caixa (ou a conferência dele). */
 private fun etiquetaDoAnexo(a: Aposta): Etiqueta? = when {
+    !a.registrada -> Etiqueta("Falta registrar", TomEtiqueta.LARANJA)
     Operacoes.aguardandoComprovante(a) -> Etiqueta("Sem comprovante", TomEtiqueta.VERMELHO)
     Operacoes.aguardandoConferencia(a) -> Etiqueta("A conferir", TomEtiqueta.ROXO)
     else -> null

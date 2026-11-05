@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.ui.comum.FiltroHome
+import io.github.marcosfaria94.bolao.ui.comum.deslizarParaFechar
 import io.github.marcosfaria94.bolao.ui.comum.mesesComDados
 import io.github.marcosfaria94.bolao.ui.comum.movimentosDoHistorico
 import io.github.marcosfaria94.bolao.ui.comum.tiposDoFiltro
@@ -38,7 +39,7 @@ import java.time.LocalDate
 /**
  * "Filtrar" o Histórico da Home: os tipos e os meses, vários de cada vez (sem nada marcado vale
  * "Tudo"). Cada toque já vale; "Limpar filtro" volta ao padrão (todos os tipos no mês atual) e
- * "Ver N itens" volta à Home.
+ * "Ver N itens" (ou deslizar o dedo para qualquer lado) volta à Home.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -48,7 +49,7 @@ fun FiltroTela(estado: Estado, filtro: FiltroHome, mudar: (FiltroHome) -> Unit, 
     val meses = mesesComDados(estado.lancamentos.map { it.data }, hoje)
     val quantos = movimentosDoHistorico(estado, filtro).size
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().deslizarParaFechar(aoFechar)) {
         Column(
             Modifier
                 .weight(1f)

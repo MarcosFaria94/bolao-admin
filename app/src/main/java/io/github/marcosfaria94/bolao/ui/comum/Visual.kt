@@ -32,6 +32,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TileMode
@@ -55,8 +59,43 @@ object Animacoes {
 }
 
 /**
+ * Botão pulsando para chamar a atenção ([ligado]): ele respira e solta um anel da cor [cor] em
+ * volta, como o "Completar" do volante (o "Apostar" da Home no dia de aposta).
+ */
+fun Modifier.pulsando(ligado: Boolean, cor: Color): Modifier = composed {
+    if (!ligado || !Animacoes.ligadas) return@composed this
+    val pulso = rememberInfiniteTransition(label = "pulso")
+    val escala by pulso.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(tween(650, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "escala",
+    )
+    val anel by pulso.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1300, easing = LinearEasing), RepeatMode.Restart),
+        label = "anel",
+    )
+    this
+        .graphicsLayer {
+            scaleX = escala
+            scaleY = escala
+        }
+        .drawBehind {
+            val folga = 10.dp.toPx() * anel
+            drawRoundRect(
+                color = cor.copy(alpha = 0.5f * (1f - anel)),
+                topLeft = Offset(-folga, -folga),
+                size = Size(size.width + 2 * folga, size.height + 2 * folga),
+                cornerRadius = CornerRadius(size.height / 2 + folga),
+            )
+        }
+}
+
+/**
  * Barra de título das telas: título maior e um pouco mais abaixo que o padrão, com a seta de
- * voltar nas telas que não são abas e, à direita, as [acoes] (o sino da Home).
+ * voltar nas telas que não são abas e, à direita, as [acoes] (nas abas, os jogos em andamento e o sino).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -19,10 +19,10 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -38,24 +38,22 @@ import io.github.marcosfaria94.bolao.ui.comum.Aviso
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
 
-/** Jogos: as modalidades em ordem de k1 (melhor retorno matemático primeiro). */
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Jogos: as modalidades em ordem de k1 (melhor retorno matemático primeiro). A Caixa é consultada
+ * de novo a cada vez que se entra aqui (a raiz do app cuida disso); puxar a lista para baixo abre os
+ * jogos em andamento. Tocar numa modalidade abre a página do jogo; segurar, os Detalhes dela.
+ */
 @Composable
-fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit) {
+fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit, abrirDetalhes: (Modalidade) -> Unit) {
     val ctx = LocalContext.current
     val indices = remember { ctx.bolao.indices }
     val itens by indices.itens.collectAsStateWithLifecycle()
     val atualizando by indices.atualizando.collectAsStateWithLifecycle()
     val falhou by indices.falhou.collectAsStateWithLifecycle()
     val avisos by indices.avisos.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { indices.atualizar() }
     val destaque = indices.destaque(itens)?.modalidade
 
-    PullToRefreshBox(
-        isRefreshing = atualizando,
-        onRefresh = { indices.atualizar(forcar = true) },
-        modifier = Modifier.fillMaxSize(),
-    ) {
+    Box(Modifier.fillMaxSize()) {
         LazyColumn(
             contentPadding = PaddingTela,
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -64,19 +62,29 @@ fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit) {
             item { Legenda() }
             // Preço de Ajustes diferente do dos parâmetros ou regras da Caixa que mudaram.
             items(avisos, key = { it.chave }) { a -> Aviso(a.titulo, alerta = true) }
-            if (falhou && itens.values.all { it.ultimo == null }) {
+            if (falhou && !atualizando) {
                 item {
-                    Text(
-                        "Não foi possível consultar a Caixa agora. Puxe a lista para baixo para tentar de novo.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Não foi possível consultar a Caixa agora.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { indices.atualizar(forcar = true) }) { Text("Tentar de novo") }
+                    }
                 }
             }
             items(indices.ordenados(itens), key = { it.modalidade.name }) { item ->
-                CartaoIndice(item, estado, destaque = item.modalidade == destaque, aoTocar = { abrirModalidade(item.modalidade) })
+                CartaoIndice(
+                    item, estado, destaque = item.modalidade == destaque,
+                    aoTocar = { abrirModalidade(item.modalidade) },
+                    aoSegurar = { abrirDetalhes(item.modalidade) },
+                )
             }
         }
+        // Consultando a Caixa: uma linha fininha no alto da lista.
+        if (atualizando) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
     }
 }
 

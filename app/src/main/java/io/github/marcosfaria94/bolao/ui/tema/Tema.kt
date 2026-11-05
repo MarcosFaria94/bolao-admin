@@ -178,7 +178,7 @@ object Barra {
     val contador: Color = Color(0xFFE53935)
 }
 
-/** Sino das notificações, no canto da Home: todo amarelo. */
+/** Sino das notificações, na barra de cima das abas: todo amarelo. */
 val AmareloSino = Color(0xFFFFC21A)
 
 /** Avisos de alerta (falta anexar, extrato só no último dia...): vermelho suave, em negrito. */

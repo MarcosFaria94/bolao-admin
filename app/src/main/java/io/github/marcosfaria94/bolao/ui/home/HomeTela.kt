@@ -2,7 +2,6 @@ package io.github.marcosfaria94.bolao.ui.home
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
@@ -25,12 +24,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -42,7 +37,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,9 +54,8 @@ import io.github.marcosfaria94.bolao.ui.comum.Indicador
 import io.github.marcosfaria94.bolao.ui.comum.Quadro
 import io.github.marcosfaria94.bolao.ui.comum.QuadroSaldo
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
+import io.github.marcosfaria94.bolao.ui.comum.pulsando
 import io.github.marcosfaria94.bolao.ui.comum.valorComSinal
-import io.github.marcosfaria94.bolao.ui.tema.AmareloSino
-import io.github.marcosfaria94.bolao.ui.tema.Barra
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
 import io.github.marcosfaria94.bolao.ui.comum.itensDoHistorico
 import io.github.marcosfaria94.bolao.ui.comum.movimentosDoHistorico
@@ -74,19 +67,19 @@ private val ESPACO = 14.dp
 
 /**
  * Home: o saldo (com o provisionado e o extra à direita), os atalhos de Aporte, Rateio e Extrato,
- * a próxima aposta e o Histórico de tudo o que entrou e saiu, com o sino das notificações, os jogos
- * não sorteados ("A sortear") e o "Filtrar". No modo individual: só o saldo (que começa em zero e
- * cai a cada aposta) e o Histórico das apostas e dos prêmios.
+ * a próxima aposta (o "Apostar" pulsa no dia de aposta) e o Histórico de tudo o que entrou e saiu,
+ * com o "Filtrar". O sino das notificações e os jogos em andamento ficam na barra de cima. No modo
+ * individual: só o saldo (que começa em zero e cai a cada aposta) e o Histórico das apostas e dos
+ * prêmios.
  *
  * O [filtro] fica na raiz do app (a tela "Filtrar" muda ele); ele volta ao padrão sozinho ao trocar
- * de tela, menos nos Jogos não sorteados. [visita] muda a cada vez que se vai para outra aba: aí a
+ * de tela, menos nos Jogos em andamento. [visita] muda a cada vez que se vai para outra aba: aí a
  * rolagem recomeça.
  */
 @Composable
 fun HomeTela(
     estado: Estado,
     visita: Int,
-    pendencias: Int,
     filtro: FiltroHome,
     abrir: (String) -> Unit,
     apostar: () -> Unit,
@@ -97,7 +90,6 @@ fun HomeTela(
     val individual = estado.individual
     val rolagem = rememberSaveable(visita, saver = LazyListState.Saver, key = "rolagem-$visita") { LazyListState() }
     val movimentos = movimentosDoHistorico(estado, filtro)
-    val naoSorteados = quantosNaoSorteados(estado, hoje)
     // Filtro mudado (na tela "Filtrar"): a lista volta para o começo do Histórico.
     var filtroVisto by rememberSaveable(visita, key = "filtro-visto-$visita") { mutableStateOf(filtro.resumo()) }
     LaunchedEffect(filtro) {
@@ -128,20 +120,10 @@ fun HomeTela(
             }
         }
         item(key = "titulo-historico") {
-            // "Histórico", o sino das notificações, os jogos não sorteados e o "Filtrar"; embaixo, o que o filtro mostra.
+            // "Histórico" e o "Filtrar"; embaixo, o que o filtro mostra.
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("Histórico", style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
-                    Sino(pendencias) { abrir("notificacoes") }
-                    Spacer(Modifier.width(4.dp))
-                    BotaoDoHistorico(
-                        "A sortear",
-                        Icons.Outlined.ConfirmationNumber,
-                        descricao = "Jogos não sorteados",
-                        destaque = false,
-                        contador = naoSorteados,
-                    ) { abrir("nao-sorteados") }
-                    Spacer(Modifier.width(6.dp))
                     BotaoDoHistorico("Filtrar", Icons.Outlined.FilterList, descricao = "Filtrar o histórico", destaque = !filtro.ehPadrao(hoje)) {
                         abrir("filtro")
                     }
@@ -165,17 +147,13 @@ fun HomeTela(
     }
 }
 
-/**
- * Botão compacto da linha do Histórico ("A sortear", "Filtrar"). [destaque]: o filtro está fora do
- * padrão (o botão fica preenchido).
- */
+/** O "Filtrar" da linha do Histórico. [destaque]: o filtro está fora do padrão (o botão fica preenchido). */
 @Composable
 private fun BotaoDoHistorico(
     rotulo: String,
     icone: ImageVector,
     descricao: String,
     destaque: Boolean,
-    contador: Int = 0,
     aoTocar: () -> Unit,
 ) {
     val conteudo: @Composable RowScope.() -> Unit = {
@@ -184,41 +162,16 @@ private fun BotaoDoHistorico(
         Text(rotulo, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
     }
     val recheio = PaddingValues(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
-    // O número (quantos jogos esperam o sorteio) fica num contador em cima do botão, sem alargá-lo.
-    BadgedBox(badge = {
-        if (contador > 0) {
-            Badge(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
-                Text(if (contador > 99) "99+" else contador.toString(), fontWeight = FontWeight.Bold)
-            }
-        }
-    }) {
-        if (destaque) {
-            Button(onClick = aoTocar, contentPadding = recheio, modifier = Modifier.height(36.dp), content = conteudo)
-        } else {
-            OutlinedButton(
-                onClick = aoTocar,
-                contentPadding = recheio,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-                modifier = Modifier.height(36.dp),
-                content = conteudo,
-            )
-        }
-    }
-}
-
-/** Sino das notificações (no Histórico, ao lado do título): grande, todo amarelo, com o contador vermelho de pendências. */
-@Composable
-private fun Sino(pendencias: Int, aoTocar: () -> Unit) {
-    IconButton(onClick = aoTocar, modifier = Modifier.size(52.dp)) {
-        BadgedBox(badge = {
-            if (pendencias > 0) {
-                Badge(containerColor = Barra.contador, contentColor = Color.White) {
-                    Text(if (pendencias > 99) "99+" else pendencias.toString(), fontWeight = FontWeight.Bold)
-                }
-            }
-        }) {
-            Icon(Icons.Filled.Notifications, contentDescription = "Notificações", tint = AmareloSino, modifier = Modifier.size(36.dp))
-        }
+    if (destaque) {
+        Button(onClick = aoTocar, contentPadding = recheio, modifier = Modifier.height(36.dp), content = conteudo)
+    } else {
+        OutlinedButton(
+            onClick = aoTocar,
+            contentPadding = recheio,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+            modifier = Modifier.height(36.dp),
+            content = conteudo,
+        )
     }
 }
 
@@ -273,7 +226,10 @@ private fun Bloco(rotulo: String, desenho: ImageVector, modifier: Modifier, aoTo
     }
 }
 
-/** "Próxima aposta: Hoje" e o "Apostar", que abre os Jogos (lá fica o volante de cada modalidade). */
+/**
+ * "Próxima aposta: Hoje" e o "Apostar", que abre os Jogos (lá fica o volante de cada modalidade).
+ * No dia de aposta, enquanto a aposta do dia não foi registrada, o "Apostar" pulsa para chamar a atenção.
+ */
 @Composable
 private fun CartaoProximaAposta(hoje: LocalDate, apostaDeHojeFeita: Boolean, modifier: Modifier, aoApostar: () -> Unit) {
     val ehHoje = Calendario.ehDiaProgramado(hoje) && !apostaDeHojeFeita
@@ -291,6 +247,7 @@ private fun CartaoProximaAposta(hoje: LocalDate, apostaDeHojeFeita: Boolean, mod
             Button(
                 onClick = aoApostar,
                 contentPadding = PaddingValues(horizontal = 26.dp, vertical = 14.dp),
+                modifier = Modifier.pulsando(ehHoje, MaterialTheme.colorScheme.primary),
             ) { Text("Apostar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         }
     }

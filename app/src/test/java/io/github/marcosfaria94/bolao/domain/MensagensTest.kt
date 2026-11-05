@@ -81,11 +81,16 @@ class MensagensTest {
         assertEquals(ModelosDoTermo.TITULO_APURACAO, Mensagens.tituloApuracao(1, d(4)))
         assertEquals(
             ModelosDoTermo.APURACAO,
-            Mensagens.apuracao(1, d(1), Modalidade.LOTOFACIL, 3060, 200_000_000, d(4), saldoAtual = 3652, premio = 1400),
+            Mensagens.apuracao(1, d(1), Modalidade.LOTOFACIL, 3060, 200_000_000, d(4), saldoAtual = 3652, premio = 1400, acertos = "11/15"),
         )
-        val semPremio = Mensagens.apuracao(1, d(1), Modalidade.QUINA, 7146, null, d(4), saldoAtual = 3652, premio = 0, resultado = "1/5")
+        val semPremio = Mensagens.apuracao(1, d(1), Modalidade.QUINA, 7146, null, d(4), saldoAtual = 3652, premio = 0, acertos = "1/5")
         assertTrue(semPremio.lines().contains("PRÊMIO PRINCIPAL: A CONFIRMAR"))
-        assertTrue(semPremio.lines().contains("RESULTADO: 1/5"))
+        assertTrue(semPremio.lines().contains("RESULTADO: APOSTA NÃO PREMIADA"))
+        assertTrue(semPremio.lines().contains("ACERTOS: 1/5"))
+        // Os acertos de cada modalidade, em maiúsculas (o Time do Coração, os dois sorteios da Dupla Sena...).
+        val timemania = Mensagens.apuracao(2, d(1), Modalidade.TIMEMANIA, 2290, null, d(4), saldoAtual = 3652, premio = 750, acertos = "3/7 + Time do Coração")
+        assertTrue(timemania.lines().contains("RESULTADO: APOSTA PREMIADA"))
+        assertTrue(timemania.lines().contains("ACERTOS: 3/7 + TIME DO CORAÇÃO"))
         assertEquals("PRÊMIO.....: + R$  0,00", semPremio.lines().last { it.startsWith("PRÊMIO.") })
     }
 

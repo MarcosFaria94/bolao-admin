@@ -2,6 +2,10 @@ package io.github.marcosfaria94.bolao.ui.jogos
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,17 +94,30 @@ private val LARGURA_BOLA = 72.dp
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaque: Boolean = false) {
+fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaque: Boolean = false, aoSegurar: (() -> Unit)? = null) {
     val m = item.modalidade
     val u = item.ultimo
     val hoje = LocalDate.now()
     val cor = MaterialTheme.colorScheme.onSurface
     val suave = MaterialTheme.colorScheme.onSurfaceVariant
+    val vibrar = LocalHapticFeedback.current
     Card(
-        onClick = aoTocar,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = if (destaque) BorderStroke(2.dp, Dourado) else null,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(CardDefaults.shape)
+            // Tocar abre a página do jogo; segurar um pouco, os Detalhes (com uma vibração curta).
+            .combinedClickable(
+                onClick = aoTocar,
+                onLongClick = aoSegurar?.let { segurar ->
+                    {
+                        vibrar.performHapticFeedback(HapticFeedbackType.LongPress)
+                        segurar()
+                    }
+                },
+                onLongClickLabel = if (aoSegurar != null) "Ver os detalhes" else null,
+            ),
     ) {
         Column(Modifier.padding(start = 8.dp, end = 12.dp, top = 12.dp, bottom = 12.dp)) {
             if (destaque) {

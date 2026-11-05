@@ -20,7 +20,7 @@ import io.github.marcosfaria94.bolao.data.Premiada
 /**
  * Os dois avisos que vão para o celular: "Ação necessária" (há pendência no bolão) e
  * "Aposta premiada" (sem o valor: o prêmio é surpresa ao abrir o app). Todo o resto fica
- * nas Notificações do app (o sino da Home).
+ * nas Notificações do app (o sino da barra de cima).
  */
 object Notificador {
     private const val CANAL_ACOES = "acoes"

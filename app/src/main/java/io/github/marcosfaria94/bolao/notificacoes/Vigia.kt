@@ -27,9 +27,8 @@ import java.util.concurrent.TimeUnit
  * Roda de hora em hora e na hora marcada pelo [Despertador] (resultado do sorteio, apuração), mesmo
  * com o app fechado:
  * 1. confere os jogos já sorteados na Caixa (e de novo, até o rateio oficial sair);
- * 2. faz a apuração sozinha quando não há nada a confirmar: no bolão, a partir das 8h do dia
- *    seguinte ao sorteio (o envio do comprovante ao grupo vira pendência); no modo individual, na
- *    hora em que o resultado sai;
+ * 2. faz a apuração sozinha quando não há nada a confirmar, na hora em que o resultado sai (no
+ *    bolão, o envio do comprovante ao grupo vira pendência);
  * 3. mostra os dois avisos do celular: "Aposta premiada" e "Ação necessária";
  * 4. marca o próximo despertar.
  * No modo de teste faz o mesmo com os dados de exemplo e marca os avisos com "Teste".

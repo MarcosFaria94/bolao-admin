@@ -73,9 +73,9 @@ object LayoutTermico {
     data class Linha(val texto: String = "", val estilo: Estilo = Estilo.NORMAL)
 
     /**
-     * O resultado do concurso, no comprovante da apuração (depois do bloco do termo, que diz
-     * "RESULTADO: (VIDE ANEXO)"): os números sorteados e o rateio oficial da Caixa, com a faixa
-     * da aposta em negativo. [sorteados]: rótulo e itens ("SORTEADOS" e os números, "TREVOS"...).
+     * O resultado do concurso, no comprovante da apuração (depois do bloco do termo, com o
+     * "RESULTADO" e os "ACERTOS" da aposta): os números sorteados e o rateio oficial da Caixa, com a
+     * faixa da aposta em negativo. [sorteados]: rótulo e itens ("SORTEADOS" e os números, "TREVOS"...).
      */
     data class ResultadoOficial(
         val concurso: Int,

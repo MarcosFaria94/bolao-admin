@@ -28,8 +28,8 @@ import io.github.marcosfaria94.bolao.ui.comum.FiltroHistorico
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.ui.comum.FiltroHome
 import io.github.marcosfaria94.bolao.ui.comum.tiposDoFiltro
-import io.github.marcosfaria94.bolao.ui.home.jogosNaoSorteados
-import io.github.marcosfaria94.bolao.ui.home.quantosNaoSorteados
+import io.github.marcosfaria94.bolao.ui.home.jogosEmAndamento
+import io.github.marcosfaria94.bolao.ui.home.quantosEmAndamento
 import io.github.marcosfaria94.bolao.ui.comum.destinoDoMovimento
 import io.github.marcosfaria94.bolao.ui.comum.douradoNoHistorico
 import io.github.marcosfaria94.bolao.ui.comum.movimentosDoHistorico
@@ -125,8 +125,8 @@ class TelasTest {
         assertEquals(
             listOf(
                 Etiqueta("Sorteio amanhã", TomEtiqueta.AZUL), null, Etiqueta("Adicional", TomEtiqueta.NEUTRO),
-                // O dourado fica só no prêmio; a aposta premiada diz "Premiada" sem ele.
-                Etiqueta("Premiada", TomEtiqueta.OURO), Etiqueta("Premiada", TomEtiqueta.NEUTRO), Etiqueta("Mensal", TomEtiqueta.NEUTRO),
+                // O prêmio diz "Resgatado" (sem o ouro); a aposta premiada, "Premiada" em ouro.
+                Etiqueta("Resgatado", TomEtiqueta.NEUTRO), Etiqueta("Premiada", TomEtiqueta.OURO), Etiqueta("Mensal", TomEtiqueta.NEUTRO),
             ),
             tudo.map { etiquetaDoMovimento(e, it, hoje) },
         )
@@ -196,7 +196,7 @@ class TelasTest {
     }
 
     @Test
-    fun jogosAindaNaoSorteados() {
+    fun gruposDosJogosEmAndamento() {
         val q1 = aposta(Modalidade.QUINA, 1, 7150).copy(id = "q1", dataSorteio = hoje.plusDays(2), numeros = listOf(5, 1, 33, 47, 71))
         val q2 = q1.copy(id = "q2", numero = 2, criadaEm = 5)
         val m = aposta(Modalidade.MEGA_SENA, 3, 2950).copy(id = "m", dataSorteio = hoje)
@@ -205,15 +205,17 @@ class TelasTest {
         val semComprovante = aposta(Modalidade.DIA_DE_SORTE, 6, 1130).copy(id = "d", dataSorteio = hoje.plusDays(1), pendenteDeAnexo = true)
         val rascunho = aposta(Modalidade.MEGA_SENA, 0, 2950).copy(id = "r", registrada = false, dataSorteio = hoje)
         val e = Estado(apostas = listOf(q1, q2, m, l, sorteada, semComprovante, rascunho))
-        val grupos = jogosNaoSorteados(e, hoje)
-        // Agrupados por modalidade/concurso/data, o sorteio mais próximo primeiro (sem as sorteadas e os rascunhos).
+        val grupos = jogosEmAndamento(e, hoje)
+        // Agrupados por modalidade/concurso/data, o sorteio mais próximo primeiro (sem as sorteadas).
         assertEquals(
             listOf("Mega-Sena 2950", "Dia de Sorte 1130", "Lotofácil 3600", "Quina 7150"),
             grupos.map { "${it.modalidade.nome} ${it.concurso}" },
         )
+        // A que falta registrar (em andamento) entra no grupo do concurso dela, depois das registradas.
+        assertEquals(listOf("m", "r"), grupos.first().apostas.map { it.id })
         assertEquals(listOf("q1", "q2"), grupos.last().apostas.map { it.id })
         assertEquals(hoje.plusDays(2), grupos.last().sorteio)
-        assertEquals(5, quantosNaoSorteados(e, hoje))
+        assertEquals(6, quantosEmAndamento(e, hoje))
     }
 
     @Test

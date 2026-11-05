@@ -28,8 +28,9 @@ object Mensagens {
     /** Banco da caixinha do bolão, em nome do Administrador (termo, Parte 2: caixinha Nubank). */
     const val BANCO_DO_CAIXA = "NUBANK"
 
-    /** Linha RESULTADO da apuração: o resultado vai na imagem anexada. */
-    const val VIDE_ANEXO = "(VIDE ANEXO)"
+    /** Linha RESULTADO da apuração. */
+    const val APOSTA_PREMIADA = "APOSTA PREMIADA"
+    const val APOSTA_NAO_PREMIADA = "APOSTA NÃO PREMIADA"
 
     // ---------- títulos (o texto enviado no WhatsApp) ----------
 
@@ -39,7 +40,7 @@ object Mensagens {
     /** "APOSTA Nº 1 -  01/06/2026" (com dois espaços antes da data, como no termo). */
     fun tituloAposta(numero: Int, dataAposta: LocalDate): String = "APOSTA Nº $numero -  ${Datas.longa(dataAposta)}"
 
-    /** "APURAÇÃO Nº 1 - 04/06/26": número da aposta e data da apuração. */
+    /** "APURAÇÃO Nº 1 - 04/06/26": número da aposta e data da apuração (o dia do sorteio). */
     fun tituloApuracao(numero: Int, dataApuracao: LocalDate): String = "APURAÇÃO Nº $numero - ${Datas.curta(dataApuracao)}"
 
     /** "RATEIO Nº1 - 14/06/26" (sem espaço depois do Nº, como no termo): número do rateio no mês e a data. */
@@ -179,8 +180,10 @@ object Mensagens {
             financeiro("APOSTA", '-', saldoAtual, valor, saldoAtual - valor)
 
     /**
-     * 3. Apuração (dia seguinte ao sorteio): identifica a aposta e o jogo, a data da apuração,
-     * o resultado ([resultado]: "(VIDE ANEXO)", a imagem dos acertos) e soma o prêmio.
+     * 3. Apuração (no dia do sorteio, assim que sai o resultado): identifica a aposta e o jogo, a
+     * data da apuração, o resultado ("APOSTA PREMIADA" ou "APOSTA NÃO PREMIADA"), os acertos
+     * ([acertos]: "11/15", acertos sobre o total sorteado; "3/6 (1º sorteio) e 2/6 (2º sorteio)"...)
+     * e soma o prêmio. A imagem dos acertos vai anexada.
      */
     fun apuracao(
         numero: Int,
@@ -191,13 +194,15 @@ object Mensagens {
         dataApuracao: LocalDate,
         saldoAtual: Long,
         premio: Long,
-        resultado: String = VIDE_ANEXO,
+        acertos: String,
+        premiada: Boolean = premio > 0,
     ): String =
         "APOSTA: ${numeroNoMes(numero, dataAposta)}\n" +
             "DATA: ${Datas.longa(dataAposta)}\n" +
             identificacao(modalidade, concurso, premioEstimado) +
             "APURAÇÃO: ${Datas.longa(dataApuracao)}\n" +
-            "RESULTADO: $resultado\n" +
+            "RESULTADO: ${if (premiada) APOSTA_PREMIADA else APOSTA_NAO_PREMIADA}\n" +
+            "ACERTOS: ${acertos.trim().ifBlank { "-" }.uppercase()}\n" +
             "\n" +
             financeiro("PRÊMIO", '+', saldoAtual, premio, saldoAtual + premio)
 

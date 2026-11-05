@@ -13,7 +13,7 @@ import java.time.YearMonth
 
 /**
  * Uma pendência: algo que o Administrador precisa fazer para o bolão ficar em dia.
- * Todas aparecem nas Notificações (o sino da Home), a mais recente primeiro; tocar leva à tela que resolve.
+ * Todas aparecem nas Notificações (o sino da barra de cima), a mais recente primeiro; tocar leva à tela que resolve.
  */
 data class Pendencia(
     /** Identifica a pendência (evita repetir o aviso no celular). */
@@ -56,10 +56,7 @@ object Pendencias {
     /** Aba que recebe os comprovantes da Caixa e dos Pix e faz a conferência. */
     const val ABA_COMPROVANTES = "comprovantes"
 
-    /**
-     * No bolão, a apuração automática sai a partir das 8h do dia seguinte ao sorteio (como no
-     * termo). No modo individual (sem termo), sai assim que a Caixa publica o rateio oficial.
-     */
+    /** Hora do aviso "Apurar a aposta" quando a apuração automática não conseguiu o resultado. */
     const val HORA_APURACAO = 8
 
     /** Hora em que o resultado costuma estar na Caixa (os sorteios são às 20h; aos domingos, às 11h). */
@@ -275,18 +272,16 @@ object Pendencias {
     }
 
     /**
-     * A partir de quando a apuração automática da aposta [a] pode sair: no bolão, às 8h do dia
-     * seguinte ao sorteio (como no termo); no modo individual, na hora em que a conferência fica
-     * completa.
+     * A partir de quando a apuração automática da aposta [a] pode sair: no dia do sorteio, na hora
+     * em que a conferência fica completa (o resultado e o rateio oficial publicados pela Caixa).
+     * Desde a 0.12 vale também para o bolão (antes, às 8h do dia seguinte).
      */
-    fun apuracaoAutomaticaEm(e: Estado, a: Aposta): LocalDateTime? {
-        val sorteio = a.dataSorteio ?: return null
-        return if (e.individual) sorteio.atStartOfDay() else sorteio.plusDays(1).atTime(HORA_APURACAO, 0)
-    }
+    @Suppress("UNUSED_PARAMETER")
+    fun apuracaoAutomaticaEm(e: Estado, a: Aposta): LocalDateTime? = a.dataSorteio?.atStartOfDay()
 
     /**
      * Apostas prontas para a apuração automática: conferidas com o rateio oficial publicado e sem
-     * nada a confirmar; no bolão, a partir das 8h do dia seguinte ao sorteio; no modo individual, já.
+     * nada a confirmar (no mesmo dia do sorteio, assim que a Caixa publica).
      */
     fun prontasParaApurar(e: Estado, agora: LocalDateTime): List<Aposta> {
         if (!e.cadastroConcluido || e.extincao != null) return emptyList()
@@ -298,8 +293,8 @@ object Pendencias {
 
     /**
      * Quando o app precisa acordar (mesmo fechado) para conferir e apurar sozinho: na hora do
-     * resultado de cada aposta que espera o sorteio; a cada meia hora enquanto o resultado (ou o
-     * rateio oficial) não sai; e na hora da apuração automática. null = nada a esperar.
+     * resultado de cada aposta que espera o sorteio e a cada meia hora enquanto o resultado (ou o
+     * rateio oficial) não sai. null = nada a esperar.
      */
     fun proximoDespertar(e: Estado, agora: LocalDateTime): LocalDateTime? {
         if (!e.cadastroConcluido || e.extincao != null) return null

@@ -583,7 +583,7 @@ object Operacoes {
     }
 
     /** Bloco APURAÇÃO da aposta [a], apurada em [hoje], com o [saldoAtual] de antes do prêmio. */
-    private fun blocoApuracao(a: Aposta, hoje: LocalDate, saldoAtual: Long, premio: Long, resultado: String): String =
+    private fun blocoApuracao(a: Aposta, hoje: LocalDate, saldoAtual: Long, apuracao: Apuracao): String =
         Mensagens.apuracao(
             numero = a.numero,
             dataAposta = a.dataAposta,
@@ -592,16 +592,16 @@ object Operacoes {
             premioEstimado = a.premioEstimado,
             dataApuracao = hoje,
             saldoAtual = saldoAtual,
-            premio = premio,
-            resultado = resultado,
+            premio = apuracao.premio,
+            acertos = apuracao.acertos,
         )
 
     /**
-     * Prévia do bloco APURAÇÃO (o saldo atual é o de agora, antes do prêmio; o resultado vai
-     * na imagem anexada). Depois de registrada, vale o comprovante.
+     * Prévia do bloco APURAÇÃO (o saldo atual é o de agora, antes do prêmio). Depois de registrada,
+     * vale o comprovante.
      */
-    fun textoApuracao(e: Estado, a: Aposta, premio: Long, hoje: LocalDate): String =
-        comprovanteDaApuracao(e, a)?.texto ?: blocoApuracao(a, hoje, saldo(e), premio, Mensagens.VIDE_ANEXO)
+    fun textoApuracao(e: Estado, a: Aposta, apuracao: Apuracao, hoje: LocalDate): String =
+        comprovanteDaApuracao(e, a)?.texto ?: blocoApuracao(a, hoje, saldo(e), apuracao)
 
     /** Confirma a apuração: soma o prêmio ao saldo e cria o comprovante (com a imagem dos acertos). */
     fun confirmarApuracao(e: Estado, id: String, apuracao: Apuracao, hoje: LocalDate, agora: Long, imagem: Arquivo? = null): Estado {
@@ -624,9 +624,8 @@ object Operacoes {
                 lancamentos = e.lancamentos + premioIndividual,
             )
         }
-        // O resultado vai na imagem dos acertos; sem ela, fica a contagem no próprio bloco.
-        val resultado = if (imagem != null) Mensagens.VIDE_ANEXO else apuracao.acertos
-        val texto = blocoApuracao(a, hoje, saldo(e), apuracao.premio, resultado)
+        // O resultado (premiada ou não) e os acertos no bloco; a imagem dos acertos vai anexada.
+        val texto = blocoApuracao(a, hoje, saldo(e), apuracao)
         val premio = if (apuracao.premio > 0) {
             listOf(
                 Lancamento(

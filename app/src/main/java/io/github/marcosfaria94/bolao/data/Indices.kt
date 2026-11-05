@@ -69,7 +69,7 @@ class Indices(private val context: Context) {
             get() = precoAjustes != null && precoParametros != null && precoAjustes != precoParametros
     }
 
-    /** Aviso dos índices para as Notificações (o sino da Home) e o topo da lista de Jogos. */
+    /** Aviso dos índices para as Notificações (o sino da barra de cima) e o topo da lista de Jogos. */
     data class Aviso(
         val chave: String,
         val modalidade: Modalidade,
@@ -265,6 +265,15 @@ class Indices(private val context: Context) {
         }
     }
 
+    /**
+     * Ao entrar nos Jogos (ou na página de um jogo): consulta a Caixa de novo, para a lista e o
+     * volante não ficarem com um concurso que já foi sorteado. Só espera se a última consulta
+     * foi há poucos segundos (ir e voltar entre as abas não repete a consulta).
+     */
+    fun atualizarAoEntrar() {
+        if (System.currentTimeMillis() - ultimaAtualizacao >= VALIDADE_AO_ENTRAR_MS) atualizar(forcar = true)
+    }
+
     // ---------- auditoria das regras ----------
 
     /** Confere o concurso [u] com as regras (uma vez por concurso) e conta as divergências seguidas. */
@@ -350,6 +359,9 @@ class Indices(private val context: Context) {
 
     companion object {
         private const val VALIDADE_MS = 10 * 60 * 1000L
+
+        /** Entrar de novo nos Jogos antes disto não repete a consulta. */
+        private const val VALIDADE_AO_ENTRAR_MS = 15 * 1000L
 
         /** Concursos seguidos fora das regras para avisar que elas mudaram. */
         const val DIVERGENCIAS_PARA_AVISAR = 3

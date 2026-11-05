@@ -297,7 +297,8 @@ object DadosDeExemplo {
             }
             planejadas.forEachIndexed { i, p ->
                 add(Evento.Apostar(t(p.dia, p.hora, p.minuto), i))
-                if (i != pendente) add(Evento.Apurar(t(p.dia.plusDays(2), r.nextInt(8, 12), r.nextInt(0, 60)), i))
+                // A apuração sai na noite do sorteio (o dia seguinte ao da aposta), assim que a Caixa publica.
+                if (i != pendente) add(Evento.Apurar(t(p.dia.plusDays(1), r.nextInt(21, 24), r.nextInt(0, 60)), i))
             }
             val diaRateio = anterior.atDay(r.nextInt(12, 21))
             add(Evento.Ratear(t(diaRateio, r.nextInt(12, 20), r.nextInt(0, 60)), diaRateio, 0.5 + r.nextDouble() * 0.5))
@@ -372,7 +373,7 @@ object DadosDeExemplo {
                         mime = "image/png",
                         guardadoEm = ev.instante,
                     )
-                    enviar(Operacoes.confirmarApuracao(e, id, ap, planejadas[ev.indice].dia.plusDays(2), ev.instante, imagem), ev.instante)
+                    enviar(Operacoes.confirmarApuracao(e, id, ap, planejadas[ev.indice].dia.plusDays(1), ev.instante, imagem), ev.instante)
                 }
 
                 is Evento.Ratear -> {
@@ -498,9 +499,10 @@ object DadosDeExemplo {
             e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, a), a.id, dia, registro)
             if (resultado != null) {
                 val conf = Conferencia.conferir(mod, a.palpite, resultado, null, null)
-                val quando = t(sorteio.plusDays(1), r.nextInt(8, 12), r.nextInt(0, 60))
+                // Na noite do sorteio (depois do registro da aposta).
+                val quando = maxOf(t(sorteio, r.nextInt(21, 24), r.nextInt(0, 60)), minOf(registro + 60_000, ultimoInstante))
                 val apurada = Operacoes.apuracaoDe(resultado, conf, conf.premio, quando)
-                e = Operacoes.confirmarApuracao(e, a.id, apurada, sorteio.plusDays(1).coerceAtMost(hoje), quando)
+                e = Operacoes.confirmarApuracao(e, a.id, apurada, sorteio.coerceAtMost(hoje), quando)
             }
         }
         return e

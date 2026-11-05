@@ -210,9 +210,9 @@ data class Etiqueta(val texto: String, val tom: TomEtiqueta)
 
 /**
  * Situação do item, na etiqueta colorida: antes do sorteio, quando ele acontece ("Sorteio hoje");
- * depois, "Premiada" ou "Não premiada" ("Em apuração" enquanto o resultado não chega). A aposta e o
- * rateio que esperam o comprovante (ou a conferência dele) dizem isso. O aporte diz se é mensal ou
- * adicional. null = sem etiqueta.
+ * depois, "Premiada" (em ouro) ou "Não premiada" ("Em apuração" enquanto o resultado não chega). A
+ * aposta e o rateio que esperam o comprovante (ou a conferência dele) dizem isso. O aporte diz se é
+ * mensal ou adicional; o prêmio, "Resgatado" (sem o ouro). null = sem etiqueta.
  */
 fun etiquetaDoMovimento(e: Estado, mv: Movimento, hoje: LocalDate): Etiqueta? {
     val l = (mv as? Movimento.DeLancamento)?.l ?: return null
@@ -228,8 +228,9 @@ fun etiquetaDoMovimento(e: Estado, mv: Movimento, hoje: LocalDate): Etiqueta? {
                     val tom = when (s) {
                         Situacao.AGUARDANDO -> TomEtiqueta.AZUL
                         Situacao.APURACAO -> TomEtiqueta.LARANJA
-                        // O dourado fica só no item do prêmio; a aposta premiada diz "Premiada" sem ele.
-                        Situacao.PREMIADA, Situacao.PREMIADA_A_APURAR, Situacao.NAO_PREMIADA -> TomEtiqueta.NEUTRO
+                        // A aposta premiada tem o "Premiada" em ouro; o item do prêmio diz "Resgatado", sem ele.
+                        Situacao.PREMIADA, Situacao.PREMIADA_A_APURAR -> TomEtiqueta.OURO
+                        Situacao.NAO_PREMIADA -> TomEtiqueta.NEUTRO
                     }
                     Etiqueta(situacaoCurta(a, s, hoje), tom)
                 }
@@ -238,7 +239,7 @@ fun etiquetaDoMovimento(e: Estado, mv: Movimento, hoje: LocalDate): Etiqueta? {
         TipoLancamento.RATEIO -> e.rateios.firstOrNull { it.numero == l.rateioNumero }?.takeIf { it.pendenteDeAnexo }?.let { r ->
             if (Operacoes.pixCompletos(e, r)) Etiqueta("A conferir", TomEtiqueta.ROXO) else Etiqueta("Esperando os Pix", TomEtiqueta.VERMELHO)
         }
-        TipoLancamento.PREMIO -> Etiqueta("Premiada", TomEtiqueta.OURO)
+        TipoLancamento.PREMIO -> Etiqueta("Resgatado", TomEtiqueta.NEUTRO)
         else -> null
     }
 }
@@ -267,7 +268,7 @@ fun valorDoMovimento(mv: Movimento): String = when (mv) {
         if (mv.l.tipo == TipoLancamento.SALDO_INICIAL) Dinheiro.rs(mv.l.valor) else valorComSinal(mv.l.valor)
 }
 
-/** Só o prêmio fica dourado (o valor e a etiqueta); a aposta premiada, não. */
+/** O valor do prêmio fica dourado (a etiqueta dele, "Resgatado", não; o "Premiada" da aposta, sim). */
 @Suppress("UNUSED_PARAMETER")
 fun douradoNoHistorico(e: Estado, mv: Movimento, hoje: LocalDate): Boolean =
     (mv as? Movimento.DeLancamento)?.l?.tipo == TipoLancamento.PREMIO

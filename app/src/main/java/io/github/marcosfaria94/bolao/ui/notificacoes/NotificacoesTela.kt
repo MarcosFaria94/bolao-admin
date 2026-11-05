@@ -24,10 +24,10 @@ import io.github.marcosfaria94.bolao.data.Pendencia
 import io.github.marcosfaria94.bolao.notificacoes.Notificador
 
 /**
- * Notificações (o sino da Home, ou deslizar o dedo para a direita a partir da Home), bem simples: o
- * que falta fazer em texto corrido, um item embaixo do outro com espaço entre eles (o mais recente
- * primeiro). Tocar num item abre a tela que resolve. [ativa]: a página está na tela (ao lado da
- * Home ela também é desenhada enquanto o dedo desliza).
+ * Notificações (o sino da barra de cima das abas, ou deslizar o dedo para a direita a partir da
+ * Home), bem simples: o que falta fazer em texto corrido, um item embaixo do outro com espaço entre
+ * eles (o mais recente primeiro). Tocar num item abre a tela que resolve; deslizar o dedo para
+ * qualquer lado fecha (a raiz do app cuida disso). [ativa]: a lista está na tela.
  */
 @Composable
 fun NotificacoesTela(pendencias: List<Pendencia>, abrir: (String) -> Unit, ativa: Boolean = true) {

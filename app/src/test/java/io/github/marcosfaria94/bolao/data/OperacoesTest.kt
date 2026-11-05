@@ -87,7 +87,7 @@ class OperacoesTest {
         assertEquals("APURAÇÃO Nº 1 - 04/06/26", e.comprovantes.last().titulo)
         assertEquals(
             "APOSTA: Nº1 - JUN/2026\nDATA: 01/06/2026\nMODALIDADE: LOTOFÁCIL\nCONCURSO: 3001\nPRÊMIO PRINCIPAL: 2 MILHÕES\n" +
-                "APURAÇÃO: 04/06/2026\nRESULTADO: (VIDE ANEXO)\n\nFINANCEIRO -\n" +
+                "APURAÇÃO: 04/06/2026\nRESULTADO: APOSTA PREMIADA\nACERTOS: 12/15\n\nFINANCEIRO -\n" +
                 "SALDO ATUAL:   R$ 36,50\nPRÊMIO.....: + R$ 14,00\nSALDO FINAL: = R$ 50,50",
             e.comprovantes.last().texto,
         )

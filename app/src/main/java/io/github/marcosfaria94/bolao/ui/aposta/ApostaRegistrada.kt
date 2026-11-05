@@ -144,8 +144,7 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
     // Mesmo instante enquanto o resultado não muda (evita refazer a imagem a cada toque).
     val instante = remember(conferencia) { System.currentTimeMillis() }
     // A apuração automática cuida desta aposta: resultado da Caixa com o rateio oficial e nada a
-    // confirmar. Aí não há botão de apurar: no modo individual ela sai na hora; no bolão, às 8h do
-    // dia seguinte ao sorteio (como no termo), mesmo com o app fechado.
+    // confirmar. Aí não há botão de apurar: ela sai na hora (no dia do sorteio), mesmo com o app fechado.
     val automatica = pronto != null && conferencia != null && !pronto.manual && pronto.concurso.faixas.isNotEmpty() &&
         !conferencia.precisaConfirmarValor && conferencia.observacoes.isEmpty()
     val apuracaoEm = Pendencias.apuracaoAutomaticaEm(estado, a)
@@ -333,7 +332,7 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
                 Mensagens.tituloApuracao(a.numero, hoje),
                 aoFechar = { vendo = null },
                 previa = Recibos.previa(
-                    estado, TipoComprovante.APURACAO, Operacoes.textoApuracao(estado, a, premio, hoje), 1,
+                    estado, TipoComprovante.APURACAO, Operacoes.textoApuracao(estado, a, registro, hoje), 1,
                     resultado = Recibos.resultadoDe(a, registro),
                 ),
                 imagensExtras = listOfNotNull(acertos?.let { "Anexo: imagem dos acertos" to it }),
@@ -551,7 +550,7 @@ private fun LinhaComprovante(
     }
 }
 
-/** "hoje às 21h", "amanhã às 8h", "em 30/10/2026 às 8h": quando a apuração automática sai. */
+/** "hoje às 21h", "amanhã às 12h", "em 30/10/2026 às 21h": quando a apuração automática sai. */
 private fun quandoSai(quando: LocalDateTime, hoje: LocalDate): String {
     val dia = Datas.quando(quando.toLocalDate(), hoje)
     val hora = if (quando.minute == 0) "${quando.hour}h" else "%dh%02d".format(quando.hour, quando.minute)

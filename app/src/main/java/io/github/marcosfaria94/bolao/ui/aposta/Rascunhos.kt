@@ -159,6 +159,24 @@ class ApostaEmEdicao(
     }
 
     /**
+     * O concurso do volante acompanha a Caixa enquanto a página está aberta: a página pode ter
+     * aberto com um concurso que já foi sorteado (a consulta à Caixa chega depois) ou sem concurso
+     * nenhum (dados velhos). [ultimo] e [proximo]: o último concurso e o próximo número, dos índices.
+     * Devolve a aposta antes e depois, quando mudou (a mudança já vale, como as do volante).
+     */
+    fun acompanharConcurso(ultimo: Concurso?, proximo: Int?, hoje: LocalDate): Pair<Aposta, Aposta>? {
+        val a = aposta
+        if (descartada || a.registrada || proximo == null || a.modalidade == Modalidade.LOTECA) return null
+        val doProximo = ultimo?.takeIf { it.proximoNumero == proximo }
+        val p = Operacoes.ProximoConcurso(proximo, doProximo?.proximaData, doProximo?.premioEstimadoProximo)
+        val sem = a.concurso == 0 && a.comprovante == null && doProximo?.proximaData?.let { !it.isBefore(hoje) } == true
+        if (!sem && !Operacoes.concursoDesatualizado(a, proximo)) return null
+        val novo = Operacoes.noConcurso(a, p)
+        mudar(novo)
+        return a to novo
+    }
+
+    /**
      * A aposta já registrada saiu do app por outro caminho (descartada antes da conferência, ou
      * excluída no modo individual): ao sair da página, não volta como rascunho.
      */

@@ -125,11 +125,11 @@ class PendenciasTest {
         assertEquals(1, Pendencias.aguardandoResultado(e, sorteio.atTime(23, 10)).size)
         assertTrue(Pendencias.prontasParaApurar(e, sorteio.plusDays(1).atTime(9, 0)).isEmpty())
 
-        // Com o rateio publicado: apura sozinha a partir das 8h do dia seguinte.
+        // Com o rateio publicado: apura sozinha na hora, no mesmo dia do sorteio (desde a 0.12).
         e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, rateioOficial = rateio, conferidaEm = ms(sorteio.atTime(23, 10))))
         assertEquals(0, Pendencias.aguardandoResultado(e, sorteio.atTime(23, 30)).size)
-        assertTrue(Pendencias.prontasParaApurar(e, sorteio.plusDays(1).atTime(7, 59)).isEmpty())
-        assertEquals(listOf("a"), Pendencias.prontasParaApurar(e, sorteio.plusDays(1).atTime(8, 0)).map { it.id })
+        assertEquals(listOf("a"), Pendencias.prontasParaApurar(e, sorteio.atTime(23, 10)).map { it.id })
+        assertEquals(sorteio.atStartOfDay(), Pendencias.apuracaoAutomaticaEm(e, e.apostas.single()))
         // Enquanto a apuração automática não acontece, não há pendência para o Administrador.
         assertTrue(chaves(e, sorteio.plusDays(1).atTime(8, 0)).none { it.startsWith("apuracao-") })
 
@@ -151,10 +151,10 @@ class PendenciasTest {
         // Com algo a confirmar, não.
         val aConfirmar = Operacoes.guardarConferencia(e, "a", e.apostas.single().apuracao!!.copy(precisaConfirmar = true))
         assertTrue(Pendencias.prontasParaApurar(aConfirmar, sorteio.atTime(23, 0)).isEmpty())
-        // No bolão, a mesma conferência espera as 8h do dia seguinte.
+        // No bolão também (desde a 0.12): no mesmo dia, sem esperar a manhã seguinte.
         val bolao = e.copy(modo = Modo.BOLAO)
-        assertTrue(Pendencias.prontasParaApurar(bolao, sorteio.atTime(21, 5)).isEmpty())
-        assertEquals(sorteio.plusDays(1).atTime(8, 0), Pendencias.apuracaoAutomaticaEm(bolao, bolao.apostas.single()))
+        assertEquals(listOf("a"), Pendencias.prontasParaApurar(bolao, sorteio.atTime(21, 5)).map { it.id })
+        assertEquals(sorteio.atStartOfDay(), Pendencias.apuracaoAutomaticaEm(bolao, bolao.apostas.single()))
     }
 
     @Test
@@ -168,12 +168,12 @@ class PendenciasTest {
         assertEquals(sorteio.atTime(21, 40), Pendencias.proximoDespertar(e, sorteio.atTime(21, 10)))
         e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, conferidaEm = ms(sorteio.atTime(21, 10))))
         assertEquals(sorteio.atTime(22, 0), Pendencias.proximoDespertar(e, sorteio.atTime(21, 30)))
-        // Conferida com o rateio: no bolão, acorda às 8h do dia seguinte para apurar.
+        // Conferida com o rateio: a apuração já pode sair (se ainda não saiu, tenta de novo em meia hora).
         e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, rateioOficial = rateio, conferidaEm = ms(sorteio.atTime(22, 0))))
-        assertEquals(sorteio.plusDays(1).atTime(8, 0), Pendencias.proximoDespertar(e, sorteio.atTime(22, 0)))
-        // Apurada: nada a esperar.
-        e = Operacoes.confirmarApuracao(e, "a", e.apostas.single().apuracao!!, sorteio.plusDays(1), ms(sorteio.plusDays(1).atTime(8, 0)))
-        assertEquals(null, Pendencias.proximoDespertar(e, sorteio.plusDays(1).atTime(8, 1)))
+        assertEquals(sorteio.atTime(22, 30), Pendencias.proximoDespertar(e, sorteio.atTime(22, 0)))
+        // Apurada (no mesmo dia): nada a esperar.
+        e = Operacoes.confirmarApuracao(e, "a", e.apostas.single().apuracao!!, sorteio, ms(sorteio.atTime(22, 1)))
+        assertEquals(null, Pendencias.proximoDespertar(e, sorteio.atTime(22, 2)))
         // Dois dias depois do sorteio sem resultado, quem resolve é o Administrador (sem despertador).
         val semResultado = registrar(base, a.copy(id = "b"), LocalDate.of(2026, 10, 19))
         assertEquals(null, Pendencias.proximoDespertar(semResultado, sorteio.plusDays(3).atTime(9, 0)))

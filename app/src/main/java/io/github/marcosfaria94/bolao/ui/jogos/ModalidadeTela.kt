@@ -8,6 +8,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import io.github.marcosfaria94.bolao.ui.comum.AcaoDaBarra
 import io.github.marcosfaria94.bolao.ui.comum.LocalBarraDaTela
+import io.github.marcosfaria94.bolao.ui.comum.acompanharPuxao
+import io.github.marcosfaria94.bolao.ui.comum.rememberPuxaoAlemDaBorda
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -83,37 +86,58 @@ import java.time.LocalDate
  * "Detalhes →" (na barra de cima, na linha do título) leva aos Detalhes (último resultado, regras e
  * probabilidades), que ficam à direita da página: deslizar o dedo para a esquerda também abre e,
  * para a direita (ou o voltar), volta à página como ela estava, sem mexer na aposta.
+ * Deslizar para a direita na página do jogo sai dela (volta para a lista dos Jogos); para a
+ * esquerda nos Detalhes, vai para a Home ([irParaHome]).
  *
  * [apostaId]: a aposta aberta pelo Histórico ou por um aviso. Registrada, ela aparece no lugar do
  * volante (com a apuração e os comprovantes); em andamento, ela é a do volante.
+ * [detalhes]: abre direto nos Detalhes (segurar a modalidade em Jogos); aí o voltar sai da página.
  */
 @Composable
-fun ModalidadeTela(estado: Estado, m: Modalidade, aoSair: () -> Unit, apostaId: String? = null, abrir: (String) -> Unit = {}) {
+fun ModalidadeTela(
+    estado: Estado,
+    m: Modalidade,
+    aoSair: () -> Unit,
+    apostaId: String? = null,
+    abrir: (String) -> Unit = {},
+    detalhes: Boolean = false,
+    irParaHome: () -> Unit = {},
+) {
     val app = LocalContext.current.bolao
     val indices = remember { app.indices }
     val itens by indices.itens.collectAsStateWithLifecycle()
     val atualizando by indices.atualizando.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { indices.atualizar() }
+    // Ao entrar: a Caixa de novo (o concurso do volante não pode ser um que já foi sorteado).
+    LaunchedEffect(Unit) { indices.atualizarAoEntrar() }
     val item: Indices.Item? = itens[m]
     val u = item?.ultimo
     val hoje = LocalDate.now()
     val escopo = rememberCoroutineScope()
     // Duas páginas lado a lado: a do jogo (0) e os Detalhes (1).
-    val paginas = rememberPagerState(initialPage = 0) { 2 }
+    val inicial = if (detalhes) 1 else 0
+    val paginas = rememberPagerState(initialPage = inicial) { 2 }
     val nosDetalhes = paginas.currentPage == 1
-    BackHandler(enabled = nosDetalhes) { escopo.launch { paginas.animateScrollToPage(0) } }
+    // Aberta direto nos Detalhes: o voltar sai da página (volta para os Jogos).
+    val voltarDosDetalhes: () -> Unit = if (detalhes) aoSair else { { escopo.launch { paginas.animateScrollToPage(0) } } }
+    BackHandler(enabled = nosDetalhes && !detalhes) { escopo.launch { paginas.animateScrollToPage(0) } }
     // Na barra de cima: "Detalhes →"; nos Detalhes, o título vira "Detalhes" e o voltar volta à página.
     val barra = LocalBarraDaTela.current
     val dono = LocalViewModelStoreOwner.current
     DisposableEffect(nosDetalhes, dono) {
         val acao = if (nosDetalhes) {
-            AcaoDaBarra(dono, titulo = "Detalhes", aoVoltar = { escopo.launch { paginas.animateScrollToPage(0) } })
+            AcaoDaBarra(dono, titulo = "Detalhes", aoVoltar = voltarDosDetalhes)
         } else {
             AcaoDaBarra(dono, botao = "Detalhes", aoTocarBotao = { escopo.launch { paginas.animateScrollToPage(1) } })
         }
         barra.acao = acao
         onDispose { if (barra.acao === acao) barra.acao = null }
     }
+    // Além das bordas: para a direita na página do jogo, sai; para a esquerda nos Detalhes, a Home.
+    val puxao = rememberPuxaoAlemDaBorda(
+        vertical = false,
+        noInicio = { if (paginas.currentPage == 0) aoSair() },
+        noFim = { if (paginas.currentPage == 1) irParaHome() },
+    )
 
     val aberta = apostaId?.let { id -> estado.apostas.firstOrNull { it.id == id } }
     if (apostaId != null && aberta == null) {
@@ -140,6 +164,18 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, aoSair: () -> Unit, apostaId: 
         ?: vm?.let { v -> estado.apostas.firstOrNull { it.id == v.aposta.id && it.registrada } }
     val aposta: Aposta = registrada ?: vm!!.aposta
 
+    // O volante acompanha a Caixa: a consulta que chega com a página aberta pode trazer outro concurso.
+    if (vm != null) {
+        LaunchedEffect(vm, item?.proximoNumero, u?.proximaData) {
+            vm.acompanharConcurso(u, item?.proximoNumero, hoje)?.let { (antes, depois) ->
+                // A gravada (em andamento) a raiz do app já avisa; aqui, só a que ainda não foi gravada.
+                if (antes.concurso > 0 && estado.apostas.none { it.id == antes.id }) {
+                    app.repo.avisar("O concurso ${antes.concurso} da ${m.nome} já foi sorteado: a aposta passou para o ${depois.concurso}.")
+                }
+            }
+        }
+    }
+
     // O quadro mostra o concurso da aposta; sem os dados dela, os do próximo concurso (da Caixa).
     val doProximo = registrada == null && (aposta.concurso == 0 || aposta.concurso == item?.proximoNumero)
     val premio = aposta.premioEstimado?.takeIf { it > 0 } ?: u?.premioEstimadoProximo?.takeIf { doProximo && it > 0 }
@@ -147,7 +183,8 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, aoSair: () -> Unit, apostaId: 
     val emDestaque = doProximo && indices.destaque(itens)?.modalidade == m
 
     // As duas páginas ficam montadas: ir aos Detalhes e voltar não perde nada da página do jogo.
-    HorizontalPager(state = paginas, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize()) { pagina ->
+    Box(Modifier.fillMaxSize().nestedScroll(puxao)) {
+    HorizontalPager(state = paginas, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize().acompanharPuxao(puxao)) { pagina ->
         if (pagina == 1) {
             DetalhesDaModalidade(estado, m, u, atualizando)
             return@HorizontalPager
@@ -195,6 +232,7 @@ fun ModalidadeTela(estado: Estado, m: Modalidade, aoSair: () -> Unit, apostaId: 
             }
             Spacer(Modifier.height(8.dp))
         }
+    }
     }
 }
 

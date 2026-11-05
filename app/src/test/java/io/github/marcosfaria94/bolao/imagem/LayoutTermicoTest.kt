@@ -25,7 +25,7 @@ class LayoutTermicoTest {
     }
 
     private val bloco = Mensagens.apuracao(
-        1, LocalDate.of(2026, 6, 1), Modalidade.LOTOFACIL, 3060, 200_000_000, LocalDate.of(2026, 6, 4), 1500, 700,
+        1, LocalDate.of(2026, 6, 1), Modalidade.LOTOFACIL, 3060, 200_000_000, LocalDate.of(2026, 6, 4), 1500, 700, acertos = "11/15",
     )
 
     private val codigo = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
@@ -51,7 +51,7 @@ class LayoutTermicoTest {
         assertEquals(partes, linhas.subList(4, 4 + partes.size).map { it.texto })
         assertEquals("=".repeat(48), linhas[4 + partes.size].texto)
         val textos = linhas.map { it.texto }
-        assertTrue(textos.contains("RESULTADO: (VIDE ANEXO)"))
+        assertTrue(textos.contains("RESULTADO: APOSTA PREMIADA"))
         // Sem a tabela do rateio oficial: o resultado vai na imagem anexada.
         assertFalse(textos.any { it.startsWith("RATEIO OFICIAL") })
         assertTrue(textos.contains("ANEXO: IMAGEM DOS ACERTOS"))
@@ -135,10 +135,11 @@ class LayoutTermicoTest {
         val resultado = Recibos.resultadoDe(a, ap)!!
         val linhas = LayoutTermico.montar("Bolão dos Amigos", TipoComprovante.APURACAO, bloco, 1, null, null, previa = true, resultado = resultado)
         val textos = linhas.map { it.texto }
-        // O bloco do termo continua igual ("RESULTADO: (VIDE ANEXO)") e, embaixo, o resultado oficial.
-        assertTrue(textos.contains("RESULTADO: (VIDE ANEXO)"))
+        // O bloco do termo (com o "RESULTADO" e os "ACERTOS") e, embaixo, o resultado oficial.
+        assertTrue(textos.contains("RESULTADO: APOSTA PREMIADA"))
+        assertTrue(textos.contains("ACERTOS: 11/15"))
         val i = textos.indexOf("RESULTADO OFICIAL - CONCURSO 7150")
-        assertTrue(i > textos.indexOf("RESULTADO: (VIDE ANEXO)"))
+        assertTrue(i > textos.indexOf("ACERTOS: 11/15"))
         assertEquals("SORTEADOS: 01 02 33 47 71", textos[i + 1])
         assertEquals("ACUMULOU: SIM", textos[i + 2])
         assertTrue(textos.contains("RATEIO OFICIAL"))
