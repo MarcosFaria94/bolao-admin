@@ -86,9 +86,10 @@ import java.time.LocalDate
  * "Detalhes →" (na barra de cima, na linha do título) leva aos Detalhes (último resultado, regras e
  * probabilidades), que ficam à direita da página: deslizar o dedo para a esquerda também abre e,
  * para a direita (ou o voltar), volta à página como ela estava, sem mexer na aposta.
- * Deslizar para a direita na página do jogo sai dela (volta para a lista dos Jogos); para a
- * esquerda nos Detalhes, também vai para a lista dos Jogos ([irParaJogos]): o "Jogos →" da barra
- * avisa (e tocar nele faz o mesmo).
+ * Na barra: "← Voltar" na página do jogo e, nos Detalhes, "← Aposta" (volta para a página do
+ * volante) e "Voltar →". Os dois "Voltar" (e deslizar para a direita na página do jogo ou para a
+ * esquerda nos Detalhes) saem da página, de volta para a tela de onde ela foi aberta ([aoSair]: a
+ * Home, os Jogos, as Notificações...).
  *
  * [apostaId]: a aposta aberta pelo Histórico ou por um aviso. Registrada, ela aparece no lugar do
  * volante (com a apuração e os comprovantes); em andamento, ela é a do volante.
@@ -102,7 +103,6 @@ fun ModalidadeTela(
     apostaId: String? = null,
     abrir: (String) -> Unit = {},
     detalhes: Boolean = false,
-    irParaJogos: () -> Unit = {},
 ) {
     val app = LocalContext.current.bolao
     val indices = remember { app.indices }
@@ -118,28 +118,28 @@ fun ModalidadeTela(
     val inicial = if (detalhes) 1 else 0
     val paginas = rememberPagerState(initialPage = inicial) { 2 }
     val nosDetalhes = paginas.currentPage == 1
-    // O "← Apostar" da barra volta à página do volante. O voltar do celular também, menos quando a página
+    // O "← Aposta" da barra volta à página do volante. O voltar do celular também, menos quando a página
     // foi aberta direto nos Detalhes (segurar a modalidade): aí ele sai da página (volta para os Jogos).
     val voltarDosDetalhes: () -> Unit = { escopo.launch { paginas.animateScrollToPage(0) } }
     BackHandler(enabled = nosDetalhes && !detalhes) { escopo.launch { paginas.animateScrollToPage(0) } }
-    // Na barra de cima: "Detalhes →"; nos Detalhes, "← Apostar" (o voltar volta à página do volante) e o
-    // "Jogos →" (deslizar para a esquerda vai para a lista dos Jogos).
+    // Na barra de cima: "← Voltar" (o título da raiz) e "Detalhes →"; nos Detalhes, "← Aposta" (volta à
+    // página do volante) e "Voltar →" (sai da página, como deslizar para a esquerda).
     val barra = LocalBarraDaTela.current
     val dono = LocalViewModelStoreOwner.current
     DisposableEffect(nosDetalhes, dono) {
         val acao = if (nosDetalhes) {
-            AcaoDaBarra(dono, titulo = "Apostar", botao = "Jogos", aoTocarBotao = irParaJogos, aoVoltar = voltarDosDetalhes)
+            AcaoDaBarra(dono, titulo = "Aposta", botao = "Voltar", aoTocarBotao = aoSair, aoVoltar = voltarDosDetalhes)
         } else {
             AcaoDaBarra(dono, botao = "Detalhes", aoTocarBotao = { escopo.launch { paginas.animateScrollToPage(1) } })
         }
         barra.acao = acao
         onDispose { if (barra.acao === acao) barra.acao = null }
     }
-    // Além das bordas: para a direita na página do jogo, sai; para a esquerda nos Detalhes, a lista dos Jogos.
+    // Além das bordas: para a direita na página do jogo ou para a esquerda nos Detalhes, sai da página.
     val puxao = rememberPuxaoAlemDaBorda(
         vertical = false,
         noInicio = { if (paginas.currentPage == 0) aoSair() },
-        noFim = { if (paginas.currentPage == 1) irParaJogos() },
+        noFim = { if (paginas.currentPage == 1) aoSair() },
     )
 
     val aberta = apostaId?.let { id -> estado.apostas.firstOrNull { it.id == id } }
@@ -286,14 +286,19 @@ private fun QuadroPremio(premio: Long?, sorteio: LocalDate?, hoje: LocalDate, fe
             if (federal && premio != null) {
                 Text("1º prêmio", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            TextoQueCabe(
-                premio?.let { Dinheiro.porExtenso(it) } ?: "Prêmio a confirmar",
-                MaterialTheme.typography.displayLarge.copy(fontSize = 64.sp, lineHeight = 70.sp),
-                peso = FontWeight.Bold,
-                menor = 24.sp,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            RotuloValor("Sorteio", sorteio?.let { Datas.relativa(it, hoje) } ?: "a confirmar")
+            if (premio != null) {
+                TextoQueCabe(
+                    Dinheiro.porExtenso(premio),
+                    MaterialTheme.typography.displayLarge.copy(fontSize = 64.sp, lineHeight = 70.sp),
+                    peso = FontWeight.Bold,
+                    menor = 24.sp,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                // A Caixa ainda não divulgou a estimativa: no lugar do valor grande, uma linha como a do sorteio.
+                RotuloValor("Prêmio", NAO_DIVULGADO)
+            }
+            RotuloValor("Sorteio", sorteio?.let { Datas.relativa(it, hoje) } ?: NAO_DIVULGADO)
         }
     }
 }

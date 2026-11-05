@@ -533,6 +533,13 @@ object Operacoes {
         return a.pendenteDeAnexo && (sorteio == null || sorteio.isBefore(a.dataAposta))
     }
 
+    /**
+     * A aposta que ainda não vale (em andamento ou esperando o comprovante) está no concurso [p]
+     * sem a data do sorteio (a Caixa não tinha divulgado), e agora a data chegou.
+     */
+    fun semDataDivulgada(a: Aposta, p: ProximoConcurso): Boolean =
+        (!a.registrada || a.pendenteDeAnexo) && a.comprovante == null && a.concurso == p.numero && a.dataSorteio == null && p.data != null
+
     /** A aposta passada para o próximo concurso (número, sorteio e prêmio estimado). */
     fun noConcurso(a: Aposta, p: ProximoConcurso): Aposta =
         a.copy(concurso = p.numero, dataSorteio = p.data ?: a.dataSorteio, premioEstimado = p.premio ?: a.premioEstimado)
@@ -543,11 +550,18 @@ object Operacoes {
      */
     fun atualizarConcursos(e: Estado, proximos: Map<Modalidade, ProximoConcurso>): Pair<Estado, List<Pair<Aposta, Aposta>>> {
         val mudadas = mutableListOf<Pair<Aposta, Aposta>>()
+        var completou = false
         val apostas = e.apostas.map { a ->
             val p = proximos[a.modalidade]
-            if (p != null && concursoDesatualizado(a, p.numero)) noConcurso(a, p).also { mudadas += a to it } else a
+            when {
+                p == null -> a
+                concursoDesatualizado(a, p.numero) -> noConcurso(a, p).also { mudadas += a to it }
+                // A data do sorteio que a Caixa ainda não tinha divulgado chegou: completa, sem aviso.
+                semDataDivulgada(a, p) -> a.copy(dataSorteio = p.data, premioEstimado = a.premioEstimado ?: p.premio).also { completou = true }
+                else -> a
+            }
         }
-        return (if (mudadas.isEmpty()) e else e.copy(apostas = apostas)) to mudadas
+        return (if (mudadas.isEmpty() && !completou) e else e.copy(apostas = apostas)) to mudadas
     }
 
     // ---------- apuração ----------

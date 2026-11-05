@@ -13,7 +13,6 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Payments
-import androidx.compose.material.icons.outlined.RingVolume
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -130,8 +129,8 @@ enum class SecaoAjuste(val id: String) {
     INTEGRIDADE("integridade"),
     AUDITORIA("auditoria"),
     BACKUP("backup"),
-    APURACAO("apuracao"),
-    TOQUE("toque"),
+    /** A apuração automática (avisos, bateria, inicialização) e o toque do prêmio, numa tela só. */
+    NOTIFICACOES("notificacoes"),
     ATUALIZACAO("atualizacao"),
     TESTE("teste"),
     CREDITOS("creditos"),
@@ -147,8 +146,7 @@ enum class SecaoAjuste(val id: String) {
         INTEGRIDADE -> "Integridade"
         AUDITORIA -> "Auditoria"
         BACKUP -> "Backup"
-        APURACAO -> "Apuração automática"
-        TOQUE -> "Toque do prêmio"
+        NOTIFICACOES -> "Notificações"
         ATUALIZACAO -> "Atualização"
         TESTE -> "Modo de teste"
         CREDITOS -> "Créditos"
@@ -159,7 +157,11 @@ enum class SecaoAjuste(val id: String) {
     val rota: String get() = if (this == INTEGRIDADE) "integridade" else "ajustes/$id"
 
     companion object {
-        fun de(id: String?): SecaoAjuste? = entries.firstOrNull { it.id == id }
+        fun de(id: String?): SecaoAjuste? = when (id) {
+            // Até a 0.14, a apuração automática e o toque do prêmio eram duas telas.
+            "apuracao", "toque" -> NOTIFICACOES
+            else -> entries.firstOrNull { it.id == id }
+        }
 
         /**
          * Os grupos da lista, em ordem (o individual não tem integrantes, termo, integridade nem
@@ -168,7 +170,7 @@ enum class SecaoAjuste(val id: String) {
         fun grupos(individual: Boolean): List<Pair<String, List<SecaoAjuste>>> = listOf(
             (if (individual) "APOSTAS" else "BOLÃO") to (if (individual) listOf(MODO, VALORES) else listOf(INTEGRANTES, VALORES, TERMO)),
             "SEGURANÇA" to (if (individual) listOf(BACKUP) else listOf(INTEGRIDADE, AUDITORIA, BACKUP)),
-            "CELULAR" to listOf(APURACAO, TOQUE, ATUALIZACAO, TESTE),
+            "CELULAR" to listOf(NOTIFICACOES, ATUALIZACAO, TESTE),
             "SOBRE" to listOf(CREDITOS, EXTINCAO),
         )
     }
@@ -182,8 +184,7 @@ private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
     SecaoAjuste.INTEGRIDADE -> Icons.Outlined.VerifiedUser
     SecaoAjuste.AUDITORIA -> Icons.Outlined.PictureAsPdf
     SecaoAjuste.BACKUP -> Icons.Outlined.Backup
-    SecaoAjuste.APURACAO -> Icons.Outlined.NotificationsActive
-    SecaoAjuste.TOQUE -> Icons.Outlined.RingVolume
+    SecaoAjuste.NOTIFICACOES -> Icons.Outlined.NotificationsActive
     SecaoAjuste.ATUALIZACAO -> Icons.Outlined.SystemUpdate
     SecaoAjuste.TESTE -> Icons.Outlined.Science
     SecaoAjuste.CREDITOS -> Icons.Outlined.AutoAwesome
@@ -224,8 +225,11 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         SecaoAjuste.INTEGRIDADE -> "Verificar" to TomItem.NORMAL
         SecaoAjuste.AUDITORIA -> "Gerar PDF" to TomItem.NORMAL
         SecaoAjuste.BACKUP -> "Cópia de tudo" to TomItem.NORMAL
-        SecaoAjuste.APURACAO -> if (liberada) "Liberada" to TomItem.NORMAL else "Falta liberar" to TomItem.ALERTA
-        SecaoAjuste.TOQUE -> (if (toqueLigado) "Ligado" else "Desligado") to TomItem.NORMAL
+        SecaoAjuste.NOTIFICACOES -> when {
+            !liberada -> "Falta liberar" to TomItem.ALERTA
+            toqueLigado -> "Toque ligado" to TomItem.NORMAL
+            else -> "Toque desligado" to TomItem.NORMAL
+        }
         SecaoAjuste.ATUALIZACAO ->
             if ((ultima?.codigo ?: 0) > Atualizador.versaoInstalada) "Nova versão" to TomItem.DESTAQUE
             else "v${Atualizador.nomeInstalado}" to TomItem.NORMAL
@@ -370,8 +374,10 @@ fun AjustesSecaoTela(estado: Estado, secao: SecaoAjuste, atualizacao: Atualizaca
                     }
                     SecaoAjuste.AUDITORIA -> QuadroAjuste { Auditoria(estado) }
                     SecaoAjuste.BACKUP -> Backup()
-                    SecaoAjuste.APURACAO -> ApuracaoComOAppFechado()
-                    SecaoAjuste.TOQUE -> ToqueDoPremio()
+                    SecaoAjuste.NOTIFICACOES -> {
+                        Secao("Apuração automática") { ApuracaoComOAppFechado() }
+                        Secao("Toque do prêmio") { ToqueDoPremio() }
+                    }
                     SecaoAjuste.ATUALIZACAO -> AtualizacaoDoApp(atualizacao)
                     SecaoAjuste.TESTE -> ModoDeTeste()
                     SecaoAjuste.CREDITOS -> Creditos()

@@ -2,6 +2,7 @@ package io.github.marcosfaria94.bolao.domain
 
 import io.github.marcosfaria94.bolao.net.CaixaParser
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -146,6 +147,11 @@ class ConferenciaTest {
         assertEquals(3061, c.proximoNumero)
         assertEquals(LocalDate.of(2026, 6, 4), c.proximaData)
         assertEquals(200_000_000L, c.premioEstimadoProximo)
+        // Logo depois do sorteio, a Caixa repetiu a data do concurso que saiu (ou nem mandou): não divulgada.
+        assertNull(CaixaParser.ler(Modalidade.LOTOFACIL, json.replace("\"04/06/2026\"", "\"03/06/2026\"")).proximaData)
+        assertNull(CaixaParser.ler(Modalidade.LOTOFACIL, json.replace("\"04/06/2026\"", "\"02/06/2026\"")).proximaData)
+        assertNull(CaixaParser.ler(Modalidade.LOTOFACIL, json.replace("\"04/06/2026\"", "\"\"")).proximaData)
+        assertNull(CaixaParser.ler(Modalidade.LOTOFACIL, json.replace("2000000.0", "0.0")).premioEstimadoProximo)
         assertEquals(null, c.timeOuMes)
         assertTrue(c.temResultado)
     }

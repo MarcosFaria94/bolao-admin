@@ -1,5 +1,9 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -75,9 +79,12 @@ fun linhaIndices(item: Indices.Item): String {
     }
 }
 
-/** Prêmio estimado do próximo concurso, por extenso ("R$ 58,5 Milhões"); sem estimativa, "a confirmar". */
+/** Prêmio estimado do próximo concurso, por extenso ("R$ 58,5 Milhões"); sem estimativa da Caixa, "Não divulgado". */
 fun premioDoCartao(item: Indices.Item): String =
-    item.ultimo?.premioEstimadoProximo?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) } ?: "a confirmar"
+    item.ultimo?.premioEstimadoProximo?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) } ?: NAO_DIVULGADO
+
+/** O que aparece quando a Caixa ainda não divulgou a informação (o prêmio estimado ou a data do sorteio). */
+const val NAO_DIVULGADO = "Não divulgado"
 
 /** Preço da aposta simples, no canto do cartão: "R$ 3,00"; na Federal, "Variável". */
 fun precoDoCartao(m: Modalidade, estado: Estado): String =
@@ -101,6 +108,14 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
     val cor = MaterialTheme.colorScheme.onSurface
     val suave = MaterialTheme.colorScheme.onSurfaceVariant
     val vibrar = LocalHapticFeedback.current
+    // Segurar abre os Detalhes só depois de um tempo maior que o padrão do celular (não abre sem querer).
+    val base = LocalViewConfiguration.current
+    val segurarMais = remember(base) {
+        object : ViewConfiguration by base {
+            override val longPressTimeoutMillis: Long get() = SEGURAR_PARA_DETALHES_MS
+        }
+    }
+    CompositionLocalProvider(LocalViewConfiguration provides segurarMais) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = if (destaque) BorderStroke(2.dp, Dourado) else null,
@@ -159,7 +174,7 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
                     )
                     // "Sorteio:" e a data na mesma cor.
                     Text(
-                        "Sorteio: " + (u?.proximaData?.let { Datas.relativa(it, hoje) } ?: "a confirmar"),
+                        "Sorteio: " + (u?.proximaData?.let { Datas.relativa(it, hoje) } ?: NAO_DIVULGADO),
                         style = MaterialTheme.typography.bodyLarge,
                         color = cor,
                         maxLines = 1,
@@ -188,7 +203,11 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
             }
         }
     }
+    }
 }
+
+/** Quanto segurar o cartão para abrir os Detalhes (o padrão do Android é 400 ms). */
+const val SEGURAR_PARA_DETALHES_MS = 700L
 
 /** Etiqueta do preço, no canto de cima do cartão: letra grande, com fundo próprio. */
 @Composable

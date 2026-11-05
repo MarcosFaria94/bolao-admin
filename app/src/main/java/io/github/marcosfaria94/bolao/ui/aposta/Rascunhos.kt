@@ -30,7 +30,7 @@ fun rascunhoDa(estado: Estado, m: Modalidade): Aposta? = Operacoes.rascunhos(est
  * editor busca na Caixa também os jogos do concurso.
  */
 fun novaAposta(estado: Estado, m: Modalidade, ultimo: Concurso?, hoje: LocalDate, agora: Long): Aposta {
-    val atual = m != Modalidade.LOTECA && ultimo?.proximaData?.let { !it.isBefore(hoje) } == true
+    val atual = m != Modalidade.LOTECA && proximoAtual(ultimo, hoje)
     return Aposta(
         id = novoId(),
         numero = 0,
@@ -46,6 +46,19 @@ fun novaAposta(estado: Estado, m: Modalidade, ultimo: Concurso?, hoje: LocalDate
         criadaEm = agora,
     )
 }
+
+/**
+ * O próximo concurso do [ultimo] ainda é o que a Caixa está recebendo: a data dele é de hoje em
+ * diante ou, sem a data (não divulgada logo depois do sorteio), o último sorteio foi há pouco.
+ */
+fun proximoAtual(ultimo: Concurso?, hoje: LocalDate): Boolean {
+    val u = ultimo ?: return false
+    val d = u.proximaData
+    return if (d != null) !d.isBefore(hoje) else u.proximoNumero != null && u.data?.let { !it.isBefore(hoje.minusDays(DIAS_SEM_DATA)) } == true
+}
+
+/** Sem a data do próximo sorteio, o próximo número ainda vale até tantos dias depois do último sorteio. */
+private const val DIAS_SEM_DATA = 2L
 
 /** O volante está completo: todas as dezenas (e os trevos, o time ou o mês); na Federal, o bilhete e as frações. */
 fun volanteCompleto(a: Aposta): Boolean =
@@ -169,8 +182,16 @@ class ApostaEmEdicao(
         if (descartada || a.registrada || proximo == null || a.modalidade == Modalidade.LOTECA) return null
         val doProximo = ultimo?.takeIf { it.proximoNumero == proximo }
         val p = Operacoes.ProximoConcurso(proximo, doProximo?.proximaData, doProximo?.premioEstimadoProximo)
-        val sem = a.concurso == 0 && a.comprovante == null && doProximo?.proximaData?.let { !it.isBefore(hoje) } == true
-        if (!sem && !Operacoes.concursoDesatualizado(a, proximo)) return null
+        val sem = a.concurso == 0 && a.comprovante == null && proximoAtual(doProximo, hoje)
+        if (!sem && !Operacoes.concursoDesatualizado(a, proximo)) {
+            // A data (ou o prêmio) que a Caixa ainda não tinha divulgado chegou: completa, sem aviso.
+            if (doProximo != null && a.concurso == proximo && a.comprovante == null &&
+                ((a.dataSorteio == null && doProximo.proximaData != null) || (a.premioEstimado == null && doProximo.premioEstimadoProximo != null))
+            ) {
+                mudar(a.copy(dataSorteio = a.dataSorteio ?: doProximo.proximaData, premioEstimado = a.premioEstimado ?: doProximo.premioEstimadoProximo))
+            }
+            return null
+        }
         val novo = Operacoes.noConcurso(a, p)
         mudar(novo)
         return a to novo

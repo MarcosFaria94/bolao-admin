@@ -106,7 +106,14 @@ private const val VELOCIDADE_PARA_FECHAR = 1200f
  * Usar com Modifier.nestedScroll(puxao) em volta da lista (ou do pager) e desenhar o conteúdo
  * deslocado de [deslocamento] (ex.: graphicsLayer { translationY = puxao.deslocamento }).
  */
-class PuxaoAlemDaBorda(val vertical: Boolean, val limite: Float) : NestedScrollConnection {
+class PuxaoAlemDaBorda(
+    val vertical: Boolean,
+    val limite: Float,
+    /** Num puxão rápido, quanto do [limite] a tela já precisa ter andado. */
+    private val fracaoDoPuxaoRapido: Float = 0.25f,
+    /** Pixels por segundo de um puxão rápido. */
+    private val velocidadeDoPuxaoRapido: Float = VELOCIDADE_PARA_FECHAR,
+) : NestedScrollConnection {
     var noInicio: (() -> Unit)? = null
     var noFim: (() -> Unit)? = null
 
@@ -146,7 +153,7 @@ class PuxaoAlemDaBorda(val vertical: Boolean, val limite: Float) : NestedScrollC
         if (x == 0f) return Velocity.Zero
         val v = eixo(available)
         val acao = if (x > 0f) noInicio else noFim
-        val rapido = abs(x) > limite / 4 && abs(v) > VELOCIDADE_PARA_FECHAR && sign(v) == sign(x)
+        val rapido = abs(x) > limite * fracaoDoPuxaoRapido && abs(v) > velocidadeDoPuxaoRapido && sign(v) == sign(x)
         if (acao != null && (abs(x) >= limite || rapido)) {
             deslocamento = 0f
             acao()
@@ -169,14 +176,32 @@ class PuxaoAlemDaBorda(val vertical: Boolean, val limite: Float) : NestedScrollC
     }
 }
 
-/** Quanto a tela precisa andar (já com a resistência) para o puxão disparar a ação. */
+/** Quanto a tela precisa andar (já com a resistência) para o puxão para os lados disparar a ação. */
 val LIMITE_DO_PUXAO = 72.dp
+
+/**
+ * Para cima e para baixo (as telas que abrem puxando: Notificações, Comprovantes, Créditos), um
+ * pouco mais difícil, para não abrir sem querer ao rolar a lista: a tela anda mais e o puxão
+ * rápido só vale forte e já com boa parte do caminho.
+ */
+val LIMITE_DO_PUXAO_VERTICAL = 96.dp
+private const val FRACAO_DO_PUXAO_RAPIDO_VERTICAL = 0.6f
+private const val VELOCIDADE_DO_PUXAO_RAPIDO_VERTICAL = 2600f
 
 /** [PuxaoAlemDaBorda] guardado na tela, com as ações de agora. */
 @Composable
 fun rememberPuxaoAlemDaBorda(vertical: Boolean, noInicio: (() -> Unit)? = null, noFim: (() -> Unit)? = null): PuxaoAlemDaBorda {
     val densidade = LocalDensity.current
-    val puxao = remember(vertical, densidade) { PuxaoAlemDaBorda(vertical, with(densidade) { LIMITE_DO_PUXAO.toPx() }) }
+    val puxao = remember(vertical, densidade) {
+        if (vertical) {
+            PuxaoAlemDaBorda(
+                vertical, with(densidade) { LIMITE_DO_PUXAO_VERTICAL.toPx() },
+                FRACAO_DO_PUXAO_RAPIDO_VERTICAL, VELOCIDADE_DO_PUXAO_RAPIDO_VERTICAL,
+            )
+        } else {
+            PuxaoAlemDaBorda(vertical, with(densidade) { LIMITE_DO_PUXAO.toPx() })
+        }
+    }
     SideEffect {
         puxao.noInicio = noInicio
         puxao.noFim = noFim
@@ -185,13 +210,21 @@ fun rememberPuxaoAlemDaBorda(vertical: Boolean, noInicio: (() -> Unit)? = null, 
 }
 
 /**
- * O aviso do puxão (para cima ou para baixo): aparece aos poucos enquanto se puxa ("Puxe para..."),
- * e diz [pronto] ("Solte para...") quando soltar já dispara a ação.
+ * O aviso do puxão: aparece aos poucos enquanto se puxa ([puxando]) e diz [pronto] (o nome da tela
+ * que vai abrir, ou para onde volta), em destaque, quando soltar já dispara a ação.
+ * [noFim]: o aviso do puxão além do fim (empurrando para cima); senão, o do começo (puxando para baixo).
  */
 @Composable
-fun IndicadorDoPuxao(puxao: PuxaoAlemDaBorda, puxando: String, pronto: String, icone: ImageVector, modifier: Modifier = Modifier) {
+fun IndicadorDoPuxao(
+    puxao: PuxaoAlemDaBorda,
+    puxando: String,
+    pronto: String,
+    icone: ImageVector,
+    modifier: Modifier = Modifier,
+    noFim: Boolean = false,
+) {
     val p = puxao.progresso
-    if (p <= 0f) return
+    if (p <= 0f || (noFim && puxao.deslocamento > 0f) || (!noFim && puxao.deslocamento < 0f)) return
     val cheio = p >= 1f
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -247,8 +280,8 @@ class BarraDaTela {
 val LocalBarraDaTela = staticCompositionLocalOf { BarraDaTela() }
 
 /**
- * Um painel à esquerda das abas (as Notificações), que entra e sai como uma página do pager: o
- * painel e a aba andam juntos, acompanhando o dedo. [fracao] vai de 0 (fechado, fora da tela à
+ * Um painel à esquerda das abas (as Notificações, que abrem pelo sino ou puxando para baixo) e
+ * sai como uma página do pager: o painel e a aba andam juntos, acompanhando o dedo. [fracao] vai de 0 (fechado, fora da tela à
  * esquerda) a 1 (aberto, a aba fora da tela à direita). Deslizar o painel para a direita também
  * fecha: ele sai pela direita, esmaecendo ([saida]), e a aba aparece no lugar.
  */
@@ -313,44 +346,6 @@ class PainelLateral {
         }
         animate(fracao, alvo, animationSpec = tween(220)) { v, _ -> fracao = v }
         fracao = alvo
-    }
-}
-
-/**
- * Abre o [painel] arrastando além da primeira página do pager (deslizar para a direita na Home): a
- * conexão vai em Modifier.nestedScroll em volta do pager. [ativo] = está na primeira página.
- */
-class ArrasteParaAbrir(private val painel: PainelLateral) : NestedScrollConnection {
-    var ativo = false
-
-    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-        // O dedo voltando (para a esquerda) com o painel aparecendo: primeiro o painel volta, só depois o pager anda.
-        if (source != NestedScrollSource.UserInput || !painel.visivel || available.x >= 0f) return Offset.Zero
-        val antes = painel.fracao
-        painel.arrastar(available.x)
-        return Offset((painel.fracao - antes) * painel.largura, 0f)
-    }
-
-    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-        if (source != NestedScrollSource.UserInput || !ativo || available.x <= 0f || painel.fracao >= 1f) return Offset.Zero
-        val antes = painel.fracao
-        painel.arrastar(available.x)
-        return Offset((painel.fracao - antes) * painel.largura, 0f)
-    }
-
-    override suspend fun onPreFling(available: Velocity): Velocity {
-        val f = painel.fracao
-        if (f <= 0f || f >= 1f) return Velocity.Zero
-        painel.soltar(available.x)
-        // O pager não sai rolando com o resto do gesto.
-        return available
-    }
-
-    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-        // Segurança: um gesto cancelado no meio não deixa o painel pela metade.
-        val f = painel.fracao
-        if (f > 0f && f < 1f) painel.soltar(0f)
-        return Velocity.Zero
     }
 }
 

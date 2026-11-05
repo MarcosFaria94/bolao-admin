@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -106,6 +107,8 @@ fun BarraTitulo(
     acoes: @Composable RowScope.() -> Unit = {},
     iconeVoltar: ImageVector = Icons.AutoMirrored.Outlined.ArrowBack,
     descricaoVoltar: String = "Voltar",
+    /** O título também volta (ex.: "← Voltar", "← Aposta" na página do jogo). */
+    tituloVolta: Boolean = false,
 ) {
     TopAppBar(
         title = {
@@ -117,6 +120,7 @@ fun BarraTitulo(
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = if (tituloVolta && aoVoltar != null) Modifier.clickable(onClick = aoVoltar) else Modifier,
                 )
                 if (subtitulo != null) {
                     Text(subtitulo, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

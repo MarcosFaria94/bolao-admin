@@ -43,6 +43,12 @@ import io.github.marcosfaria94.bolao.ui.jogos.indicesDoCartao
 import io.github.marcosfaria94.bolao.ui.jogos.linhaIndices
 import io.github.marcosfaria94.bolao.ui.jogos.precoDoCartao
 import io.github.marcosfaria94.bolao.ui.jogos.premioDoCartao
+import io.github.marcosfaria94.bolao.domain.TIMES
+import io.github.marcosfaria94.bolao.domain.TIMES_DO_CORACAO
+import io.github.marcosfaria94.bolao.ui.ajustes.SecaoAjuste
+import io.github.marcosfaria94.bolao.ui.aposta.OrdemDosTimes
+import io.github.marcosfaria94.bolao.ui.aposta.nomeDoTime
+import io.github.marcosfaria94.bolao.ui.aposta.timesEmOrdem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -240,7 +246,7 @@ class TelasTest {
             proximoNumero = 7148, proximaData = hoje, premioEstimadoProximo = 5_850_000_000,
         )
         assertEquals("R$ 58,5 Milhões", premioDoCartao(Indices.Item(Modalidade.QUINA, ultimo, null, 34.2)))
-        assertEquals("a confirmar", premioDoCartao(Indices.Item(Modalidade.QUINA, null, null, 34.2)))
+        assertEquals("Não divulgado", premioDoCartao(Indices.Item(Modalidade.QUINA, null, null, 34.2)))
         // Preço de Ajustes diferente do dos parâmetros: aviso.
         assertTrue(Indices.Item(Modalidade.MEGA_SENA, null, null, null, precoAjustes = 700, precoParametros = 600).precoDiferente)
         assertTrue(!Indices.Item(Modalidade.MEGA_SENA, null, null, null, precoAjustes = 600, precoParametros = 600).precoDiferente)
@@ -267,7 +273,46 @@ class TelasTest {
         val s = novaAposta(e, Modalidade.SUPER_SETE, ultimo.copy(modalidade = Modalidade.SUPER_SETE, proximaData = hoje.minusDays(1)), hoje, 5)
         assertEquals(List(7) { -1 }, s.numeros)
         assertEquals(0, s.concurso)
+        // Logo depois do sorteio, sem a data do próximo (não divulgada): o próximo número já vale, sem a data.
+        val semData = novaAposta(e, Modalidade.QUINA, ultimo.copy(proximaData = null, premioEstimadoProximo = null), hoje, 5)
+        assertEquals(7148, semData.concurso)
+        assertNull(semData.dataSorteio)
+        assertNull(semData.premioEstimado)
+        // Dados velhos (o último sorteio foi há dias) e sem a data: a confirmar.
+        assertEquals(0, novaAposta(e, Modalidade.QUINA, ultimo.copy(data = hoje.minusDays(5), proximaData = null), hoje, 5).concurso)
         assertEquals(10, novaAposta(e, Modalidade.FEDERAL, null, hoje, 5).fracoesFederal)
+    }
+
+    @Test
+    fun timesDoCoracaoEmLista() {
+        assertEquals(80, TIMES.size)
+        assertEquals(80, TIMES.map { it.caixa }.toSet().size)
+        assertEquals(TIMES_DO_CORACAO, TIMES.map { it.caixa })
+        assertTrue(TIMES.all { it.wiki.startsWith("pt:") || it.wiki.startsWith("en:") })
+        // O nome da tela: "Vasco da Gama / RJ"; o digitado à mão fica como está.
+        assertEquals("Vasco da Gama / RJ", nomeDoTime("VASCO DA GAMA/RJ"))
+        assertEquals("Inter de Limeira / SP", nomeDoTime("inter limeira/sp"))
+        assertEquals("OUTRO/XX", nomeDoTime("OUTRO/XX"))
+        assertNull(nomeDoTime(null))
+        // Ordem alfabética sem diferença de acento: Águia entre ABC e Altos; América/MG antes de América/RN.
+        val porNome = timesEmOrdem(TIMES, OrdemDosTimes.NOME, crescente = true).map { "${it.nome}/${it.uf}" }
+        assertEquals(listOf("ABC/RN", "Águia de Marabá/PA", "Altos/PI", "Amazonas/AM", "América/MG", "América/RN"), porNome.take(6))
+        assertEquals("Ypiranga/RS", porNome.last())
+        assertEquals("Ypiranga/RS", timesEmOrdem(TIMES, OrdemDosTimes.NOME, crescente = false).first().let { "${it.nome}/${it.uf}" })
+        // Por UF: AL primeiro (ASA, CRB, CSA), e o nome dentro da UF.
+        val porUf = timesEmOrdem(TIMES, OrdemDosTimes.UF, crescente = true).map { "${it.nome}/${it.uf}" }
+        assertEquals(listOf("ASA/AL", "CRB/AL", "CSA/AL", "Amazonas/AM", "Manaus/AM"), porUf.take(5))
+        assertEquals("Tocantinópolis/TO", porUf.last())
+        assertEquals("TO", timesEmOrdem(TIMES, OrdemDosTimes.UF, crescente = false).first().uf)
+    }
+
+    @Test
+    fun ajustesNotificacoes() {
+        // A apuração automática e o toque do prêmio viraram uma tela só (os endereços antigos abrem ela).
+        assertEquals(SecaoAjuste.NOTIFICACOES, SecaoAjuste.de("apuracao"))
+        assertEquals(SecaoAjuste.NOTIFICACOES, SecaoAjuste.de("toque"))
+        assertEquals("Notificações", SecaoAjuste.NOTIFICACOES.titulo(false))
+        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.ATUALIZACAO, SecaoAjuste.TESTE), SecaoAjuste.grupos(false).first { it.first == "CELULAR" }.second)
     }
 
     @Test

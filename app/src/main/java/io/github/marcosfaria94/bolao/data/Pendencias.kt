@@ -183,7 +183,7 @@ object Pendencias {
             val a = c.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }
             lista += Pendencia(
                 "envio-${c.id}", Pendencia.Tipo.ENVIO,
-                "Enviar o comprovante ao grupo",
+                "Enviar ao grupo",
                 c.titulo,
                 criado, aviso, "comprovante/${c.id}",
                 modalidade = a?.modalidade, concurso = a?.concurso ?: 0, comprovante = c.tipo,

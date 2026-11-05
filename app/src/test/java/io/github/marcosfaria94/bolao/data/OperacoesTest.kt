@@ -302,6 +302,23 @@ class OperacoesTest {
     }
 
     @Test
+    fun dataDoSorteioNaoDivulgadaChegaDepois() {
+        var e = Operacoes.registrarAporteMensal(inicial(), d(1), agora())
+        // Em andamento no 3076, sem a data (a Caixa ainda não tinha divulgado).
+        e = Operacoes.salvarRascunho(e, semComprovante("r", 25, Modalidade.MEGA_SENA, 3076).copy(dataSorteio = null, premioEstimado = null))
+        // Ainda sem a data: nada muda.
+        val semData = Operacoes.ProximoConcurso(3076, null, null)
+        assertTrue(Operacoes.atualizarConcursos(e, mapOf(Modalidade.MEGA_SENA to semData)).first === e)
+        // A data chegou: completa, sem aviso (não conta como aposta que mudou de concurso).
+        val (novo, mudadas) = Operacoes.atualizarConcursos(e, mapOf(Modalidade.MEGA_SENA to Operacoes.ProximoConcurso(3076, d(27), 3_000_000_00)))
+        assertTrue(mudadas.isEmpty())
+        val r = novo.apostas.first { it.id == "r" }
+        assertEquals(3076, r.concurso)
+        assertEquals(d(27), r.dataSorteio)
+        assertEquals(3_000_000_00L, r.premioEstimado)
+    }
+
+    @Test
     fun modoIndividual() {
         var e = Estado(
             cadastroConcluido = true, cadastradoEm = d(1), modo = Modo.INDIVIDUAL,

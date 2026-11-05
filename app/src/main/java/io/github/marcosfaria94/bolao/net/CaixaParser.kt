@@ -60,10 +60,11 @@ object CaixaParser {
             )
         }.sortedBy { it.ordem }
 
+        val data = Datas.lerBr(o.str("dataApuracao"))
         return Concurso(
             modalidade = modalidade,
             numero = numero,
-            data = Datas.lerBr(o.str("dataApuracao")),
+            data = data,
             dezenas = dezenas,
             segundoSorteio = o.lista("listaDezenasSegundoSorteio").mapNotNull { it.trim().toIntOrNull() }.sorted(),
             trevos = o.lista("trevosSorteados").mapNotNull { it.trim().toIntOrNull() }.sorted(),
@@ -73,7 +74,9 @@ object CaixaParser {
             jogosLoteca = jogos,
             bilhetesFederal = bilhetes,
             proximoNumero = o.int("numeroConcursoProximo"),
-            proximaData = Datas.lerBr(o.str("dataProximoConcurso")),
+            // Logo depois do sorteio a Caixa às vezes ainda não divulgou a data do próximo e repete a
+            // do concurso que acabou de sair (ou uma anterior): aí a data fica "Não divulgado".
+            proximaData = Datas.lerBr(o.str("dataProximoConcurso"))?.takeIf { d -> data == null || d.isAfter(data) },
             premioEstimadoProximo = centavos(o.dbl("valorEstimadoProximoConcurso"))?.takeIf { it > 0 },
             numeroConcursoEspecial = o.int("numeroConcursoFinal_0_5")?.takeIf { it > 0 },
             acumuladoEspecial = centavos(o.dbl("valorAcumuladoConcursoEspecial"))?.takeIf { it > 0 },
