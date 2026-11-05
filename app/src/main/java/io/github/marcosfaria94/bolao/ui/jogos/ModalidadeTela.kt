@@ -10,6 +10,7 @@ import io.github.marcosfaria94.bolao.ui.comum.AcaoDaBarra
 import io.github.marcosfaria94.bolao.ui.comum.LocalBarraDaTela
 import io.github.marcosfaria94.bolao.ui.comum.acompanharPuxao
 import io.github.marcosfaria94.bolao.ui.comum.rememberPuxaoAlemDaBorda
+import io.github.marcosfaria94.bolao.ui.comum.soltarDasPaginas
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.BorderStroke
@@ -187,7 +188,7 @@ fun ModalidadeTela(
 
     // As duas páginas ficam montadas: ir aos Detalhes e voltar não perde nada da página do jogo.
     Box(Modifier.fillMaxSize().nestedScroll(puxao)) {
-    HorizontalPager(state = paginas, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize().acompanharPuxao(puxao)) { pagina ->
+    HorizontalPager(state = paginas, beyondViewportPageCount = 1, flingBehavior = soltarDasPaginas(paginas), modifier = Modifier.fillMaxSize().acompanharPuxao(puxao)) { pagina ->
         if (pagina == 1) {
             DetalhesDaModalidade(estado, m, u, atualizando)
             return@HorizontalPager

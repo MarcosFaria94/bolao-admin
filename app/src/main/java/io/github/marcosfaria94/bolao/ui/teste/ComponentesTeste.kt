@@ -1,7 +1,5 @@
 package io.github.marcosfaria94.bolao.ui.teste
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,8 +9,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -21,20 +17,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
-import io.github.marcosfaria94.bolao.ui.comum.EmblemaIcone
-import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.tema.VermelhoTeste
-import kotlinx.coroutines.launch
 
 /** Faixa vermelha (letra branca) embaixo do título em todas as telas enquanto o modo de teste estiver ligado. */
 @Composable
@@ -77,52 +67,6 @@ fun DialogoSairDoTeste(aoFechar: () -> Unit) {
         },
         aoFechar = aoFechar,
     )
-}
-
-/** Conteúdo da seção "Modo de teste" dos Ajustes (vai dentro do cartão da seção). */
-@Composable
-fun CartaoModoTeste(emTeste: Boolean, aoPedirSaida: () -> Unit) {
-    val ctx = LocalContext.current
-    val avisos = LocalAvisos.current
-    val escopo = rememberCoroutineScope()
-    val preparando by ModoTeste.trabalhando.collectAsStateWithLifecycle()
-    Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            EmblemaIcone(Icons.Outlined.Science, VermelhoTeste, 44.dp)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(if (emTeste) "Ligado: dados de exemplo" else "Experimentar sem medo", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    if (emTeste) {
-                        "Aportes, apostas, apurações, rateios e extratos feitos aqui não mexem nos dados reais."
-                    } else {
-                        "O app abre um mês de exemplo, separado dos dados reais, e apaga tudo ao sair."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        if (emTeste) {
-            OutlinedButton(
-                onClick = {
-                    Vigia.rodarAgora(ctx)
-                    escopo.launch { avisos.showSnackbar("Conferindo: se algum jogo já tiver resultado, o aviso chega em instantes.") }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Conferir os sorteios agora") }
-            OutlinedButton(
-                onClick = { ModoTeste.entrar(ctx) },
-                enabled = !preparando,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (preparando) "Preparando..." else "Recomeçar com um exemplo novo") }
-            TextButton(onClick = aoPedirSaida, enabled = !preparando, modifier = Modifier.fillMaxWidth()) {
-                Text("Sair do modo de teste", color = MaterialTheme.colorScheme.error)
-            }
-        } else {
-            BotaoExperimentar(preparando = preparando, aoTocar = { ModoTeste.entrar(ctx) }, modifier = Modifier.fillMaxWidth())
-        }
-    }
 }
 
 @Composable

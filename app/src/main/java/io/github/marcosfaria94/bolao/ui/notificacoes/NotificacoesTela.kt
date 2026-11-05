@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Payments
@@ -75,9 +76,11 @@ import java.time.LocalDate
  * 2. MEUS JOGOS: cada jogo em andamento (registrado esperando o sorteio, ou que falta registrar)
  *    numa linha: a bola da modalidade com o concurso, o nome, a aposta e o sorteio, e a etiqueta
  *    ("Sem comprovante", "Falta registrar"...). As dezenas ficam na página da aposta.
- * Tocar numa linha abre a tela que resolve. A raiz cuida de fechar deslizando o dedo para os lados
- * ([modifier]). Puxar para baixo de novo (do alto da lista) abre os Comprovantes ([abrirComprovantes];
- * null no modo individual). Empurrar para cima não faz nada. [ativa]: a lista está na tela.
+ * Os títulos dos grupos vão sem o número (até a 0.15, "PENDÊNCIAS 2").
+ * Tocar numa linha abre a tela que resolve (os atalhos dos comprovantes abrem os Comprovantes:
+ * [abrirComprovantes], null no modo individual). A raiz cuida de fechar deslizando o dedo para os
+ * lados ([modifier]). Puxar para baixo de novo (do alto da lista) abre os Meus jogos ([abrirMeusJogos];
+ * até a 0.15, os Comprovantes). Empurrar para cima não faz nada. [ativa]: a lista está na tela.
  */
 @Composable
 fun NotificacoesTela(
@@ -85,6 +88,7 @@ fun NotificacoesTela(
     estado: Estado,
     abrir: (String) -> Unit,
     abrirComprovantes: (() -> Unit)?,
+    abrirMeusJogos: () -> Unit,
     modifier: Modifier = Modifier,
     semComprovante: Int = 0,
     aConferir: Int = 0,
@@ -95,17 +99,16 @@ fun NotificacoesTela(
     LaunchedEffect(ativa) { if (ativa) Notificador.limparAcoes(ctx) }
     val hoje = LocalDate.now()
     val jogos = jogosEmAndamento(estado, hoje).flatMap { it.apostas }
-    val puxao = rememberPuxaoAlemDaBorda(vertical = true, noInicio = abrirComprovantes)
+    val puxao = rememberPuxaoAlemDaBorda(vertical = true, noInicio = abrirMeusJogos)
     val faltam = if (abrirComprovantes != null) semComprovante else 0
     val conferir = if (abrirComprovantes != null) aConferir else 0
-    val total = pendencias.size + listOf(faltam, conferir).count { it > 0 }
 
     Box(modifier.fillMaxSize()) {
         LazyColumn(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
             modifier = Modifier.fillMaxSize().nestedScroll(puxao).acompanharPuxao(puxao),
         ) {
-            item(key = "titulo-pendencias") { TituloDoGrupo("PENDÊNCIAS", total, primeiro = true) }
+            item(key = "titulo-pendencias") { TituloDoGrupo("PENDÊNCIAS", primeiro = true) }
             item(key = "pendencias") {
                 Grupo {
                     // Quantas linhas já foram (a linha fina vai entre uma e outra).
@@ -134,7 +137,7 @@ fun NotificacoesTela(
                     if (linha == 0) Vazio("Tudo em dia. Quando houver algo a fazer, aparece aqui.")
                 }
             }
-            item(key = "titulo-jogos") { TituloDoGrupo("MEUS JOGOS", jogos.size) }
+            item(key = "titulo-jogos") { TituloDoGrupo("MEUS JOGOS") }
             item(key = "jogos") {
                 Grupo {
                     jogos.forEachIndexed { i, a ->
@@ -146,7 +149,7 @@ fun NotificacoesTela(
             }
         }
         IndicadorDoPuxao(
-            puxao, puxando = "Comprovantes", pronto = "Comprovantes", icone = Icons.AutoMirrored.Outlined.ReceiptLong,
+            puxao, puxando = "Meus jogos", pronto = "Meus jogos", icone = Icons.Outlined.ConfirmationNumber,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp),
         )
     }
@@ -165,29 +168,16 @@ private fun iconeDa(tipo: Pendencia.Tipo): Pair<ImageVector, Color> = when (tipo
     Pendencia.Tipo.INDICES -> Icons.Outlined.WarningAmber to Color(0xFFD97706)
 }
 
-/** "PENDÊNCIAS 2", como os títulos dos grupos dos Ajustes. */
+/** "PENDÊNCIAS", como os títulos dos grupos dos Ajustes (sem o número). */
 @Composable
-private fun TituloDoGrupo(nome: String, quantos: Int, primeiro: Boolean = false) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+private fun TituloDoGrupo(nome: String, primeiro: Boolean = false) {
+    Text(
+        nome,
+        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp, letterSpacing = 1.sp),
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 16.dp, top = if (primeiro) 8.dp else 22.dp, bottom = 6.dp),
-    ) {
-        Text(
-            nome,
-            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp, letterSpacing = 1.sp),
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (quantos > 0) {
-            Spacer(Modifier.width(6.dp))
-            Text(
-                quantos.toString(),
-                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    )
 }
 
 /** Um grupo: as linhas num cartão, com a linha fina entre elas. */

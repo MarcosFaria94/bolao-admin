@@ -2,6 +2,14 @@ package io.github.marcosfaria94.bolao.ui.comum
 
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.gestures.TargetedFlingBehavior
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
@@ -90,11 +98,22 @@ fun Modifier.deslizarParaFechar(aoFechar: () -> Unit): Modifier = composed {
         }
 }
 
-/** Puxar a tela mais do que isto da largura fecha (ou um puxão rápido). */
-private const val FRACAO_PARA_FECHAR = 0.3f
+/** Puxar a tela mais do que isto da largura fecha (ou um puxão rápido). Até a 0.15, 30%. */
+private const val FRACAO_PARA_FECHAR = 0.2f
 
-/** Pixels por segundo. */
-private const val VELOCIDADE_PARA_FECHAR = 1200f
+/** Pixels por segundo. Até a 0.15, 1200. */
+private const val VELOCIDADE_PARA_FECHAR = 900f
+
+/**
+ * Nos pagers (as abas e a página do jogo com os Detalhes), arrastar devagar mais do que isto da
+ * largura já passa de página ao soltar (o padrão do Compose é metade).
+ */
+const val LIMIAR_DA_PAGINA = 0.3f
+
+/** O jeito de soltar dos pagers do app: passa de página com menos esforço ([LIMIAR_DA_PAGINA]). */
+@Composable
+fun soltarDasPaginas(estado: PagerState): TargetedFlingBehavior =
+    PagerDefaults.flingBehavior(estado, snapPositionalThreshold = LIMIAR_DA_PAGINA)
 
 /**
  * Puxar além da borda dispara uma ação: a borda é o começo ou o fim de uma lista ([vertical]) ou a
@@ -176,17 +195,17 @@ class PuxaoAlemDaBorda(
     }
 }
 
-/** Quanto a tela precisa andar (já com a resistência) para o puxão para os lados disparar a ação. */
-val LIMITE_DO_PUXAO = 72.dp
+/** Quanto a tela precisa andar (já com a resistência) para o puxão para os lados disparar a ação. Até a 0.15, 72dp. */
+val LIMITE_DO_PUXAO = 56.dp
 
 /**
- * Para cima e para baixo (as telas que abrem puxando: Notificações, Comprovantes, Créditos), um
- * pouco mais difícil, para não abrir sem querer ao rolar a lista: a tela anda mais e o puxão
- * rápido só vale forte e já com boa parte do caminho.
+ * Para cima e para baixo (abrir as Notificações e os Meus jogos, voltar puxando para baixo): a 0.15
+ * deixou mais difícil (96dp, puxão rápido com 60% do caminho a 2600 px/s) e ficou pesado; a 0.16
+ * alivia, mas o puxão rápido ainda pede boa parte do caminho, para não abrir sem querer ao rolar a lista.
  */
-val LIMITE_DO_PUXAO_VERTICAL = 96.dp
-private const val FRACAO_DO_PUXAO_RAPIDO_VERTICAL = 0.6f
-private const val VELOCIDADE_DO_PUXAO_RAPIDO_VERTICAL = 2600f
+val LIMITE_DO_PUXAO_VERTICAL = 72.dp
+private const val FRACAO_DO_PUXAO_RAPIDO_VERTICAL = 0.4f
+private const val VELOCIDADE_DO_PUXAO_RAPIDO_VERTICAL = 1800f
 
 /** [PuxaoAlemDaBorda] guardado na tela, com as ações de agora. */
 @Composable
@@ -245,6 +264,22 @@ fun IndicadorDoPuxao(
         Icon(icone, contentDescription = null, tint = cor, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(8.dp))
         Text(if (cheio) pronto else puxando, style = MaterialTheme.typography.labelLarge, color = cor, maxLines = 1)
+    }
+}
+
+/**
+ * Puxar a tela para baixo (do alto da lista) volta para a tela de antes ([aoVoltar]). O aviso diz
+ * "Voltar" enquanto se puxa e, quando soltar já volta, o nome da tela de antes ([voltaPara]).
+ */
+@Composable
+fun PuxarParaVoltar(voltaPara: String, aoVoltar: () -> Unit, modifier: Modifier = Modifier, conteudo: @Composable () -> Unit) {
+    val puxao = rememberPuxaoAlemDaBorda(vertical = true, noInicio = aoVoltar)
+    Box(modifier.fillMaxSize().nestedScroll(puxao)) {
+        Box(Modifier.fillMaxSize().acompanharPuxao(puxao)) { conteudo() }
+        IndicadorDoPuxao(
+            puxao, puxando = "Voltar", pronto = voltaPara, icone = Icons.Outlined.KeyboardArrowDown,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp),
+        )
     }
 }
 

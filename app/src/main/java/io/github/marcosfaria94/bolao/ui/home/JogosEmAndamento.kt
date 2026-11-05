@@ -3,8 +3,11 @@ package io.github.marcosfaria94.bolao.ui.home
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
+import io.github.marcosfaria94.bolao.domain.Extra
+import io.github.marcosfaria94.bolao.domain.Formato
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.ui.aposta.Situacao
+import io.github.marcosfaria94.bolao.ui.aposta.nomeDoTime
 import io.github.marcosfaria94.bolao.ui.aposta.situacaoDe
 import io.github.marcosfaria94.bolao.ui.comum.Etiqueta
 import io.github.marcosfaria94.bolao.ui.comum.TomEtiqueta
@@ -38,6 +41,46 @@ fun jogosEmAndamento(e: Estado, hoje: LocalDate): List<GrupoEmAndamento> =
 
 /** Quantos jogos estão em andamento. */
 fun quantosEmAndamento(e: Estado, hoje: LocalDate): Int = jogosEmAndamento(e, hoje).sumOf { it.apostas.size }
+
+/**
+ * O que ainda falta numa aposta em andamento (o "Pendente" dos Meus jogos), ou null quando ela está
+ * OK: registrada, com o comprovante da Caixa conferido e (no bolão) o comprovante enviado ao grupo.
+ */
+fun pendenciaDoJogo(e: Estado, a: Aposta): String? = when {
+    !a.registrada -> "Falta registrar"
+    Operacoes.aguardandoComprovante(a) -> "Sem comprovante"
+    Operacoes.aguardandoConferencia(a) -> "A conferir"
+    !e.individual && Operacoes.comprovanteDaAposta(e, a)?.let { !it.envioDispensado && !e.enviado(it) } == true -> "Enviar ao grupo"
+    else -> null
+}
+
+/** O jogo numa linha, para os Meus jogos: as dezenas (ou quantas são), os trevos, o time, o mês, o bilhete. */
+fun resumoDoJogo(a: Aposta): String {
+    val m = a.modalidade
+    return when (m.formato) {
+        Formato.NUMEROS -> buildList {
+            add(
+                when {
+                    a.numeros.isEmpty() -> "Sem números"
+                    a.numeros.size > MAXIMO_DE_DEZENAS_NA_LINHA -> "${a.numeros.size} números"
+                    else -> a.numeros.sorted().joinToString(" ") { m.rotulo(it) }
+                },
+            )
+            if (a.trevos.isNotEmpty()) add("Trevos " + a.trevos.sorted().joinToString(" "))
+            when (m.extra) {
+                Extra.TIME_DO_CORACAO -> a.extra?.let { add(nomeDoTime(it) ?: it) }
+                Extra.MES_DE_SORTE -> a.extra?.let { add(it.lowercase().replaceFirstChar { c -> c.uppercase() }) }
+                Extra.NENHUM -> Unit
+            }
+        }.joinToString(" · ")
+        Formato.COLUNAS -> a.numeros.joinToString(" ") { if (it in 0..9) it.toString() else "-" }.ifEmpty { "Sem números" }
+        Formato.LOTECA -> "${a.palpitesLoteca.count { it.isNotBlank() }} palpites"
+        Formato.FEDERAL -> a.bilheteFederal?.let { "Bilhete $it" } ?: "Bilhete"
+    }
+}
+
+/** Mais dezenas do que isto (Lotomania): só quantas são. */
+private const val MAXIMO_DE_DEZENAS_NA_LINHA = 20
 
 /** A aposta que ainda falta registrar, ou que espera o comprovante da Caixa (ou a conferência dele). */
 fun etiquetaDoJogo(a: Aposta): Etiqueta? = when {

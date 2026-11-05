@@ -9,7 +9,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Payments
@@ -107,19 +106,26 @@ import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.comum.copiar
 import io.github.marcosfaria94.bolao.ui.tema.CoresAlerta
 import io.github.marcosfaria94.bolao.ui.tema.corDestaque
-import io.github.marcosfaria94.bolao.ui.teste.CartaoModoTeste
-import io.github.marcosfaria94.bolao.ui.teste.DialogoSairDoTeste
+import io.github.marcosfaria94.bolao.ui.teste.ModoTeste
+import io.github.marcosfaria94.bolao.ui.atualizacao.EtapaAtualizacao
+import androidx.compose.material3.Switch
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
-/** Endereço das telas dos itens do menu dos Ajustes ("ajustes/toque", "ajustes/creditos"...). */
+/** Endereço das telas dos itens do menu dos Ajustes ("ajustes/notificacoes", "ajustes/termo"...). */
 const val ROTA_SECAO_AJUSTES = "ajustes/{secao}"
 
 /**
- * Os itens da lista dos Ajustes: cada um abre a sua tela (que fecha deslizando o dedo para os
- * lados). A Integridade abre direto a "Verificar integridade".
+ * Os itens da lista dos Ajustes: quase todos abrem a sua tela (que fecha deslizando o dedo para os
+ * lados ou puxando para baixo). A Integridade abre direto a "Verificar integridade". Desde a 0.16 a
+ * Atualização (tocar já verifica) e o Modo de teste (liga e desliga na chave) ficam direto na lista,
+ * e os Créditos viraram o rodapé da lista.
  */
 enum class SecaoAjuste(val id: String) {
     MODO("modo"),
@@ -133,9 +139,11 @@ enum class SecaoAjuste(val id: String) {
     NOTIFICACOES("notificacoes"),
     ATUALIZACAO("atualizacao"),
     TESTE("teste"),
-    CREDITOS("creditos"),
     EXTINCAO("extincao"),
     ;
+
+    /** Abre uma tela própria (a Atualização e o Modo de teste agem ali mesmo, na lista). */
+    val temTela: Boolean get() = this != ATUALIZACAO && this != TESTE
 
     /** Título da tela (na barra de cima) e da linha da lista. */
     fun titulo(individual: Boolean): String = when (this) {
@@ -149,7 +157,6 @@ enum class SecaoAjuste(val id: String) {
         NOTIFICACOES -> "Notificações"
         ATUALIZACAO -> "Atualização"
         TESTE -> "Modo de teste"
-        CREDITOS -> "Créditos"
         EXTINCAO -> if (individual) "Apagar tudo" else "Extinção do Bolão"
     }
 
@@ -160,18 +167,18 @@ enum class SecaoAjuste(val id: String) {
         fun de(id: String?): SecaoAjuste? = when (id) {
             // Até a 0.14, a apuração automática e o toque do prêmio eram duas telas.
             "apuracao", "toque" -> NOTIFICACOES
-            else -> entries.firstOrNull { it.id == id }
+            else -> entries.firstOrNull { it.id == id && it.temTela }
         }
 
         /**
          * Os grupos da lista, em ordem (o individual não tem integrantes, termo, integridade nem
-         * auditoria; o "Bolão" dele é o modo e os preços).
+         * auditoria; o "Bolão" dele é o modo e os preços). A extinção (no individual, "Apagar tudo")
+         * fica no fim do primeiro grupo; os Créditos, no rodapé da lista.
          */
         fun grupos(individual: Boolean): List<Pair<String, List<SecaoAjuste>>> = listOf(
-            (if (individual) "APOSTAS" else "BOLÃO") to (if (individual) listOf(MODO, VALORES) else listOf(INTEGRANTES, VALORES, TERMO)),
+            (if (individual) "APOSTAS" else "BOLÃO") to (if (individual) listOf(MODO, VALORES, EXTINCAO) else listOf(INTEGRANTES, VALORES, TERMO, EXTINCAO)),
             "SEGURANÇA" to (if (individual) listOf(BACKUP) else listOf(INTEGRIDADE, AUDITORIA, BACKUP)),
             "CELULAR" to listOf(NOTIFICACOES, ATUALIZACAO, TESTE),
-            "SOBRE" to listOf(CREDITOS, EXTINCAO),
         )
     }
 }
@@ -187,7 +194,6 @@ private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
     SecaoAjuste.NOTIFICACOES -> Icons.Outlined.NotificationsActive
     SecaoAjuste.ATUALIZACAO -> Icons.Outlined.SystemUpdate
     SecaoAjuste.TESTE -> Icons.Outlined.Science
-    SecaoAjuste.CREDITOS -> Icons.Outlined.AutoAwesome
     SecaoAjuste.EXTINCAO -> Icons.Outlined.DeleteForever
 }
 
@@ -195,17 +201,21 @@ private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
 private enum class TomItem { NORMAL, ALERTA, DESTAQUE }
 
 /**
- * Ajustes: uma lista em grupos, como os Ajustes do Android (Bolão, Segurança, Celular e Sobre).
- * Cada linha tem o ícone, o nome, a situação à direita (ex.: "3 pessoas", "Falta anexar" em
- * vermelho, "Nova versão" em dourado) e a seta, e abre a sua tela. Tocar em "Ajustes" na barra de
- * baixo, já nos Ajustes ([paraOTopo]), volta a lista ao começo.
+ * Ajustes: uma lista em grupos, como os Ajustes do Android (Bolão, Segurança e Celular), com os
+ * Créditos no rodapé ("Criado usando o Claude", a versão e o "Tecnologia"). Cada linha tem o ícone,
+ * o nome, a situação à direita (ex.: "3 pessoas", "Falta anexar" em vermelho, "Nova versão" em
+ * dourado) e a seta, e abre a sua tela; a Atualização verifica ali mesmo e o Modo de teste tem a
+ * chave de ligar e desligar. Tocar em "Ajustes" na barra de baixo, já nos Ajustes ([paraOTopo]),
+ * volta a lista ao começo.
  */
 @Composable
 fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (String) -> Unit, paraOTopo: Int = 0) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
     val ultima by atualizacao.ultima.collectAsStateWithLifecycle()
+    val etapa by atualizacao.etapa.collectAsStateWithLifecycle()
     val teste by repo.modoTeste.collectAsStateWithLifecycle()
+    val preparandoTeste by ModoTeste.trabalhando.collectAsStateWithLifecycle()
     // A situação dos avisos, da bateria e do toque é lida de novo ao voltar (dos ajustes do Android ou de uma tela dos Ajustes).
     var conferido by remember { mutableIntStateOf(0) }
     LifecycleResumeEffect(Unit) {
@@ -230,12 +240,25 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
             toqueLigado -> "Toque ligado" to TomItem.NORMAL
             else -> "Toque desligado" to TomItem.NORMAL
         }
-        SecaoAjuste.ATUALIZACAO ->
-            if ((ultima?.codigo ?: 0) > Atualizador.versaoInstalada) "Nova versão" to TomItem.DESTAQUE
-            else "v${Atualizador.nomeInstalado}" to TomItem.NORMAL
-        SecaoAjuste.TESTE -> if (teste) "Ligado" to TomItem.ALERTA else "Desligado" to TomItem.NORMAL
-        SecaoAjuste.CREDITOS -> "Claude" to TomItem.NORMAL
+        SecaoAjuste.ATUALIZACAO -> when {
+            etapa is EtapaAtualizacao.Verificando -> "Verificando..." to TomItem.NORMAL
+            (ultima?.codigo ?: 0) > Atualizador.versaoInstalada -> "Nova versão" to TomItem.DESTAQUE
+            ultima != null -> "Em dia" to TomItem.NORMAL
+            else -> "Verificar" to TomItem.NORMAL
+        }
+        SecaoAjuste.TESTE -> (if (preparandoTeste) "Preparando..." else "") to TomItem.NORMAL
         SecaoAjuste.EXTINCAO -> "" to TomItem.NORMAL
+    }
+
+    /** O que tocar na linha faz: abre a tela; a Atualização verifica na hora; o Modo de teste liga ou desliga. */
+    fun tocar(s: SecaoAjuste) {
+        when (s) {
+            SecaoAjuste.ATUALIZACAO -> atualizacao.verificar(manual = true)
+            SecaoAjuste.TESTE -> if (!preparandoTeste) {
+                if (teste) ModoTeste.sair(ctx) else ModoTeste.entrar(ctx)
+            }
+            else -> abrir(s.rota)
+        }
     }
     val lista = rememberLazyListState()
     VoltarAoTopo(lista, paraOTopo)
@@ -266,17 +289,47 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
                             tom = tom,
                             icone = iconeDoItem(s),
                             vermelho = s == SecaoAjuste.EXTINCAO,
-                        ) { abrir(s.rota) }
+                            final = when (s) {
+                                // A chave do modo de teste (tocar na linha também liga e desliga).
+                                SecaoAjuste.TESTE -> ({
+                                    // Sem a margem mínima de toque (a linha inteira já liga e desliga): a linha fica da altura das outras.
+                                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+                                        Switch(
+                                            checked = teste,
+                                            onCheckedChange = { tocar(s) },
+                                            enabled = !preparandoTeste,
+                                            modifier = Modifier.height(ALTURA_DA_CHAVE).semantics { contentDescription = "Modo de teste" },
+                                        )
+                                    }
+                                })
+                                // A atualização não abre tela: verifica ali mesmo (sem a seta).
+                                SecaoAjuste.ATUALIZACAO -> ({})
+                                else -> null
+                            },
+                        ) { tocar(s) }
                     }
                 }
             }
         }
+        // Os Créditos, no rodapé: "Criado usando o Claude" (a Play Store), a versão e o "Tecnologia".
+        item(key = "creditos") { CreditosNoRodape() }
     }
 }
 
-/** Uma linha da lista dos Ajustes: o ícone, o nome, a situação à direita e a seta. */
+/** Altura da chave do modo de teste na lista (a da linha, para ela não ficar mais alta que as outras). */
+private val ALTURA_DA_CHAVE = 24.dp
+
+/** Uma linha da lista dos Ajustes: o ícone, o nome, a situação à direita e a seta (ou o que vier em [final]). */
 @Composable
-private fun LinhaDaLista(titulo: String, situacao: String, tom: TomItem, icone: ImageVector, vermelho: Boolean, aoTocar: () -> Unit) {
+private fun LinhaDaLista(
+    titulo: String,
+    situacao: String,
+    tom: TomItem,
+    icone: ImageVector,
+    vermelho: Boolean,
+    final: (@Composable () -> Unit)? = null,
+    aoTocar: () -> Unit,
+) {
     val corSituacao = when (tom) {
         TomItem.NORMAL -> MaterialTheme.colorScheme.onSurfaceVariant
         TomItem.ALERTA -> CoresAlerta.texto()
@@ -310,13 +363,19 @@ private fun LinhaDaLista(titulo: String, situacao: String, tom: TomItem, icone: 
                 maxLines = 1,
             )
         }
-        Spacer(Modifier.width(2.dp))
-        Icon(
-            Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(22.dp),
-        )
+        if (final != null) {
+            Spacer(Modifier.width(8.dp))
+            final()
+            Spacer(Modifier.width(6.dp))
+        } else {
+            Spacer(Modifier.width(2.dp))
+            Icon(
+                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
+        }
     }
 }
 
@@ -378,9 +437,8 @@ fun AjustesSecaoTela(estado: Estado, secao: SecaoAjuste, atualizacao: Atualizaca
                         Secao("Apuração automática") { ApuracaoComOAppFechado() }
                         Secao("Toque do prêmio") { ToqueDoPremio() }
                     }
-                    SecaoAjuste.ATUALIZACAO -> AtualizacaoDoApp(atualizacao)
-                    SecaoAjuste.TESTE -> ModoDeTeste()
-                    SecaoAjuste.CREDITOS -> Creditos()
+                    // Ficam direto na lista (não têm tela).
+                    SecaoAjuste.ATUALIZACAO, SecaoAjuste.TESTE -> Unit
                     SecaoAjuste.EXTINCAO -> Extincao(estado)
                 }
             }
@@ -597,27 +655,6 @@ private fun Backup() {
     }
 }
 
-/** A versão instalada e a atualização pelo GitHub. */
-@Composable
-private fun AtualizacaoDoApp(atualizacao: AtualizacaoViewModel) {
-    val ultima by atualizacao.ultima.collectAsStateWithLifecycle()
-    val nova = ultima?.takeIf { it.codigo > Atualizador.versaoInstalada }
-    QuadroAjuste {
-        LinhaAjuste(
-            emblema = { EmblemaIcone(Icons.Outlined.SystemUpdate, AzulMarinhoEmblema, TAMANHO_EMBLEMA) },
-            titulo = "Versão ${Atualizador.nomeInstalado}",
-            subtitulo = if (nova != null) "Versão ${nova.nome} disponível" else "Atualiza pelo GitHub com um toque",
-            final = {
-                if (nova != null) {
-                    Button(onClick = { atualizacao.atualizar(nova) }) { Text("Atualizar") }
-                } else {
-                    OutlinedButton(onClick = { atualizacao.verificar(manual = true) }) { Text("Verificar") }
-                }
-            },
-        )
-    }
-}
-
 /**
  * A apuração automática e o aviso do prêmio com o app fechado: o que o celular precisa liberar.
  * A situação é lida de novo ao voltar dos ajustes do Android.
@@ -674,17 +711,6 @@ private fun ApuracaoComOAppFechado() {
             final = { OutlinedButton(onClick = { SegundoPlano.abrirInicioAutomatico(ctx) }) { Text("Abrir") } },
         )
     }
-}
-
-/** O modo de teste (dados de exemplo). */
-@Composable
-private fun ModoDeTeste() {
-    val ctx = LocalContext.current
-    val repo = remember { ctx.bolao.repo }
-    val teste by repo.modoTeste.collectAsStateWithLifecycle()
-    var sairDoTeste by remember { mutableStateOf(false) }
-    QuadroAjuste { CartaoModoTeste(emTeste = teste, aoPedirSaida = { sairDoTeste = true }) }
-    if (sairDoTeste) DialogoSairDoTeste(aoFechar = { sairDoTeste = false })
 }
 
 /** A extinção do bolão (no individual, "Apagar tudo"), com o quadro vermelho de sempre. */

@@ -30,6 +30,10 @@ import io.github.marcosfaria94.bolao.ui.comum.FiltroHome
 import io.github.marcosfaria94.bolao.ui.comum.tiposDoFiltro
 import io.github.marcosfaria94.bolao.ui.home.jogosEmAndamento
 import io.github.marcosfaria94.bolao.ui.home.quantosEmAndamento
+import io.github.marcosfaria94.bolao.ui.home.pendenciaDoJogo
+import io.github.marcosfaria94.bolao.ui.home.resumoDoJogo
+import io.github.marcosfaria94.bolao.data.Envio
+import io.github.marcosfaria94.bolao.data.Modo
 import io.github.marcosfaria94.bolao.ui.comum.destinoDoMovimento
 import io.github.marcosfaria94.bolao.ui.comum.douradoNoHistorico
 import io.github.marcosfaria94.bolao.ui.comum.movimentosDoHistorico
@@ -313,6 +317,50 @@ class TelasTest {
         assertEquals(SecaoAjuste.NOTIFICACOES, SecaoAjuste.de("toque"))
         assertEquals("Notificações", SecaoAjuste.NOTIFICACOES.titulo(false))
         assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.ATUALIZACAO, SecaoAjuste.TESTE), SecaoAjuste.grupos(false).first { it.first == "CELULAR" }.second)
+    }
+
+    @Test
+    fun ajustesComExtincaoNoBolaoECreditosNoRodape() {
+        // A extinção no fim do primeiro grupo; sem o grupo "Sobre" (os Créditos são o rodapé da lista).
+        assertEquals(
+            listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.VALORES, SecaoAjuste.TERMO, SecaoAjuste.EXTINCAO),
+            SecaoAjuste.grupos(false).first { it.first == "BOLÃO" }.second,
+        )
+        assertEquals(listOf(SecaoAjuste.MODO, SecaoAjuste.VALORES, SecaoAjuste.EXTINCAO), SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second)
+        assertEquals(listOf("BOLÃO", "SEGURANÇA", "CELULAR"), SecaoAjuste.grupos(false).map { it.first })
+        // A atualização e o modo de teste agem ali mesmo, na lista: não têm tela (os endereços antigos não abrem nada).
+        assertNull(SecaoAjuste.de("teste"))
+        assertNull(SecaoAjuste.de("atualizacao"))
+        assertNull(SecaoAjuste.de("creditos"))
+        assertFalse(SecaoAjuste.TESTE.temTela)
+        assertEquals(SecaoAjuste.EXTINCAO, SecaoAjuste.de("extincao"))
+    }
+
+    @Test
+    fun meusJogosOkOuPendente() {
+        val q = aposta(Modalidade.QUINA, 1, 7148).copy(numeros = listOf(71, 5, 12, 33, 47))
+        val e = Estado(apostas = listOf(q))
+        // Registrada e sem comprovante do bolão para enviar: OK.
+        assertNull(pendenciaDoJogo(e, q))
+        assertEquals("Falta registrar", pendenciaDoJogo(e, q.copy(registrada = false)))
+        assertEquals("Sem comprovante", pendenciaDoJogo(e, q.copy(pendenteDeAnexo = true)))
+        val pdf = Arquivo("c.pdf", "c.pdf", "application/pdf", 0)
+        assertEquals("A conferir", pendenciaDoJogo(e, q.copy(pendenteDeAnexo = true, comprovante = pdf)))
+        // O comprovante do bolão ainda não enviado ao grupo: pendente; enviado (ou no individual), OK.
+        val c = Comprovante("c1", TipoComprovante.APOSTA, "APOSTA Nº 1", "", hoje, 1, pdf, autenticacao = "", apostaId = q.id)
+        val comComprovante = e.copy(comprovantes = listOf(c))
+        assertEquals("Enviar ao grupo", pendenciaDoJogo(comComprovante, q))
+        assertNull(pendenciaDoJogo(comComprovante.copy(envios = listOf(Envio("c1", 2))), q))
+        assertNull(pendenciaDoJogo(comComprovante.copy(modo = Modo.INDIVIDUAL), q))
+        // O jogo numa linha.
+        assertEquals("05 12 33 47 71", resumoDoJogo(q))
+        assertEquals("50 números", resumoDoJogo(aposta(Modalidade.LOTOMANIA, 2, 2790).copy(numeros = (0 until 100 step 2).toList())))
+        assertEquals("01 02 03 04 05 06 · Trevos 2 5", resumoDoJogo(aposta(Modalidade.MAIS_MILIONARIA, 3, 300).copy(numeros = (1..6).toList(), trevos = listOf(5, 2))))
+        assertEquals(
+            "01 02 03 04 05 06 07 08 09 10 · Vasco da Gama / RJ",
+            resumoDoJogo(aposta(Modalidade.TIMEMANIA, 4, 2290).copy(numeros = (1..10).toList(), extra = "VASCO DA GAMA/RJ")),
+        )
+        assertEquals("03 09 14 20 25 28 31 · Março", resumoDoJogo(aposta(Modalidade.DIA_DE_SORTE, 5, 1125).copy(numeros = listOf(3, 9, 14, 20, 25, 28, 31), extra = "Março")))
     }
 
     @Test
