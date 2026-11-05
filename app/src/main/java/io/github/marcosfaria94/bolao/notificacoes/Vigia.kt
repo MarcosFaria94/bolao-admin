@@ -29,7 +29,8 @@ import java.util.concurrent.TimeUnit
  * 1. confere os jogos já sorteados na Caixa (e de novo, até o rateio oficial sair);
  * 2. faz a apuração sozinha quando não há nada a confirmar, na hora em que o resultado sai (no
  *    bolão, o envio do comprovante ao grupo vira pendência);
- * 3. mostra os dois avisos do celular: "Aposta premiada" e "Ação necessária";
+ * 3. mostra os dois avisos do celular: "Aposta premiada" e "Ação necessária" (no prêmio principal,
+ *    toca o toque dos Ajustes, como uma chamada);
  * 4. marca o próximo despertar.
  * No modo de teste faz o mesmo com os dados de exemplo e marca os avisos com "Teste".
  */
@@ -85,13 +86,17 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
         Notificador.acaoNecessaria(ctx, novas, pendencias, prefixo)
 
         val premiadas = Pendencias.premiadas(e, agora, doEspaco)
-        premiadas.forEach { Notificador.apostaPremiada(ctx, it, prefixo) }
+        // Prêmio principal (fora do modo de teste): o toque dos Ajustes, como uma chamada.
+        val tocar = !teste && premiadas.any { it.principal } && Toque.config(ctx).ligado
+        premiadas.forEach { Notificador.apostaPremiada(ctx, it, prefixo, comToque = tocar && it.principal) }
 
         val chaves = novas.map { dados + it.chave } + premiadas.map { dados + it.chave }
         if (chaves.isNotEmpty()) {
             val todas = (avisados + chaves).takeLast(MAX_CHAVES)
             prefs.edit().putString(CHAVES, todas.joinToString("\n")).apply()
         }
+        // Já marcado como avisado (não toca de novo); o trabalho segue até o fim do toque.
+        if (tocar) Toque.tocarEEsperar(ctx, Toque.Origem.PREMIO)
         return Result.success()
     }
 

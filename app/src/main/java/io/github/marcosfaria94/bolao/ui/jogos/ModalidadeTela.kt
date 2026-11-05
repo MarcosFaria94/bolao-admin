@@ -87,7 +87,8 @@ import java.time.LocalDate
  * probabilidades), que ficam à direita da página: deslizar o dedo para a esquerda também abre e,
  * para a direita (ou o voltar), volta à página como ela estava, sem mexer na aposta.
  * Deslizar para a direita na página do jogo sai dela (volta para a lista dos Jogos); para a
- * esquerda nos Detalhes, vai para a Home ([irParaHome]).
+ * esquerda nos Detalhes, também vai para a lista dos Jogos ([irParaJogos]): o "Jogos →" da barra
+ * avisa (e tocar nele faz o mesmo).
  *
  * [apostaId]: a aposta aberta pelo Histórico ou por um aviso. Registrada, ela aparece no lugar do
  * volante (com a apuração e os comprovantes); em andamento, ela é a do volante.
@@ -101,7 +102,7 @@ fun ModalidadeTela(
     apostaId: String? = null,
     abrir: (String) -> Unit = {},
     detalhes: Boolean = false,
-    irParaHome: () -> Unit = {},
+    irParaJogos: () -> Unit = {},
 ) {
     val app = LocalContext.current.bolao
     val indices = remember { app.indices }
@@ -120,23 +121,24 @@ fun ModalidadeTela(
     // Aberta direto nos Detalhes: o voltar sai da página (volta para os Jogos).
     val voltarDosDetalhes: () -> Unit = if (detalhes) aoSair else { { escopo.launch { paginas.animateScrollToPage(0) } } }
     BackHandler(enabled = nosDetalhes && !detalhes) { escopo.launch { paginas.animateScrollToPage(0) } }
-    // Na barra de cima: "Detalhes →"; nos Detalhes, o título vira "Detalhes" e o voltar volta à página.
+    // Na barra de cima: "Detalhes →"; nos Detalhes, o título vira "Detalhes", com o "Jogos →" (deslizar
+    // para a esquerda vai para a lista dos Jogos), e o voltar volta à página.
     val barra = LocalBarraDaTela.current
     val dono = LocalViewModelStoreOwner.current
     DisposableEffect(nosDetalhes, dono) {
         val acao = if (nosDetalhes) {
-            AcaoDaBarra(dono, titulo = "Detalhes", aoVoltar = voltarDosDetalhes)
+            AcaoDaBarra(dono, titulo = "Detalhes", botao = "Jogos", aoTocarBotao = irParaJogos, aoVoltar = voltarDosDetalhes)
         } else {
             AcaoDaBarra(dono, botao = "Detalhes", aoTocarBotao = { escopo.launch { paginas.animateScrollToPage(1) } })
         }
         barra.acao = acao
         onDispose { if (barra.acao === acao) barra.acao = null }
     }
-    // Além das bordas: para a direita na página do jogo, sai; para a esquerda nos Detalhes, a Home.
+    // Além das bordas: para a direita na página do jogo, sai; para a esquerda nos Detalhes, a lista dos Jogos.
     val puxao = rememberPuxaoAlemDaBorda(
         vertical = false,
         noInicio = { if (paginas.currentPage == 0) aoSair() },
-        noFim = { if (paginas.currentPage == 1) irParaHome() },
+        noFim = { if (paginas.currentPage == 1) irParaJogos() },
     )
 
     val aberta = apostaId?.let { id -> estado.apostas.firstOrNull { it.id == id } }

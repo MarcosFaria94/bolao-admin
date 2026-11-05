@@ -10,11 +10,14 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- O toque do prêmio principal vibra como uma chamada. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Para abrir o WhatsApp com a mensagem e o anexo prontos. -->
+    <!-- Para abrir o WhatsApp com a mensagem e o anexo prontos; e o ícone do app do Claude (Ajustes > Créditos). -->
     <queries>
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
+        <package android:name="com.anthropic.claude" />
     </queries>
 
     <application
@@ -49,6 +52,11 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- "Parar o toque" no aviso do prêmio principal. -->
+        <receiver
+            android:name=".notificacoes.PararToque"
+            android:exported="false" />
 
         <!-- O modelo de leitura de texto (comprovante da Caixa) já vem com a instalação, pela Play Store. -->
         <meta-data

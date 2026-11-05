@@ -32,6 +32,9 @@ object Notificador {
 
     private const val COR = 0xFF13294B.toInt()
 
+    /** Código do "Parar o toque" (aviso do prêmio principal). */
+    private const val ID_PARAR_TOQUE = 1002
+
     fun criarCanais(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         // Canais das versões anteriores (lembretes de aporte, jogo, resultado, especiais...).
@@ -89,22 +92,30 @@ object Notificador {
         NotificationManagerCompat.from(context).cancel(ID_ACOES)
     }
 
-    /** "Aposta premiada!", sem o valor. Tocar abre a aposta, onde o prêmio aparece. */
+    /**
+     * "Aposta premiada!", sem o valor. Tocar abre a aposta, onde o prêmio aparece. [comToque]: o
+     * prêmio principal está tocando (o aviso traz o "Parar o toque"; arrastar o aviso também para).
+     */
     @SuppressLint("MissingPermission")
-    fun apostaPremiada(context: Context, p: Premiada, prefixo: String = "") {
+    fun apostaPremiada(context: Context, p: Premiada, prefixo: String = "", comToque: Boolean = false) {
         if (!permitido(context)) return
         val id = p.chave.hashCode()
-        val n = NotificationCompat.Builder(context, CANAL_PREMIOS)
+        val b = NotificationCompat.Builder(context, CANAL_PREMIOS)
             .setSmallIcon(R.drawable.ic_notificacao)
             .setColor(COR)
-            .setContentTitle(prefixo + p.titulo)
+            .setContentTitle(prefixo + if (comToque) "Prêmio principal!" else p.titulo)
             .setContentText(p.texto)
             .setStyle(NotificationCompat.BigTextStyle().bigText(p.texto))
             .setContentIntent(abrir(context, p.destino, id))
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .build()
-        NotificationManagerCompat.from(context).notify(id, n)
+        if (comToque) {
+            val parar = PendingIntent.getBroadcast(
+                context, ID_PARAR_TOQUE, Intent(context, PararToque::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            b.addAction(0, "Parar o toque", parar).setDeleteIntent(parar).setCategory(NotificationCompat.CATEGORY_ALARM)
+        }
+        NotificationManagerCompat.from(context).notify(id, b.build())
     }
 
     /** Aviso de teste (Ajustes), para conferir se o HyperOS está deixando passar. */

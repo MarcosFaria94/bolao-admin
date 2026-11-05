@@ -13,7 +13,8 @@ import java.time.YearMonth
 
 /**
  * Uma pendência: algo que o Administrador precisa fazer para o bolão ficar em dia.
- * Todas aparecem nas Notificações (o sino da barra de cima), a mais recente primeiro; tocar leva à tela que resolve.
+ * As de comprovante (anexar e conferir) ficam no botão Comprovantes da barra de cima; as outras, nas
+ * Notificações (o sino), a mais recente primeiro. Tocar leva à tela que resolve.
  */
 data class Pendencia(
     /** Identifica a pendência (evita repetir o aviso no celular). */
@@ -35,10 +36,23 @@ data class Pendencia(
     val comprovante: TipoComprovante? = null,
 ) {
     enum class Tipo { APORTE, APOSTA_DO_DIA, RASCUNHO, ANEXO, CONFERENCIA, ENVIO, APURACAO, EXTRATO, INDICES }
+
+    /** Falta de comprovante (anexar ou conferir): fica no botão Comprovantes, não nas Notificações. */
+    val deComprovante: Boolean get() = tipo == Tipo.ANEXO || tipo == Tipo.CONFERENCIA
 }
 
-/** Aviso de aposta premiada (o outro aviso que vai para o celular), sem o valor: ele é surpresa no app. */
-data class Premiada(val chave: String, val aposta: Aposta, val titulo: String, val texto: String, val destino: String)
+/**
+ * Aviso de aposta premiada (o outro aviso que vai para o celular), sem o valor: ele é surpresa no app.
+ * [principal]: acertou o prêmio principal (aí, se ligado em Ajustes, toca o toque do prêmio).
+ */
+data class Premiada(
+    val chave: String,
+    val aposta: Aposta,
+    val titulo: String,
+    val texto: String,
+    val destino: String,
+    val principal: Boolean = false,
+)
 
 /**
  * Regras das pendências, da apuração automática e dos 2 avisos do celular ("Ação necessária"
@@ -53,7 +67,7 @@ object Pendencias {
     /** Depois de registrar uma aposta (ou um rateio), quanto esperar o comprovante antes de avisar no celular. */
     const val MINUTOS_ANEXO = 60L
 
-    /** Aba que recebe os comprovantes da Caixa e dos Pix e faz a conferência. */
+    /** Tela dos Comprovantes (o botão da barra de cima): recebe os da Caixa e dos Pix e faz a conferência. */
     const val ABA_COMPROVANTES = "comprovantes"
 
     /** Hora do aviso "Apurar a aposta" quando a apuração automática não conseguiu o resultado. */
@@ -245,8 +259,20 @@ object Pendencias {
             val premiada = ap.premio > 0 || ap.faixasPremiadas.isNotEmpty()
             val chave = "premiada-${a.id}"
             if (!premiada || chave in avisados || instante(ap.conferidaEm, fuso).isBefore(limite)) return@mapNotNull null
-            Premiada(chave, a, "Aposta premiada!", "${nome(a)} · Toque para ver o prêmio.", "aposta/${a.id}")
+            Premiada(chave, a, "Aposta premiada!", "${nome(a)} · Toque para ver o prêmio.", "aposta/${a.id}", principal = premioPrincipal(a))
         }
+    }
+
+    /** As pendências do sino (as Notificações): todas, menos a falta de comprovante. */
+    fun doSino(pendencias: List<Pendencia>): List<Pendencia> = pendencias.filter { !it.deComprovante }
+
+    /**
+     * A aposta acertou o prêmio principal: a 1ª faixa (sena, quina, 15 acertos, 20 acertos, 7 colunas,
+     * 14 jogos, 6 números + 2 trevos, 1º prêmio da Federal...). Na Dupla Sena vale a sena dos dois sorteios.
+     */
+    fun premioPrincipal(a: Aposta): Boolean {
+        val faixas = a.apuracao?.faixasPremiadas.orEmpty()
+        return 1 in faixas || (a.modalidade == Modalidade.DUPLA_SENA && 5 in faixas)
     }
 
     /**

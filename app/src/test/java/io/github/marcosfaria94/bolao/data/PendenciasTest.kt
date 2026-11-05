@@ -215,6 +215,50 @@ class PendenciasTest {
         // Avisa uma vez só, e só conferências recentes.
         assertTrue(Pendencias.premiadas(e, agora, setOf(p.chave), fuso).isEmpty())
         assertTrue(Pendencias.premiadas(e, agora.plusDays(4), emptySet(), fuso).isEmpty())
+        // A quadra (faixa 4) não é o prêmio principal: não toca.
+        assertTrue(!p.principal)
+    }
+
+    @Test
+    fun premioPrincipalToca() {
+        fun com(m: Modalidade, vararg faixas: Int) =
+            Aposta("x", 1, m, 1, LocalDate.of(2026, 10, 19), valor = 300, criadaEm = 0, apuracao = Apuracao("", 1, faixasPremiadas = faixas.toList(), conferidaEm = 0))
+        assertTrue(Pendencias.premioPrincipal(com(Modalidade.MEGA_SENA, 1)))
+        assertTrue(Pendencias.premioPrincipal(com(Modalidade.LOTOFACIL, 1)))
+        assertTrue(!Pendencias.premioPrincipal(com(Modalidade.LOTOFACIL, 2)))
+        // Lotomania: 0 acertos (faixa 7) paga, mas não é o principal.
+        assertTrue(!Pendencias.premioPrincipal(com(Modalidade.LOTOMANIA, 7)))
+        // Dupla Sena: a sena dos dois sorteios (faixas 1 e 5).
+        assertTrue(Pendencias.premioPrincipal(com(Modalidade.DUPLA_SENA, 5)))
+        assertTrue(!Pendencias.premioPrincipal(com(Modalidade.DUPLA_SENA, 2, 6)))
+        // Federal: o 1º prêmio.
+        assertTrue(Pendencias.premioPrincipal(com(Modalidade.FEDERAL, 1)))
+        assertTrue(!Pendencias.premioPrincipal(com(Modalidade.FEDERAL, 2)))
+        // Sem apuração, nada.
+        assertTrue(!Pendencias.premioPrincipal(com(Modalidade.QUINA).copy(apuracao = null)))
+
+        // O aviso do celular sabe que é o principal.
+        val sorteio = LocalDate.of(2026, 10, 21)
+        val a = Aposta("a", 0, Modalidade.QUINA, 7146, LocalDate.of(2026, 10, 19), dataSorteio = sorteio, valor = 300, criadaEm = 0, comprovante = anexo)
+        var e = registrar(base, a, LocalDate.of(2026, 10, 19))
+        val agora = sorteio.atTime(22, 30)
+        e = Operacoes.guardarConferencia(e, "a", Apuracao("5/5", 0, faixasPremiadas = listOf(1), rateioOficial = rateio, conferidaEm = ms(agora)))
+        assertTrue(Pendencias.premiadas(e, agora, emptySet(), fuso).single().principal)
+    }
+
+    @Test
+    fun comprovantesForaDoSino() {
+        // Aposta registrada sem o comprovante: a pendência é do botão Comprovantes, não do sino.
+        val hoje = LocalDate.of(2026, 10, 19)
+        val a = Aposta("a", 0, Modalidade.QUINA, 7146, hoje, dataSorteio = hoje.plusDays(2), valor = 300, criadaEm = 0)
+        val e = Operacoes.registrarAposta(Operacoes.salvarRascunho(base, a), "a", hoje, ms(hoje.atTime(10, 0)))
+        val todas = Pendencias.de(e, hoje.atTime(12, 0), fuso)
+        val anexo = todas.single { it.tipo == Pendencia.Tipo.ANEXO }
+        assertTrue(anexo.deComprovante)
+        assertEquals(Pendencias.ABA_COMPROVANTES, anexo.destino)
+        val sino = Pendencias.doSino(todas)
+        assertTrue(sino.none { it.deComprovante })
+        assertEquals(todas.size - 1, sino.size)
     }
 
     @Test

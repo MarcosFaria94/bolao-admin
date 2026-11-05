@@ -6,6 +6,7 @@ import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import io.github.marcosfaria94.bolao.ui.comum.FiltroHome
 import androidx.compose.foundation.layout.Arrangement
@@ -68,12 +69,12 @@ private val ESPACO = 14.dp
 /**
  * Home: o saldo (com o provisionado e o extra à direita), os atalhos de Aporte, Rateio e Extrato,
  * a próxima aposta (o "Apostar" pulsa no dia de aposta) e o Histórico de tudo o que entrou e saiu,
- * com o "Filtrar". O sino das notificações e os jogos em andamento ficam na barra de cima. No modo
+ * com o resumo do filtro e o "Filtrar". Os Comprovantes e o sino das notificações ficam na barra de cima. No modo
  * individual: só o saldo (que começa em zero e cai a cada aposta) e o Histórico das apostas e dos
  * prêmios.
  *
  * O [filtro] fica na raiz do app (a tela "Filtrar" muda ele); ele volta ao padrão sozinho ao trocar
- * de tela, menos nos Jogos em andamento. [visita] muda a cada vez que se vai para outra aba: aí a
+ * de tela, menos nas Notificações e nos Comprovantes. [visita] muda a cada vez que se vai para outra aba: aí a
  * rolagem recomeça.
  */
 @Composable
@@ -120,21 +121,28 @@ fun HomeTela(
             }
         }
         item(key = "titulo-historico") {
-            // "Histórico" e o "Filtrar"; embaixo, o que o filtro mostra.
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Histórico", style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
-                    BotaoDoHistorico("Filtrar", Icons.Outlined.FilterList, descricao = "Filtrar o histórico", destaque = !filtro.ehPadrao(hoje)) {
-                        abrir("filtro")
-                    }
-                }
+            // "Histórico", o que o filtro mostra (à esquerda do botão) e o "Filtrar".
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "Histórico",
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp, lineHeight = 24.sp),
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Spacer(Modifier.width(10.dp))
                 Text(
                     filtro.resumo(),
-                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp, lineHeight = 15.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    textAlign = TextAlign.End,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
+                Spacer(Modifier.width(8.dp))
+                BotaoDoHistorico("Filtrar", Icons.Outlined.FilterList, descricao = "Filtrar o histórico", destaque = !filtro.ehPadrao(hoje)) {
+                    abrir("filtro")
+                }
             }
         }
         itensDoHistorico(

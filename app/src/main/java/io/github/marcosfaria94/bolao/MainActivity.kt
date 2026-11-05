@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import io.github.marcosfaria94.bolao.notificacoes.Notificador
+import io.github.marcosfaria94.bolao.notificacoes.Toque
 import io.github.marcosfaria94.bolao.seguranca.Biometria
 import io.github.marcosfaria94.bolao.seguranca.TelaBloqueio
 import io.github.marcosfaria94.bolao.ui.AppRaiz
@@ -62,6 +63,8 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Abrir o app com o prêmio principal tocando é "atender": o toque para.
+        if (Toque.tocando.value == Toque.Origem.PREMIO) Toque.parar()
         if (bloqueado.value && pedirAoVoltar) {
             pedirAoVoltar = false
             desbloquear()

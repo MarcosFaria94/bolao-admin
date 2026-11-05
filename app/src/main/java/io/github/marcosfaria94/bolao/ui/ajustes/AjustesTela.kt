@@ -2,10 +2,27 @@ package io.github.marcosfaria94.bolao.ui.ajustes
 
 import android.content.Intent
 import android.net.Uri
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Payments
+import androidx.compose.material.icons.outlined.RingVolume
+import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.text.style.TextAlign
+import io.github.marcosfaria94.bolao.notificacoes.Toque
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -103,30 +120,374 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
+/** Endereço das telas dos itens do menu dos Ajustes ("ajustes/toque", "ajustes/creditos"...). */
+const val ROTA_SECAO_AJUSTES = "ajustes/{secao}"
+
+/**
+ * Os itens do menu dos Ajustes: cada um abre a sua tela (que fecha deslizando o dedo para os
+ * lados). A Integridade abre direto a "Verificar integridade".
+ */
+enum class SecaoAjuste(val id: String) {
+    MODO("modo"),
+    INTEGRANTES("integrantes"),
+    VALORES("valores"),
+    TERMO("termo"),
+    INTEGRIDADE("integridade"),
+    AUDITORIA("auditoria"),
+    BACKUP("backup"),
+    APURACAO("apuracao"),
+    TOQUE("toque"),
+    ATUALIZACAO("atualizacao"),
+    TESTE("teste"),
+    CREDITOS("creditos"),
+    EXTINCAO("extincao"),
+    ;
+
+    /** Título da tela (na barra de cima) e do item do menu. */
+    fun titulo(individual: Boolean): String = when (this) {
+        MODO -> "Modo"
+        INTEGRANTES -> "Integrantes"
+        VALORES -> if (individual) "Preços" else "Aporte e preços"
+        TERMO -> "Termo"
+        INTEGRIDADE -> "Integridade"
+        AUDITORIA -> "Auditoria"
+        BACKUP -> "Backup"
+        APURACAO -> "Apuração automática"
+        TOQUE -> "Toque do prêmio"
+        ATUALIZACAO -> "Atualização"
+        TESTE -> "Modo de teste"
+        CREDITOS -> "Créditos"
+        EXTINCAO -> if (individual) "Apagar tudo" else "Extinção do Bolão"
+    }
+
+    /** Para onde o item do menu leva. */
+    val rota: String get() = if (this == INTEGRIDADE) "integridade" else "ajustes/$id"
+
+    companion object {
+        fun de(id: String?): SecaoAjuste? = entries.firstOrNull { it.id == id }
+
+        /** Os itens do modo, na ordem do menu (o individual não tem integrantes, termo, integridade nem auditoria). */
+        fun doModo(individual: Boolean): List<SecaoAjuste> =
+            if (individual) {
+                listOf(MODO, VALORES, BACKUP, APURACAO, TOQUE, ATUALIZACAO, TESTE, CREDITOS, EXTINCAO)
+            } else {
+                listOf(INTEGRANTES, VALORES, TERMO, INTEGRIDADE, AUDITORIA, BACKUP, APURACAO, TOQUE, ATUALIZACAO, TESTE, CREDITOS, EXTINCAO)
+            }
+    }
+}
+
+/** Cor do emblema de cada item do menu (uma para cada, para achar de olho). */
+private fun corDoItem(s: SecaoAjuste): Color = when (s) {
+    SecaoAjuste.MODO -> Color(0xFF1F8F5F)
+    SecaoAjuste.INTEGRANTES -> Color(0xFF2557D6)
+    SecaoAjuste.VALORES -> Color(0xFF1F8F5F)
+    SecaoAjuste.TERMO -> Color(0xFF7C3AED)
+    SecaoAjuste.INTEGRIDADE -> Color(0xFF0E7C86)
+    SecaoAjuste.AUDITORIA -> Color(0xFFC2410C)
+    SecaoAjuste.BACKUP -> Color(0xFF4F46E5)
+    SecaoAjuste.APURACAO -> Color(0xFFB7791F)
+    SecaoAjuste.TOQUE -> Color(0xFFDB2777)
+    SecaoAjuste.ATUALIZACAO -> AzulMarinhoEmblema
+    SecaoAjuste.TESTE -> Color(0xFF64748B)
+    SecaoAjuste.CREDITOS -> Color(0xFFC15F3C)
+    SecaoAjuste.EXTINCAO -> Color(0xFFB3261E)
+}
+
+private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
+    SecaoAjuste.MODO -> Icons.Outlined.Person
+    SecaoAjuste.INTEGRANTES -> Icons.Outlined.Groups
+    SecaoAjuste.VALORES -> Icons.Outlined.Payments
+    SecaoAjuste.TERMO -> Icons.Outlined.HistoryEdu
+    SecaoAjuste.INTEGRIDADE -> Icons.Outlined.VerifiedUser
+    SecaoAjuste.AUDITORIA -> Icons.Outlined.PictureAsPdf
+    SecaoAjuste.BACKUP -> Icons.Outlined.Backup
+    SecaoAjuste.APURACAO -> Icons.Outlined.NotificationsActive
+    SecaoAjuste.TOQUE -> Icons.Outlined.RingVolume
+    SecaoAjuste.ATUALIZACAO -> Icons.Outlined.SystemUpdate
+    SecaoAjuste.TESTE -> Icons.Outlined.Science
+    SecaoAjuste.CREDITOS -> Icons.Outlined.AutoAwesome
+    SecaoAjuste.EXTINCAO -> Icons.Outlined.DeleteForever
+}
+
+/** Tom da linha de situação embaixo do nome do item. */
+private enum class TomItem { NORMAL, ALERTA, DESTAQUE }
+
+/** Itens por linha do menu: 12 itens = 4 linhas, tudo numa tela só, sem rolar. */
+private const val ITENS_POR_LINHA = 3
+
+/**
+ * Ajustes: um menu em grade (3 por linha), com tudo à vista numa tela só. Cada item mostra o
+ * emblema, o nome e a situação (ex.: "3 pessoas", "Falta anexar" em vermelho, "Nova versão" em
+ * dourado) e abre a sua tela.
+ */
 @Composable
 fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (String) -> Unit) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
-    val backup = remember { ctx.bolao.backup }
-    val avisos = LocalAvisos.current
-    val escopo = rememberCoroutineScope()
     val ultima by atualizacao.ultima.collectAsStateWithLifecycle()
     val teste by repo.modoTeste.collectAsStateWithLifecycle()
-    var sairDoTeste by remember { mutableStateOf(false) }
+    // A situação dos avisos, da bateria e do toque é lida de novo ao voltar (dos ajustes do Android ou de uma tela dos Ajustes).
+    var conferido by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) {
+        conferido++
+        onPauseOrDispose {}
+    }
+    val liberada = remember(conferido) { Notificador.permitido(ctx) && SegundoPlano.bateriaLivre(ctx) }
+    val toqueLigado = remember(conferido, estado) { Toque.config(ctx).ligado }
+    val individual = estado.individual
 
-    var editandoAporte by remember { mutableStateOf(false) }
-    var editandoPreco by remember { mutableStateOf<Modalidade?>(null) }
-    var confirmandoRestauracao by remember { mutableStateOf(false) }
-    var trabalhando by remember { mutableStateOf(false) }
-    var pedindoExtincao by remember { mutableStateOf(false) }
-    // Extinção forçada: destravada pelos toques no quadro da extinção (vale enquanto a tela está aberta).
-    var forcadaLiberada by remember { mutableStateOf(false) }
-
-    val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) Notificador.teste(ctx)
+    fun situacao(s: SecaoAjuste): Pair<String, TomItem> = when (s) {
+        SecaoAjuste.MODO -> "Individual" to TomItem.NORMAL
+        SecaoAjuste.INTEGRANTES -> "${estado.pessoas.size} pessoas" to TomItem.NORMAL
+        SecaoAjuste.VALORES -> (if (individual) "Das apostas" else "${Dinheiro.rs(estado.config.aporteMensal)}/mês") to TomItem.NORMAL
+        SecaoAjuste.TERMO ->
+            if (estado.termo != null && estado.termoSemAssinatura != null) "Anexado" to TomItem.NORMAL else "Falta anexar" to TomItem.ALERTA
+        SecaoAjuste.INTEGRIDADE -> "Verificar" to TomItem.NORMAL
+        SecaoAjuste.AUDITORIA -> "Gerar PDF" to TomItem.NORMAL
+        SecaoAjuste.BACKUP -> "Cópia de tudo" to TomItem.NORMAL
+        SecaoAjuste.APURACAO -> if (liberada) "Liberada" to TomItem.NORMAL else "Falta liberar" to TomItem.ALERTA
+        SecaoAjuste.TOQUE -> (if (toqueLigado) "Ligado" else "Desligado") to TomItem.NORMAL
+        SecaoAjuste.ATUALIZACAO ->
+            if ((ultima?.codigo ?: 0) > Atualizador.versaoInstalada) "Nova versão" to TomItem.DESTAQUE
+            else "v${Atualizador.nomeInstalado}" to TomItem.NORMAL
+        SecaoAjuste.TESTE -> if (teste) "Ligado" to TomItem.ALERTA else "Desligado" to TomItem.NORMAL
+        SecaoAjuste.CREDITOS -> "Com o Claude" to TomItem.NORMAL
+        SecaoAjuste.EXTINCAO -> (if (individual) "Zerar o app" else "Encerrar") to TomItem.NORMAL
     }
 
-    // Os dois anexos do termo: o sem assinaturas e o assinado pelos 3.
+    LazyColumn(contentPadding = PaddingTela, modifier = Modifier.fillMaxSize()) {
+        item(key = "menu") {
+            Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SecaoAjuste.doModo(individual).chunked(ITENS_POR_LINHA).forEach { linha ->
+                    // A mesma altura para os 3 itens da linha (mesmo com a letra grande do celular).
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                        linha.forEach { s ->
+                            val (texto, tom) = situacao(s)
+                            ItemDoMenu(s.titulo(individual), texto, tom, iconeDoItem(s), corDoItem(s), Modifier.weight(1f)) { abrir(s.rota) }
+                        }
+                        repeat(ITENS_POR_LINHA - linha.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Um item do menu dos Ajustes: o emblema (com um ponto quando pede atenção), o nome e a situação. */
+@Composable
+private fun ItemDoMenu(
+    titulo: String,
+    situacao: String,
+    tom: TomItem,
+    icone: ImageVector,
+    cor: Color,
+    modifier: Modifier,
+    aoTocar: () -> Unit,
+) {
+    val corSituacao = when (tom) {
+        TomItem.NORMAL -> MaterialTheme.colorScheme.onSurfaceVariant
+        TomItem.ALERTA -> CoresAlerta.texto()
+        TomItem.DESTAQUE -> corDestaque()
+    }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(18.dp),
+        modifier = modifier.fillMaxHeight().clip(RoundedCornerShape(18.dp)).clickable(onClick = aoTocar),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 12.dp),
+        ) {
+            Box {
+                EmblemaIcone(icone, cor, 46.dp)
+                if (tom != TomItem.NORMAL) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .size(13.dp)
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow, CircleShape)
+                            .padding(2.dp)
+                            .background(corSituacao, CircleShape),
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            // O nome e a situação juntos, no meio do espaço de duas linhas de nome.
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth().weight(1f).heightIn(min = ALTURA_DO_NOME),
+            ) {
+                Text(
+                    titulo,
+                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.5.sp, lineHeight = 17.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    situacao,
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                    fontWeight = if (tom == TomItem.NORMAL) FontWeight.Normal else FontWeight.SemiBold,
+                    color = corSituacao,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** Espaço do nome (até duas linhas) e da situação, nos itens do menu. */
+private val ALTURA_DO_NOME = 54.dp
+
+/** O quadro das telas dos Ajustes (sem título: o título fica na barra de cima). */
+@Composable
+internal fun QuadroAjuste(modifier: Modifier = Modifier, conteudo: @Composable ColumnScope.() -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), content = conteudo)
+    }
+}
+
+/** Texto de apoio no alto das telas dos Ajustes. */
+@Composable
+internal fun ExplicacaoAjuste(texto: String, modifier: Modifier = Modifier) {
+    Text(
+        texto,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(horizontal = 4.dp),
+    )
+}
+
+/** A tela de um item do menu dos Ajustes. */
+@Composable
+fun AjustesSecaoTela(estado: Estado, secao: SecaoAjuste, atualizacao: AtualizacaoViewModel, abrir: (String) -> Unit) {
+    LazyColumn(
+        contentPadding = PaddingTela,
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        item(key = secao.id) {
+            Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                when (secao) {
+                    SecaoAjuste.MODO -> QuadroAjuste {
+                        LinhaAjuste(
+                            emblema = { EmblemaIcone(Icons.Outlined.Person, CoresEmblema.APORTE, TAMANHO_EMBLEMA) },
+                            titulo = "Individual",
+                            subtitulo = "Só as apostas e os prêmios, sem comprovantes. O saldo começa em zero e mostra quanto se gastou ou ganhou.",
+                        )
+                    }
+                    SecaoAjuste.INTEGRANTES -> Integrantes(estado)
+                    SecaoAjuste.VALORES -> Valores(estado)
+                    SecaoAjuste.TERMO -> Termo(estado)
+                    SecaoAjuste.INTEGRIDADE -> QuadroAjuste {
+                        LinhaAjuste(
+                            emblema = { EmblemaIcone(Icons.Outlined.VerifiedUser, CoresEmblema.APORTE, TAMANHO_EMBLEMA) },
+                            titulo = "Verificar integridade",
+                            subtitulo = "Confere a autenticação de todos os comprovantes, os anexos originais e um código de comprovante.",
+                            aoTocar = { abrir("integridade") },
+                            final = { Seta() },
+                        )
+                    }
+                    SecaoAjuste.AUDITORIA -> QuadroAjuste { Auditoria(estado) }
+                    SecaoAjuste.BACKUP -> Backup()
+                    SecaoAjuste.APURACAO -> ApuracaoComOAppFechado()
+                    SecaoAjuste.TOQUE -> ToqueDoPremio()
+                    SecaoAjuste.ATUALIZACAO -> AtualizacaoDoApp(atualizacao)
+                    SecaoAjuste.TESTE -> ModoDeTeste()
+                    SecaoAjuste.CREDITOS -> Creditos()
+                    SecaoAjuste.EXTINCAO -> Extincao(estado)
+                }
+            }
+        }
+    }
+}
+
+/** Os integrantes, com a chave Pix (o copiar no fim de cada um). */
+@Composable
+private fun Integrantes(estado: Estado) {
+    val ctx = LocalContext.current
+    QuadroAjuste {
+        estado.pessoas.forEachIndexed { i, p ->
+            // Sem as bolas das iniciais: a linha entre um e outro vai de ponta a ponta.
+            if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            ItemIntegrante(p) { copiar(ctx, "Chave Pix", p.chavePix) }
+        }
+    }
+}
+
+/** O aporte mensal (só no bolão) e o preço da aposta simples de cada modalidade. */
+@Composable
+private fun Valores(estado: Estado) {
+    val ctx = LocalContext.current
+    val repo = remember { ctx.bolao.repo }
+    val escopo = rememberCoroutineScope()
+    var editandoAporte by remember { mutableStateOf(false) }
+    var editandoPreco by remember { mutableStateOf<Modalidade?>(null) }
+
+    if (!estado.individual) {
+        Secao("Aporte mensal") {
+            LinhaAjuste(
+                emblema = { EmblemaDesenho(Desenhos.Cofrinho, TAMANHO_EMBLEMA) },
+                titulo = "Por integrante",
+                subtitulo = "Total do mês: ${Dinheiro.rs(estado.config.aporteMensal * estado.pessoas.size.coerceAtLeast(1))}",
+                aoTocar = { editandoAporte = true },
+                final = {
+                    Text(Dinheiro.rs(estado.config.aporteMensal), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                },
+            )
+        }
+    }
+    Secao(
+        "Preço da aposta simples",
+        acao = { Text("Toque para mudar", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+    ) {
+        GradePrecos(estado) { editandoPreco = it }
+    }
+
+    if (editandoAporte) {
+        DialogoDinheiro(
+            titulo = "Aporte mensal",
+            inicial = estado.config.aporteMensal,
+            rotulo = "Valor por integrante",
+            explicacao = "Mudanças no aporte precisam da concordância dos 3 integrantes, registrada no grupo.",
+            aoConfirmar = { v ->
+                editandoAporte = false
+                if (v > 0) escopo.launch { repo.atualizar { it.copy(config = it.config.copy(aporteMensal = v)) } }
+            },
+            aoFechar = { editandoAporte = false },
+        )
+    }
+    editandoPreco?.let { m ->
+        DialogoDinheiro(
+            titulo = m.nome,
+            inicial = estado.config.preco(m),
+            rotulo = "Preço da aposta simples",
+            aoConfirmar = { v ->
+                editandoPreco = null
+                if (v > 0) escopo.launch {
+                    repo.atualizar { it.copy(config = it.config.copy(precos = it.config.precos + (m.name to v))) }
+                }
+            },
+            aoFechar = { editandoPreco = null },
+        )
+    }
+}
+
+/** Os dois anexos do termo: o sem assinaturas e o assinado pelos 3. */
+@Composable
+private fun Termo(estado: Estado) {
+    val ctx = LocalContext.current
+    val repo = remember { ctx.bolao.repo }
+    val avisos = LocalAvisos.current
+    val escopo = rememberCoroutineScope()
     val escolherTermoAssinado = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) escopo.launch {
             try {
@@ -151,7 +512,34 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
             }
         }
     }
+    QuadroAjuste {
+        AnexoDoTermo(
+            titulo = "Termo sem assinaturas",
+            icone = Icons.Outlined.Description,
+            cor = CoresEmblema.RATEIO,
+            arquivo = estado.termoSemAssinatura,
+            aoAnexar = { escolherTermoSemAssinatura.launch(arrayOf("application/pdf", "image/*")) },
+        )
+        Divisoria()
+        AnexoDoTermo(
+            titulo = "Termo assinado",
+            icone = Icons.Outlined.HistoryEdu,
+            cor = CoresEmblema.EXTRATO,
+            arquivo = estado.termo,
+            aoAnexar = { escolherTermoAssinado.launch(arrayOf("application/pdf", "image/*")) },
+        )
+    }
+}
 
+/** A cópia de tudo (fazer e restaurar). */
+@Composable
+private fun Backup() {
+    val ctx = LocalContext.current
+    val backup = remember { ctx.bolao.backup }
+    val avisos = LocalAvisos.current
+    val escopo = rememberCoroutineScope()
+    var trabalhando by remember { mutableStateOf(false) }
+    var confirmandoRestauracao by remember { mutableStateOf(false) }
     val escolherBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) escopo.launch {
             trabalhando = true
@@ -166,275 +554,57 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
             }
         }
     }
-
-    LazyColumn(
-        contentPadding = PaddingTela,
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        if (estado.individual) {
-            item {
-                Secao("Modo", Modifier.padding(top = 8.dp)) {
-                    LinhaAjuste(
-                        emblema = { EmblemaIcone(Icons.Outlined.Person, CoresEmblema.APORTE, TAMANHO_EMBLEMA) },
-                        titulo = "Individual",
-                        subtitulo = "Só as apostas e os prêmios, sem comprovantes. O saldo começa em zero e mostra quanto se gastou ou ganhou.",
-                    )
-                }
-            }
-        }
-        if (!estado.individual) item {
-            Secao("Integrantes", Modifier.padding(top = 8.dp)) {
-                estado.pessoas.forEachIndexed { i, p ->
-                    // Sem as bolas das iniciais: a linha entre um e outro vai de ponta a ponta.
-                    if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    ItemIntegrante(p) { copiar(ctx, "Chave Pix", p.chavePix) }
-                }
-            }
-        }
-
-        if (!estado.individual) item {
-            Secao("Aporte mensal") {
-                LinhaAjuste(
-                    emblema = { EmblemaDesenho(Desenhos.Cofrinho, TAMANHO_EMBLEMA) },
-                    titulo = "Por integrante",
-                    subtitulo = "Total do mês: ${Dinheiro.rs(estado.config.aporteMensal * estado.pessoas.size.coerceAtLeast(1))}",
-                    aoTocar = { editandoAporte = true },
-                    final = {
-                        Text(Dinheiro.rs(estado.config.aporteMensal), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    },
-                )
-            }
-        }
-
-        item {
-            Secao(
-                "Preço da aposta simples",
-                acao = { Text("Toque para mudar", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-            ) {
-                GradePrecos(estado) { editandoPreco = it }
-            }
-        }
-
-        if (!estado.individual) item {
-            Secao("Termo") {
-                AnexoDoTermo(
-                    titulo = "Termo sem assinaturas",
-                    icone = Icons.Outlined.Description,
-                    cor = CoresEmblema.RATEIO,
-                    arquivo = estado.termoSemAssinatura,
-                    aoAnexar = { escolherTermoSemAssinatura.launch(arrayOf("application/pdf", "image/*")) },
-                )
-                Divisoria()
-                AnexoDoTermo(
-                    titulo = "Termo assinado",
-                    icone = Icons.Outlined.HistoryEdu,
-                    cor = CoresEmblema.EXTRATO,
-                    arquivo = estado.termo,
-                    aoAnexar = { escolherTermoAssinado.launch(arrayOf("application/pdf", "image/*")) },
-                )
-            }
-        }
-
-        if (!estado.individual) item {
-            Secao("Integridade") {
-                LinhaAjuste(
-                    emblema = { EmblemaIcone(Icons.Outlined.VerifiedUser, CoresEmblema.APORTE, TAMANHO_EMBLEMA) },
-                    titulo = "Verificar integridade",
-                    subtitulo = "Confere a autenticação de todos os comprovantes, os anexos originais e um código de comprovante.",
-                    aoTocar = { abrir("integridade") },
-                    final = { Seta() },
-                )
-            }
-        }
-
-        if (!estado.individual) item {
-            Secao("Auditoria") { Auditoria(estado) }
-        }
-
-        item {
-            Secao("Backup") {
-                LinhaAjuste(
-                    emblema = { EmblemaIcone(Icons.Outlined.Backup, CoresEmblema.RATEIO, TAMANHO_EMBLEMA) },
-                    titulo = "Cópia de tudo",
-                    subtitulo = "Jogos, lançamentos, comprovantes e o termo. Fica em Downloads/Bolao e dá para enviar ao Drive ou por e-mail.",
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                ) {
-                    OutlinedButton(
-                        enabled = !trabalhando,
-                        onClick = {
-                            escopo.launch {
-                                trabalhando = true
-                                try {
-                                    val uri = backup.salvarEmDownloads()
-                                    val r = avisos.showSnackbar("Backup salvo em Downloads/Bolao.", actionLabel = "Enviar")
-                                    if (r == SnackbarResult.ActionPerformed) {
-                                        val enviar = Intent(Intent.ACTION_SEND)
-                                            .setType("application/zip")
-                                            .putExtra(Intent.EXTRA_STREAM, uri)
-                                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        ctx.startActivity(Intent.createChooser(enviar, "Enviar backup"))
-                                    }
-                                } catch (t: Throwable) {
-                                    avisos.showSnackbar("Não foi possível fazer o backup: ${t.message}")
-                                } finally {
-                                    trabalhando = false
-                                }
+    QuadroAjuste {
+        LinhaAjuste(
+            emblema = { EmblemaIcone(Icons.Outlined.Backup, CoresEmblema.RATEIO, TAMANHO_EMBLEMA) },
+            titulo = "Cópia de tudo",
+            subtitulo = "Jogos, lançamentos, comprovantes e o termo. Fica em Downloads/Bolao e dá para enviar ao Drive ou por e-mail.",
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+        ) {
+            OutlinedButton(
+                enabled = !trabalhando,
+                onClick = {
+                    escopo.launch {
+                        trabalhando = true
+                        try {
+                            val uri = backup.salvarEmDownloads()
+                            val r = avisos.showSnackbar("Backup salvo em Downloads/Bolao.", actionLabel = "Enviar")
+                            if (r == SnackbarResult.ActionPerformed) {
+                                val enviar = Intent(Intent.ACTION_SEND)
+                                    .setType("application/zip")
+                                    .putExtra(Intent.EXTRA_STREAM, uri)
+                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                ctx.startActivity(Intent.createChooser(enviar, "Enviar backup"))
                             }
-                        },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        Icon(Icons.Outlined.Backup, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Fazer backup", maxLines = 1)
-                    }
-                    OutlinedButton(
-                        enabled = !trabalhando,
-                        onClick = { confirmandoRestauracao = true },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        Icon(Icons.Outlined.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Restaurar", maxLines = 1)
-                    }
-                }
-            }
-        }
-
-        item {
-            val nova = ultima?.takeIf { it.codigo > Atualizador.versaoInstalada }
-            Secao("Atualização") {
-                LinhaAjuste(
-                    emblema = { EmblemaIcone(Icons.Outlined.SystemUpdate, AzulMarinhoEmblema, TAMANHO_EMBLEMA) },
-                    titulo = "Versão ${Atualizador.nomeInstalado}",
-                    subtitulo = if (nova != null) "Versão ${nova.nome} disponível" else "Atualiza pelo GitHub com um toque",
-                    final = {
-                        if (nova != null) {
-                            Button(onClick = { atualizacao.atualizar(nova) }) { Text("Atualizar") }
-                        } else {
-                            OutlinedButton(onClick = { atualizacao.verificar(manual = true) }) { Text("Verificar") }
+                        } catch (t: Throwable) {
+                            avisos.showSnackbar("Não foi possível fazer o backup: ${t.message}")
+                        } finally {
+                            trabalhando = false
                         }
-                    },
-                )
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Icon(Icons.Outlined.Backup, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Fazer backup", maxLines = 1)
             }
-        }
-
-        item {
-            // A apuração automática e o aviso do prêmio com o app fechado: o que o celular precisa liberar.
-            // A situação é lida de novo ao voltar dos ajustes do Android.
-            var conferido by remember { mutableIntStateOf(0) }
-            LifecycleResumeEffect(Unit) {
-                conferido++
-                onPauseOrDispose {}
-            }
-            val avisosPermitidos = remember(conferido) { Notificador.permitido(ctx) }
-            val bateriaLivre = remember(conferido) { SegundoPlano.bateriaLivre(ctx) }
-            Secao("Apuração com o app fechado") {
-                Text(
-                    "O app confere o resultado, apura e avisa do prêmio sozinho, na hora do sorteio. " +
-                        "Para isso o celular não pode pausar o app:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                LinhaAjuste(
-                    emblema = { EmblemaIcone(Icons.Outlined.NotificationsActive, CoresEmblema.PREMIO, TAMANHO_EMBLEMA) },
-                    titulo = "Avisos",
-                    subtitulo = if (avisosPermitidos) "Permitidos" else "Desligados: o aviso do prêmio não chega",
-                    final = {
-                        if (avisosPermitidos) {
-                            OutlinedButton(onClick = { Notificador.teste(ctx) }) { Text("Testar") }
-                        } else {
-                            Button(onClick = {
-                                if (android.os.Build.VERSION.SDK_INT >= 33) {
-                                    pedirPermissao.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                                } else {
-                                    SegundoPlano.abrirAjustesDoApp(ctx)
-                                }
-                            }) { Text("Permitir") }
-                        }
-                    },
-                )
-                Divisoria()
-                LinhaAjuste(
-                    emblema = { EmblemaIcone(Icons.Outlined.BatteryFull, CoresEmblema.APORTE, TAMANHO_EMBLEMA) },
-                    titulo = "Bateria",
-                    subtitulo = if (bateriaLivre) "Sem restrições" else "Com restrição: a apuração pode atrasar",
-                    final = if (bateriaLivre) null else ({ Button(onClick = { SegundoPlano.pedirBateriaLivre(ctx) }) { Text("Liberar") } }),
-                )
-                Divisoria()
-                LinhaAjuste(
-                    emblema = { EmblemaIcone(Icons.Outlined.PowerSettingsNew, AzulMarinhoEmblema, TAMANHO_EMBLEMA) },
-                    titulo = "Inicialização automática",
-                    subtitulo = "No HyperOS: ative para o app acordar sozinho na hora do resultado",
-                    final = { OutlinedButton(onClick = { SegundoPlano.abrirInicioAutomatico(ctx) }) { Text("Abrir") } },
-                )
-            }
-        }
-
-        item {
-            Secao("Modo de teste") {
-                CartaoModoTeste(emTeste = teste, aoPedirSaida = { sairDoTeste = true })
-            }
-        }
-
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (estado.individual) "Apagar tudo" else "Extinção do Bolão", style = MaterialTheme.typography.titleMedium)
-                CartaoExtincao(
-                    estado,
-                    forcadaLiberada = forcadaLiberada || estado.individual,
-                    aoLiberarForcada = { forcadaLiberada = true },
-                    aoPedir = { pedindoExtincao = true },
-                )
+            OutlinedButton(
+                enabled = !trabalhando,
+                onClick = { confirmandoRestauracao = true },
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Icon(Icons.Outlined.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Restaurar", maxLines = 1)
             }
         }
     }
-
-    if (pedindoExtincao) {
-        DialogoExtincao(
-            estado,
-            forcada = forcadaLiberada || estado.individual,
-            aoFechar = { pedindoExtincao = false },
-        )
-    }
-
-    if (sairDoTeste) DialogoSairDoTeste(aoFechar = { sairDoTeste = false })
-
-    if (editandoAporte) {
-        DialogoDinheiro(
-            titulo = "Aporte mensal",
-            inicial = estado.config.aporteMensal,
-            rotulo = "Valor por integrante",
-            explicacao = "Mudanças no aporte precisam da concordância dos 3 integrantes, registrada no grupo.",
-            aoConfirmar = { v ->
-                editandoAporte = false
-                if (v > 0) escopo.launch { repo.atualizar { it.copy(config = it.config.copy(aporteMensal = v)) } }
-            },
-            aoFechar = { editandoAporte = false },
-        )
-    }
-
-    editandoPreco?.let { m ->
-        DialogoDinheiro(
-            titulo = m.nome,
-            inicial = estado.config.preco(m),
-            rotulo = "Preço da aposta simples",
-            aoConfirmar = { v ->
-                editandoPreco = null
-                if (v > 0) escopo.launch {
-                    repo.atualizar { it.copy(config = it.config.copy(precos = it.config.precos + (m.name to v))) }
-                }
-            },
-            aoFechar = { editandoPreco = null },
-        )
-    }
-
     if (confirmandoRestauracao) {
         DialogoConfirmar(
             titulo = "Restaurar backup?",
@@ -449,22 +619,133 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
     }
 }
 
+/** A versão instalada e a atualização pelo GitHub. */
+@Composable
+private fun AtualizacaoDoApp(atualizacao: AtualizacaoViewModel) {
+    val ultima by atualizacao.ultima.collectAsStateWithLifecycle()
+    val nova = ultima?.takeIf { it.codigo > Atualizador.versaoInstalada }
+    QuadroAjuste {
+        LinhaAjuste(
+            emblema = { EmblemaIcone(Icons.Outlined.SystemUpdate, AzulMarinhoEmblema, TAMANHO_EMBLEMA) },
+            titulo = "Versão ${Atualizador.nomeInstalado}",
+            subtitulo = if (nova != null) "Versão ${nova.nome} disponível" else "Atualiza pelo GitHub com um toque",
+            final = {
+                if (nova != null) {
+                    Button(onClick = { atualizacao.atualizar(nova) }) { Text("Atualizar") }
+                } else {
+                    OutlinedButton(onClick = { atualizacao.verificar(manual = true) }) { Text("Verificar") }
+                }
+            },
+        )
+    }
+}
+
+/**
+ * A apuração automática e o aviso do prêmio com o app fechado: o que o celular precisa liberar.
+ * A situação é lida de novo ao voltar dos ajustes do Android.
+ */
+@Composable
+private fun ApuracaoComOAppFechado() {
+    val ctx = LocalContext.current
+    var conferido by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) {
+        conferido++
+        onPauseOrDispose {}
+    }
+    val avisosPermitidos = remember(conferido) { Notificador.permitido(ctx) }
+    val bateriaLivre = remember(conferido) { SegundoPlano.bateriaLivre(ctx) }
+    val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) Notificador.teste(ctx)
+        conferido++
+    }
+    ExplicacaoAjuste(
+        "O app confere o resultado, apura e avisa do prêmio sozinho, na hora do sorteio, mesmo com o app fechado. " +
+            "Para isso o celular não pode pausar o app:",
+    )
+    QuadroAjuste {
+        LinhaAjuste(
+            emblema = { EmblemaIcone(Icons.Outlined.NotificationsActive, CoresEmblema.PREMIO, TAMANHO_EMBLEMA) },
+            titulo = "Avisos",
+            subtitulo = if (avisosPermitidos) "Permitidos" else "Desligados: o aviso do prêmio não chega",
+            final = {
+                if (avisosPermitidos) {
+                    OutlinedButton(onClick = { Notificador.teste(ctx) }) { Text("Testar") }
+                } else {
+                    Button(onClick = {
+                        if (android.os.Build.VERSION.SDK_INT >= 33) {
+                            pedirPermissao.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            SegundoPlano.abrirAjustesDoApp(ctx)
+                        }
+                    }) { Text("Permitir") }
+                }
+            },
+        )
+        Divisoria()
+        LinhaAjuste(
+            emblema = { EmblemaIcone(Icons.Outlined.BatteryFull, CoresEmblema.APORTE, TAMANHO_EMBLEMA) },
+            titulo = "Bateria",
+            subtitulo = if (bateriaLivre) "Sem restrições" else "Com restrição: a apuração pode atrasar",
+            final = if (bateriaLivre) null else ({ Button(onClick = { SegundoPlano.pedirBateriaLivre(ctx) }) { Text("Liberar") } }),
+        )
+        Divisoria()
+        LinhaAjuste(
+            emblema = { EmblemaIcone(Icons.Outlined.PowerSettingsNew, AzulMarinhoEmblema, TAMANHO_EMBLEMA) },
+            titulo = "Inicialização automática",
+            subtitulo = "No HyperOS: ative para o app acordar sozinho na hora do resultado",
+            final = { OutlinedButton(onClick = { SegundoPlano.abrirInicioAutomatico(ctx) }) { Text("Abrir") } },
+        )
+    }
+}
+
+/** O modo de teste (dados de exemplo). */
+@Composable
+private fun ModoDeTeste() {
+    val ctx = LocalContext.current
+    val repo = remember { ctx.bolao.repo }
+    val teste by repo.modoTeste.collectAsStateWithLifecycle()
+    var sairDoTeste by remember { mutableStateOf(false) }
+    QuadroAjuste { CartaoModoTeste(emTeste = teste, aoPedirSaida = { sairDoTeste = true }) }
+    if (sairDoTeste) DialogoSairDoTeste(aoFechar = { sairDoTeste = false })
+}
+
+/** A extinção do bolão (no individual, "Apagar tudo"), com o quadro vermelho de sempre. */
+@Composable
+private fun Extincao(estado: Estado) {
+    var pedindoExtincao by remember { mutableStateOf(false) }
+    // Extinção forçada: destravada pelos toques no quadro da extinção (vale enquanto a tela está aberta).
+    var forcadaLiberada by remember { mutableStateOf(false) }
+    CartaoExtincao(
+        estado,
+        forcadaLiberada = forcadaLiberada || estado.individual,
+        aoLiberarForcada = { forcadaLiberada = true },
+        aoPedir = { pedindoExtincao = true },
+    )
+    if (pedindoExtincao) {
+        DialogoExtincao(
+            estado,
+            forcada = forcadaLiberada || estado.individual,
+            aoFechar = { pedindoExtincao = false },
+        )
+    }
+}
+
 /** Tamanho dos emblemas das linhas dos Ajustes. */
-private val TAMANHO_EMBLEMA = 44.dp
+internal val TAMANHO_EMBLEMA = 44.dp
 
 /** Onde começa o texto das linhas (depois do emblema): botões e dicas ficam alinhados com ele. */
-private val RECUO_TEXTO = 58.dp
+internal val RECUO_TEXTO = 58.dp
 
 /** Azul do emblema da atualização (o mesmo nos dois temas, legível no escuro). */
-private val AzulMarinhoEmblema = Color(0xFF2F4A7A)
+internal val AzulMarinhoEmblema = Color(0xFF2F4A7A)
 
 @Composable
-private fun Divisoria() {
+internal fun Divisoria() {
     HorizontalDivider(Modifier.padding(start = RECUO_TEXTO), color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
-private fun Seta() {
+internal fun Seta() {
     Icon(
         Icons.AutoMirrored.Outlined.KeyboardArrowRight,
         contentDescription = null,
@@ -477,7 +758,7 @@ private fun Seta() {
  * botão ([final]). Com [aoTocar], a linha inteira é um botão.
  */
 @Composable
-private fun LinhaAjuste(
+internal fun LinhaAjuste(
     emblema: @Composable () -> Unit,
     titulo: String,
     subtitulo: String? = null,

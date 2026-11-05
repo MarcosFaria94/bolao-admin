@@ -10,13 +10,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -49,17 +46,8 @@ import io.github.marcosfaria94.bolao.ui.aposta.tituloDaAposta
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
 import io.github.marcosfaria94.bolao.ui.comum.Etiqueta
 import io.github.marcosfaria94.bolao.ui.comum.EtiquetaSituacao
-import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
-import io.github.marcosfaria94.bolao.ui.comum.TextoVazio
 import io.github.marcosfaria94.bolao.ui.comum.TomEtiqueta
 import io.github.marcosfaria94.bolao.ui.comum.bola3D
-import io.github.marcosfaria94.bolao.ui.comum.IndicadorDoPuxao
-import io.github.marcosfaria94.bolao.ui.comum.acompanharPuxao
-import io.github.marcosfaria94.bolao.ui.comum.deslizarParaFechar
-import io.github.marcosfaria94.bolao.ui.comum.rememberPuxaoAlemDaBorda
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.KeyboardArrowUp
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import io.github.marcosfaria94.bolao.ui.comum.estiloNaBola
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import java.time.LocalDate
@@ -90,46 +78,15 @@ fun jogosEmAndamento(e: Estado, hoje: LocalDate): List<GrupoEmAndamento> =
                 .thenBy { it.concurso },
         )
 
-/** Quantos jogos estão em andamento (o número no botão da barra de cima). */
+/** Quantos jogos estão em andamento. */
 fun quantosEmAndamento(e: Estado, hoje: LocalDate): Int = jogosEmAndamento(e, hoje).sumOf { it.apostas.size }
 
 /**
- * "Jogos em andamento" (o botão da barra de cima, ou puxar a Home, os Jogos, os Comprovantes ou os
- * Ajustes para baixo): cada concurso num cartão, com a modalidade, o concurso, a data do sorteio e as
- * dezenas escolhidas em cada aposta. Fecha pelo "X", deslizando o dedo para qualquer lado ou, no fim
- * da lista, empurrando para cima (e volta para onde estava, com o filtro do Histórico como estava).
+ * Um concurso dos jogos em andamento (a seção "Meus jogos" das Notificações): a bola da modalidade,
+ * o nome, o concurso e o sorteio; embaixo, cada aposta com as dezenas (tocar abre a aposta).
  */
 @Composable
-fun EmAndamentoTela(estado: Estado, abrir: (String) -> Unit, aoFechar: () -> Unit) {
-    val hoje = LocalDate.now()
-    val grupos = jogosEmAndamento(estado, hoje)
-    // No fim da lista (ou numa lista curta), empurrar para cima fecha.
-    val puxao = rememberPuxaoAlemDaBorda(vertical = true, noFim = aoFechar)
-    Box(Modifier.fillMaxSize().deslizarParaFechar(aoFechar)) {
-        LazyColumn(
-            contentPadding = PaddingTela,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize().nestedScroll(puxao).acompanharPuxao(puxao),
-        ) {
-            if (grupos.isEmpty()) {
-                item(key = "vazio") {
-                    TextoVazio("Nenhum jogo em andamento.", Modifier.padding(horizontal = 4.dp, vertical = 12.dp))
-                }
-            }
-            items(grupos, key = { "${it.modalidade}-${it.concurso}-${it.sorteio}" }) { g ->
-                CartaoDoConcurso(estado, g, hoje, abrir)
-            }
-        }
-        IndicadorDoPuxao(
-            puxao, puxando = "Empurre para fechar", pronto = "Solte para fechar", icone = Icons.Outlined.KeyboardArrowUp,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
-        )
-    }
-}
-
-/** Um concurso: a bola da modalidade, o nome, o concurso e o sorteio; embaixo, cada aposta com as dezenas. */
-@Composable
-private fun CartaoDoConcurso(estado: Estado, g: GrupoEmAndamento, hoje: LocalDate, abrir: (String) -> Unit) {
+fun CartaoDoConcurso(estado: Estado, g: GrupoEmAndamento, hoje: LocalDate, abrir: (String) -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
