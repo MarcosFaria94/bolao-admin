@@ -1,18 +1,14 @@
 package io.github.marcosfaria94.bolao.ui.ajustes
 
+import io.github.marcosfaria94.bolao.ui.comum.VoltarAoTopo
+import androidx.compose.foundation.lazy.rememberLazyListState
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Groups
@@ -21,7 +17,6 @@ import androidx.compose.material.icons.outlined.RingVolume
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.ui.text.style.TextAlign
 import io.github.marcosfaria94.bolao.notificacoes.Toque
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -124,7 +119,7 @@ import java.time.ZoneId
 const val ROTA_SECAO_AJUSTES = "ajustes/{secao}"
 
 /**
- * Os itens do menu dos Ajustes: cada um abre a sua tela (que fecha deslizando o dedo para os
+ * Os itens da lista dos Ajustes: cada um abre a sua tela (que fecha deslizando o dedo para os
  * lados). A Integridade abre direto a "Verificar integridade".
  */
 enum class SecaoAjuste(val id: String) {
@@ -143,7 +138,7 @@ enum class SecaoAjuste(val id: String) {
     EXTINCAO("extincao"),
     ;
 
-    /** Título da tela (na barra de cima) e do item do menu. */
+    /** Título da tela (na barra de cima) e da linha da lista. */
     fun titulo(individual: Boolean): String = when (this) {
         MODO -> "Modo"
         INTEGRANTES -> "Integrantes"
@@ -160,37 +155,23 @@ enum class SecaoAjuste(val id: String) {
         EXTINCAO -> if (individual) "Apagar tudo" else "Extinção do Bolão"
     }
 
-    /** Para onde o item do menu leva. */
+    /** Para onde a linha leva. */
     val rota: String get() = if (this == INTEGRIDADE) "integridade" else "ajustes/$id"
 
     companion object {
         fun de(id: String?): SecaoAjuste? = entries.firstOrNull { it.id == id }
 
-        /** Os itens do modo, na ordem do menu (o individual não tem integrantes, termo, integridade nem auditoria). */
-        fun doModo(individual: Boolean): List<SecaoAjuste> =
-            if (individual) {
-                listOf(MODO, VALORES, BACKUP, APURACAO, TOQUE, ATUALIZACAO, TESTE, CREDITOS, EXTINCAO)
-            } else {
-                listOf(INTEGRANTES, VALORES, TERMO, INTEGRIDADE, AUDITORIA, BACKUP, APURACAO, TOQUE, ATUALIZACAO, TESTE, CREDITOS, EXTINCAO)
-            }
+        /**
+         * Os grupos da lista, em ordem (o individual não tem integrantes, termo, integridade nem
+         * auditoria; o "Bolão" dele é o modo e os preços).
+         */
+        fun grupos(individual: Boolean): List<Pair<String, List<SecaoAjuste>>> = listOf(
+            (if (individual) "APOSTAS" else "BOLÃO") to (if (individual) listOf(MODO, VALORES) else listOf(INTEGRANTES, VALORES, TERMO)),
+            "SEGURANÇA" to (if (individual) listOf(BACKUP) else listOf(INTEGRIDADE, AUDITORIA, BACKUP)),
+            "CELULAR" to listOf(APURACAO, TOQUE, ATUALIZACAO, TESTE),
+            "SOBRE" to listOf(CREDITOS, EXTINCAO),
+        )
     }
-}
-
-/** Cor do emblema de cada item do menu (uma para cada, para achar de olho). */
-private fun corDoItem(s: SecaoAjuste): Color = when (s) {
-    SecaoAjuste.MODO -> Color(0xFF1F8F5F)
-    SecaoAjuste.INTEGRANTES -> Color(0xFF2557D6)
-    SecaoAjuste.VALORES -> Color(0xFF1F8F5F)
-    SecaoAjuste.TERMO -> Color(0xFF7C3AED)
-    SecaoAjuste.INTEGRIDADE -> Color(0xFF0E7C86)
-    SecaoAjuste.AUDITORIA -> Color(0xFFC2410C)
-    SecaoAjuste.BACKUP -> Color(0xFF4F46E5)
-    SecaoAjuste.APURACAO -> Color(0xFFB7791F)
-    SecaoAjuste.TOQUE -> Color(0xFFDB2777)
-    SecaoAjuste.ATUALIZACAO -> AzulMarinhoEmblema
-    SecaoAjuste.TESTE -> Color(0xFF64748B)
-    SecaoAjuste.CREDITOS -> Color(0xFFC15F3C)
-    SecaoAjuste.EXTINCAO -> Color(0xFFB3261E)
 }
 
 private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
@@ -209,19 +190,17 @@ private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
     SecaoAjuste.EXTINCAO -> Icons.Outlined.DeleteForever
 }
 
-/** Tom da linha de situação embaixo do nome do item. */
+/** Tom da situação, à direita do nome. */
 private enum class TomItem { NORMAL, ALERTA, DESTAQUE }
 
-/** Itens por linha do menu: 12 itens = 4 linhas, tudo numa tela só, sem rolar. */
-private const val ITENS_POR_LINHA = 3
-
 /**
- * Ajustes: um menu em grade (3 por linha), com tudo à vista numa tela só. Cada item mostra o
- * emblema, o nome e a situação (ex.: "3 pessoas", "Falta anexar" em vermelho, "Nova versão" em
- * dourado) e abre a sua tela.
+ * Ajustes: uma lista em grupos, como os Ajustes do Android (Bolão, Segurança, Celular e Sobre).
+ * Cada linha tem o ícone, o nome, a situação à direita (ex.: "3 pessoas", "Falta anexar" em
+ * vermelho, "Nova versão" em dourado) e a seta, e abre a sua tela. Tocar em "Ajustes" na barra de
+ * baixo, já nos Ajustes ([paraOTopo]), volta a lista ao começo.
  */
 @Composable
-fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (String) -> Unit) {
+fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (String) -> Unit, paraOTopo: Int = 0) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
     val ultima by atualizacao.ultima.collectAsStateWithLifecycle()
@@ -251,21 +230,39 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
             if ((ultima?.codigo ?: 0) > Atualizador.versaoInstalada) "Nova versão" to TomItem.DESTAQUE
             else "v${Atualizador.nomeInstalado}" to TomItem.NORMAL
         SecaoAjuste.TESTE -> if (teste) "Ligado" to TomItem.ALERTA else "Desligado" to TomItem.NORMAL
-        SecaoAjuste.CREDITOS -> "Com o Claude" to TomItem.NORMAL
-        SecaoAjuste.EXTINCAO -> (if (individual) "Zerar o app" else "Encerrar") to TomItem.NORMAL
+        SecaoAjuste.CREDITOS -> "Claude" to TomItem.NORMAL
+        SecaoAjuste.EXTINCAO -> "" to TomItem.NORMAL
     }
+    val lista = rememberLazyListState()
+    VoltarAoTopo(lista, paraOTopo)
 
-    LazyColumn(contentPadding = PaddingTela, modifier = Modifier.fillMaxSize()) {
-        item(key = "menu") {
-            Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SecaoAjuste.doModo(individual).chunked(ITENS_POR_LINHA).forEach { linha ->
-                    // A mesma altura para os 3 itens da linha (mesmo com a letra grande do celular).
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-                        linha.forEach { s ->
-                            val (texto, tom) = situacao(s)
-                            ItemDoMenu(s.titulo(individual), texto, tom, iconeDoItem(s), corDoItem(s), Modifier.weight(1f)) { abrir(s.rota) }
-                        }
-                        repeat(ITENS_POR_LINHA - linha.size) { Spacer(Modifier.weight(1f)) }
+    LazyColumn(state = lista, contentPadding = PaddingTela, modifier = Modifier.fillMaxSize()) {
+        SecaoAjuste.grupos(individual).forEachIndexed { g, (nome, secoes) ->
+            item(key = "grupo-$nome") {
+                Text(
+                    nome,
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp, letterSpacing = 1.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, top = if (g == 0) 8.dp else 20.dp, bottom = 6.dp),
+                )
+            }
+            item(key = "linhas-$nome") {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    secoes.forEachIndexed { i, s ->
+                        if (i > 0) HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        val (texto, tom) = situacao(s)
+                        LinhaDaLista(
+                            titulo = s.titulo(individual),
+                            situacao = texto,
+                            tom = tom,
+                            icone = iconeDoItem(s),
+                            vermelho = s == SecaoAjuste.EXTINCAO,
+                        ) { abrir(s.rota) }
                     }
                 }
             }
@@ -273,76 +270,51 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
     }
 }
 
-/** Um item do menu dos Ajustes: o emblema (com um ponto quando pede atenção), o nome e a situação. */
+/** Uma linha da lista dos Ajustes: o ícone, o nome, a situação à direita e a seta. */
 @Composable
-private fun ItemDoMenu(
-    titulo: String,
-    situacao: String,
-    tom: TomItem,
-    icone: ImageVector,
-    cor: Color,
-    modifier: Modifier,
-    aoTocar: () -> Unit,
-) {
+private fun LinhaDaLista(titulo: String, situacao: String, tom: TomItem, icone: ImageVector, vermelho: Boolean, aoTocar: () -> Unit) {
     val corSituacao = when (tom) {
         TomItem.NORMAL -> MaterialTheme.colorScheme.onSurfaceVariant
         TomItem.ALERTA -> CoresAlerta.texto()
         TomItem.DESTAQUE -> corDestaque()
     }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        shape = RoundedCornerShape(18.dp),
-        modifier = modifier.fillMaxHeight().clip(RoundedCornerShape(18.dp)).clickable(onClick = aoTocar),
+    val corDoNome = if (vermelho) CoresAlerta.texto() else MaterialTheme.colorScheme.onSurface
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = aoTocar)
+            .padding(start = 16.dp, end = 10.dp, top = 13.dp, bottom = 13.dp),
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 12.dp),
-        ) {
-            Box {
-                EmblemaIcone(icone, cor, 46.dp)
-                if (tom != TomItem.NORMAL) {
-                    Box(
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .size(13.dp)
-                            .background(MaterialTheme.colorScheme.surfaceContainerLow, CircleShape)
-                            .padding(2.dp)
-                            .background(corSituacao, CircleShape),
-                    )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            // O nome e a situação juntos, no meio do espaço de duas linhas de nome.
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-                modifier = Modifier.fillMaxWidth().weight(1f).heightIn(min = ALTURA_DO_NOME),
-            ) {
-                Text(
-                    titulo,
-                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.5.sp, lineHeight = 17.sp),
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    situacao,
-                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
-                    fontWeight = if (tom == TomItem.NORMAL) FontWeight.Normal else FontWeight.SemiBold,
-                    color = corSituacao,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+        Icon(icone, contentDescription = null, tint = if (vermelho) corDoNome else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(
+            titulo,
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp),
+            color = corDoNome,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (situacao.isNotEmpty()) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                situacao,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (tom == TomItem.NORMAL) FontWeight.Normal else FontWeight.SemiBold,
+                color = corSituacao,
+                maxLines = 1,
+            )
         }
+        Spacer(Modifier.width(2.dp))
+        Icon(
+            Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
-
-/** Espaço do nome (até duas linhas) e da situação, nos itens do menu. */
-private val ALTURA_DO_NOME = 54.dp
 
 /** O quadro das telas dos Ajustes (sem título: o título fica na barra de cima). */
 @Composable

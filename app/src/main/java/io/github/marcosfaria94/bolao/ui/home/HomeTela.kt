@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.home
 
+import io.github.marcosfaria94.bolao.ui.comum.VoltarAoTopo
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material.icons.outlined.FilterList
@@ -69,7 +70,7 @@ private val ESPACO = 14.dp
 /**
  * Home: o saldo (com o provisionado e o extra à direita), os atalhos de Aporte, Rateio e Extrato,
  * a próxima aposta (o "Apostar" pulsa no dia de aposta) e o Histórico de tudo o que entrou e saiu,
- * com o resumo do filtro e o "Filtrar". Os Comprovantes e o sino das notificações ficam na barra de cima. No modo
+ * com o resumo do filtro e o "Filtrar". O sino das notificações fica na barra de cima. No modo
  * individual: só o saldo (que começa em zero e cai a cada aposta) e o Histórico das apostas e dos
  * prêmios.
  *
@@ -84,12 +85,15 @@ fun HomeTela(
     filtro: FiltroHome,
     abrir: (String) -> Unit,
     apostar: () -> Unit,
+    paraOTopo: Int = 0,
 ) {
     val hoje = LocalDate.now()
     val provisao = Operacoes.provisao(estado, hoje)
     val saldo = Operacoes.saldo(estado)
     val individual = estado.individual
     val rolagem = rememberSaveable(visita, saver = LazyListState.Saver, key = "rolagem-$visita") { LazyListState() }
+    // Tocar em "Home" na barra de baixo, já na Home: a lista volta ao começo.
+    VoltarAoTopo(rolagem, paraOTopo)
     val movimentos = movimentosDoHistorico(estado, filtro)
     // Filtro mudado (na tela "Filtrar"): a lista volta para o começo do Histórico.
     var filtroVisto by rememberSaveable(visita, key = "filtro-visto-$visita") { mutableStateOf(filtro.resumo()) }
@@ -132,7 +136,7 @@ fun HomeTela(
                 Spacer(Modifier.width(10.dp))
                 Text(
                     filtro.resumo(),
-                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp, lineHeight = 15.sp),
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 14.sp, lineHeight = 17.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.End,
                     maxLines = 2,

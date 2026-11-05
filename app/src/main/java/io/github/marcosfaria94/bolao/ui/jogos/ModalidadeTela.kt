@@ -118,16 +118,17 @@ fun ModalidadeTela(
     val inicial = if (detalhes) 1 else 0
     val paginas = rememberPagerState(initialPage = inicial) { 2 }
     val nosDetalhes = paginas.currentPage == 1
-    // Aberta direto nos Detalhes: o voltar sai da página (volta para os Jogos).
-    val voltarDosDetalhes: () -> Unit = if (detalhes) aoSair else { { escopo.launch { paginas.animateScrollToPage(0) } } }
+    // O "← Apostar" da barra volta à página do volante. O voltar do celular também, menos quando a página
+    // foi aberta direto nos Detalhes (segurar a modalidade): aí ele sai da página (volta para os Jogos).
+    val voltarDosDetalhes: () -> Unit = { escopo.launch { paginas.animateScrollToPage(0) } }
     BackHandler(enabled = nosDetalhes && !detalhes) { escopo.launch { paginas.animateScrollToPage(0) } }
-    // Na barra de cima: "Detalhes →"; nos Detalhes, o título vira "Detalhes", com o "Jogos →" (deslizar
-    // para a esquerda vai para a lista dos Jogos), e o voltar volta à página.
+    // Na barra de cima: "Detalhes →"; nos Detalhes, "← Apostar" (o voltar volta à página do volante) e o
+    // "Jogos →" (deslizar para a esquerda vai para a lista dos Jogos).
     val barra = LocalBarraDaTela.current
     val dono = LocalViewModelStoreOwner.current
     DisposableEffect(nosDetalhes, dono) {
         val acao = if (nosDetalhes) {
-            AcaoDaBarra(dono, titulo = "Detalhes", botao = "Jogos", aoTocarBotao = irParaJogos, aoVoltar = voltarDosDetalhes)
+            AcaoDaBarra(dono, titulo = "Apostar", botao = "Jogos", aoTocarBotao = irParaJogos, aoVoltar = voltarDosDetalhes)
         } else {
             AcaoDaBarra(dono, botao = "Detalhes", aoTocarBotao = { escopo.launch { paginas.animateScrollToPage(1) } })
         }

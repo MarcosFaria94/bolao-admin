@@ -1,5 +1,7 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
+import io.github.marcosfaria94.bolao.ui.comum.VoltarAoTopo
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,11 +42,12 @@ import io.github.marcosfaria94.bolao.ui.tema.Dourado
 
 /**
  * Jogos: as modalidades em ordem de k1 (melhor retorno matemático primeiro). A Caixa é consultada
- * de novo a cada vez que se entra aqui (a raiz do app cuida disso); puxar a lista para baixo abre os
- * jogos em andamento. Tocar numa modalidade abre a página do jogo; segurar, os Detalhes dela.
+ * de novo a cada vez que se entra aqui (a raiz do app cuida disso); puxar a lista para baixo abre as
+ * Notificações. Tocar numa modalidade abre a página do jogo; segurar, os Detalhes dela. Tocar em
+ * "Jogos" na barra de baixo, já nos Jogos ([paraOTopo]), volta a lista ao começo.
  */
 @Composable
-fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit, abrirDetalhes: (Modalidade) -> Unit) {
+fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit, abrirDetalhes: (Modalidade) -> Unit, paraOTopo: Int = 0) {
     val ctx = LocalContext.current
     val indices = remember { ctx.bolao.indices }
     val itens by indices.itens.collectAsStateWithLifecycle()
@@ -52,9 +55,12 @@ fun JogosTela(estado: Estado, abrirModalidade: (Modalidade) -> Unit, abrirDetalh
     val falhou by indices.falhou.collectAsStateWithLifecycle()
     val avisos by indices.avisos.collectAsStateWithLifecycle()
     val destaque = indices.destaque(itens)?.modalidade
+    val lista = rememberLazyListState()
+    VoltarAoTopo(lista, paraOTopo)
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
+            state = lista,
             contentPadding = PaddingTela,
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxSize(),

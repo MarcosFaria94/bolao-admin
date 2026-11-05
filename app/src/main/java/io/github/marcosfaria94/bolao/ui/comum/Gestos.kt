@@ -1,5 +1,8 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
@@ -242,3 +245,143 @@ class BarraDaTela {
 }
 
 val LocalBarraDaTela = staticCompositionLocalOf { BarraDaTela() }
+
+/**
+ * Um painel à esquerda das abas (as Notificações), que entra e sai como uma página do pager: o
+ * painel e a aba andam juntos, acompanhando o dedo. [fracao] vai de 0 (fechado, fora da tela à
+ * esquerda) a 1 (aberto, a aba fora da tela à direita). Deslizar o painel para a direita também
+ * fecha: ele sai pela direita, esmaecendo ([saida]), e a aba aparece no lugar.
+ */
+class PainelLateral {
+    /** Largura da tela, em pixels (a raiz mede). */
+    var largura by mutableFloatStateOf(1f)
+
+    var fracao by mutableFloatStateOf(0f)
+        private set
+
+    /** Quanto o painel aberto andou para a direita (fechando por esse lado), em pixels. */
+    var saida by mutableFloatStateOf(0f)
+        private set
+
+    /** O painel está (ou estava) aparecendo. */
+    val visivel: Boolean get() = fracao > 0f
+
+    /** Mais da metade na tela: a barra de cima já é a dele. */
+    val aberto: Boolean get() = fracao >= 0.5f
+
+    /** Deslocamento da aba de baixo, em pixels. */
+    val deslocamentoDaAba: Float get() = fracao * largura
+
+    /** Deslocamento do painel, em pixels (0 = no lugar). */
+    val deslocamentoDoPainel: Float get() = (fracao - 1f) * largura + saida
+
+    fun abrirJa() {
+        fracao = 1f
+        saida = 0f
+    }
+
+    fun fecharJa() {
+        fracao = 0f
+        saida = 0f
+    }
+
+    /** O dedo andou [dx] pixels (positivo = para a direita). */
+    fun arrastar(dx: Float) {
+        if (saida > 0f || (fracao >= 1f && dx > 0f)) {
+            saida = (saida + dx).coerceAtLeast(0f)
+        } else {
+            fracao = (fracao + dx / largura).coerceIn(0f, 1f)
+        }
+    }
+
+    /** O dedo soltou com a [velocidade] (pixels por segundo): termina a abertura ou o fechamento, como o pager. */
+    suspend fun soltar(velocidade: Float) {
+        if (saida > 0f) {
+            val fecha = saida > largura * FRACAO_PARA_FECHAR || velocidade > VELOCIDADE_PARA_FECHAR
+            if (fecha) {
+                animate(saida, largura, animationSpec = tween(160)) { v, _ -> saida = v }
+                fecharJa()
+            } else {
+                animate(saida, 0f, animationSpec = spring()) { v, _ -> saida = v }
+            }
+            return
+        }
+        val alvo = when {
+            velocidade > VELOCIDADE_PARA_FECHAR -> 1f
+            velocidade < -VELOCIDADE_PARA_FECHAR -> 0f
+            else -> if (fracao >= 0.5f) 1f else 0f
+        }
+        animate(fracao, alvo, animationSpec = tween(220)) { v, _ -> fracao = v }
+        fracao = alvo
+    }
+}
+
+/**
+ * Abre o [painel] arrastando além da primeira página do pager (deslizar para a direita na Home): a
+ * conexão vai em Modifier.nestedScroll em volta do pager. [ativo] = está na primeira página.
+ */
+class ArrasteParaAbrir(private val painel: PainelLateral) : NestedScrollConnection {
+    var ativo = false
+
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        // O dedo voltando (para a esquerda) com o painel aparecendo: primeiro o painel volta, só depois o pager anda.
+        if (source != NestedScrollSource.UserInput || !painel.visivel || available.x >= 0f) return Offset.Zero
+        val antes = painel.fracao
+        painel.arrastar(available.x)
+        return Offset((painel.fracao - antes) * painel.largura, 0f)
+    }
+
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+        if (source != NestedScrollSource.UserInput || !ativo || available.x <= 0f || painel.fracao >= 1f) return Offset.Zero
+        val antes = painel.fracao
+        painel.arrastar(available.x)
+        return Offset((painel.fracao - antes) * painel.largura, 0f)
+    }
+
+    override suspend fun onPreFling(available: Velocity): Velocity {
+        val f = painel.fracao
+        if (f <= 0f || f >= 1f) return Velocity.Zero
+        painel.soltar(available.x)
+        // O pager não sai rolando com o resto do gesto.
+        return available
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        // Segurança: um gesto cancelado no meio não deixa o painel pela metade.
+        val f = painel.fracao
+        if (f > 0f && f < 1f) painel.soltar(0f)
+        return Velocity.Zero
+    }
+}
+
+/** Arrastar o painel aberto para os lados: para a esquerda ele volta e a aba entra (como o pager); para a direita ele sai. */
+fun Modifier.arrastarPainel(painel: PainelLateral): Modifier = composed {
+    val escopo = rememberCoroutineScope()
+    val rastreador = remember { VelocityTracker() }
+    pointerInput(painel) {
+        detectHorizontalDragGestures(
+            onDragStart = { rastreador.resetTracking() },
+            onDragEnd = {
+                val v = rastreador.calculateVelocity().x
+                escopo.launch { painel.soltar(v) }
+            },
+            onDragCancel = { escopo.launch { painel.soltar(0f) } },
+        ) { mudanca, dx ->
+            mudanca.consume()
+            rastreador.addPosition(mudanca.uptimeMillis, mudanca.position)
+            painel.arrastar(dx)
+        }
+    }
+}
+
+/** Tocar na aba em que já se está: a [lista] volta ao começo. [toques] sobe a cada toque (a raiz conta). */
+@Composable
+fun VoltarAoTopo(lista: LazyListState, toques: Int) {
+    var visto by remember { mutableIntStateOf(toques) }
+    LaunchedEffect(toques) {
+        if (toques != visto) {
+            visto = toques
+            lista.animateScrollToItem(0)
+        }
+    }
+}
