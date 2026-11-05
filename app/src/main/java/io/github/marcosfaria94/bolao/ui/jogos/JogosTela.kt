@@ -42,8 +42,8 @@ import io.github.marcosfaria94.bolao.ui.tema.Dourado
 
 /**
  * Jogos: as modalidades em ordem de k1 (melhor retorno matemático primeiro). A Caixa é consultada
- * de novo a cada vez que se entra aqui (a raiz do app cuida disso); puxar a lista para baixo abre as
- * Notificações. Tocar numa modalidade abre a página do jogo; segurar, os Detalhes dela. Tocar em
+ * de novo a cada vez que se entra aqui (a raiz do app cuida disso); puxar a lista para baixo abre os
+ * Meus jogos. Tocar numa modalidade abre a página do jogo; segurar, os Detalhes dela. Tocar em
  * "Jogos" na barra de baixo, já nos Jogos ([paraOTopo]), volta a lista ao começo.
  */
 @Composable

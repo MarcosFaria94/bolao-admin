@@ -12,9 +12,8 @@ import java.time.ZoneId
 import java.time.YearMonth
 
 /**
- * Uma pendência: algo que o Administrador precisa fazer para o bolão ficar em dia.
- * As de comprovante (anexar e conferir) ficam no botão Comprovantes da barra de cima; as outras, nas
- * Notificações (o sino), a mais recente primeiro. Tocar leva à tela que resolve.
+ * Uma pendência: algo que o Administrador precisa fazer para o bolão ficar em dia. Desde a 0.17
+ * ficam no resumo dos Meus jogos (as Notificações saíram), contadas por tipo. Tocar leva à tela que resolve.
  */
 data class Pendencia(
     /** Identifica a pendência (evita repetir o aviso no celular). */
@@ -37,7 +36,7 @@ data class Pendencia(
 ) {
     enum class Tipo { APORTE, APOSTA_DO_DIA, RASCUNHO, ANEXO, CONFERENCIA, ENVIO, APURACAO, EXTRATO, INDICES }
 
-    /** Falta de comprovante (anexar ou conferir): fica no botão Comprovantes, não nas Notificações. */
+    /** Falta de comprovante (anexar ou conferir): resolve-se na tela dos Comprovantes. */
     val deComprovante: Boolean get() = tipo == Tipo.ANEXO || tipo == Tipo.CONFERENCIA
 }
 
@@ -80,8 +79,15 @@ object Pendencias {
     /** Enquanto o resultado (ou o rateio oficial) não sai, confere de novo a cada meia hora. */
     const val MINUTOS_NOVA_CONFERENCIA = 30L
 
-    /** Sem apuração dois dias depois do sorteio: a Caixa não ajudou, o Administrador apura à mão. */
-    const val DIAS_PARA_APURAR_A_MAO = 2L
+    /**
+     * Sem o resultado da Caixa no dia seguinte ao sorteio (D+1): aí, e só aí, é um erro — a pendência
+     * pede para apurar à mão e a página da aposta mostra "Tentar de novo" e "Informar à mão". Até a
+     * 0.16 eram dois dias.
+     */
+    const val DIAS_PARA_APURAR_A_MAO = 1L
+
+    /** Até quando (dias depois do sorteio) o app ainda acorda sozinho para conferir o resultado. */
+    const val DIAS_DE_CONFERENCIA_AUTOMATICA = 3L
 
     /** Avisos de "Ação necessária" no celular só das 8h às 22h. */
     val HORARIO_DOS_AVISOS = 8 until 22
@@ -203,7 +209,8 @@ object Pendencias {
                     conferida, conferida, "aposta/${a.id}",
                     modalidade = a.modalidade, concurso = a.concurso,
                 )
-            } else if (!hoje.isBefore(sorteio.plusDays(DIAS_PARA_APURAR_A_MAO))) {
+            } else if (!conferenciaCompleta(a) && !hoje.isBefore(sorteio.plusDays(DIAS_PARA_APURAR_A_MAO))) {
+                // Com o resultado e o rateio oficial já conferidos, a apuração automática cuida (não é pendência).
                 val desde = sorteio.plusDays(DIAS_PARA_APURAR_A_MAO).atStartOfDay()
                 lista += Pendencia(
                     "apuracao-${a.id}", Pendencia.Tipo.APURACAO,
@@ -231,7 +238,7 @@ object Pendencias {
     /**
      * As pendências do bolão mais os avisos dos índices (preço de Ajustes diferente do dos
      * parâmetros, regras da Caixa que mudaram), a mais recente primeiro. Os avisos dos índices
-     * ficam só nas Notificações do app (não vão para o celular).
+     * ficam só no app, no resumo dos Meus jogos (não vão para o celular).
      */
     fun comAvisosDosIndices(pendencias: List<Pendencia>, avisos: List<Indices.Aviso>, fuso: ZoneId = ZoneId.systemDefault()): List<Pendencia> {
         if (avisos.isEmpty()) return pendencias
@@ -262,9 +269,6 @@ object Pendencias {
             Premiada(chave, a, "Aposta premiada!", "${nome(a)} · Toque para ver o prêmio.", "aposta/${a.id}", principal = premioPrincipal(a))
         }
     }
-
-    /** As pendências do sino (as Notificações): todas, menos a falta de comprovante. */
-    fun doSino(pendencias: List<Pendencia>): List<Pendencia> = pendencias.filter { !it.deComprovante }
 
     /**
      * A aposta acertou o prêmio principal: a 1ª faixa (sena, quina, 15 acertos, 20 acertos, 7 colunas,
@@ -328,8 +332,8 @@ object Pendencias {
             val sorteio = a.dataSorteio ?: return@mapNotNull null
             if (!a.registrada || a.pendenteDeAnexo || a.apuracao?.confirmadaEm != null) return@mapNotNull null
             val resultado = horaDoResultado(sorteio)
-            // Dois dias depois do sorteio sem apuração, quem resolve é o Administrador (a pendência pede).
-            if (!agora.isBefore(sorteio.plusDays(DIAS_PARA_APURAR_A_MAO + 1).atStartOfDay())) return@mapNotNull null
+            // Alguns dias depois do sorteio sem apuração, quem resolve é o Administrador (a pendência pede desde D+1).
+            if (!agora.isBefore(sorteio.plusDays(DIAS_DE_CONFERENCIA_AUTOMATICA).atStartOfDay())) return@mapNotNull null
             when {
                 agora.isBefore(resultado) -> resultado
                 !conferenciaCompleta(a) -> agora.plusMinutes(MINUTOS_NOVA_CONFERENCIA)

@@ -194,7 +194,7 @@ fun EmblemaDesenho(desenho: ImageVector, tamanho: Dp = 56.dp, modifier: Modifier
     }
 }
 
-/** Emblema com um ícone (branco, ou na [corIcone]) num círculo colorido (Ajustes, Notificações). */
+/** Emblema com um ícone (branco, ou na [corIcone]) num círculo colorido (Ajustes, créditos). */
 @Composable
 fun EmblemaIcone(
     icone: ImageVector,

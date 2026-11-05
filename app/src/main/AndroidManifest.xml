@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -20,8 +21,12 @@
         <package android:name="com.anthropic.claude" />
     </queries>
 
+    <!-- enableOnBackInvokedCallback="false": sem a prévia da tela ao arrastar o dedo da borda (o
+         "voltar preditivo" do Android 15/16, que encolhia a tela e mostrava a de trás). O voltar continua igual. -->
     <application
         android:name=".BolaoApp"
+        android:enableOnBackInvokedCallback="false"
+        tools:targetApi="33"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"

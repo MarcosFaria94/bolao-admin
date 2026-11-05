@@ -174,7 +174,7 @@ object Barra {
     @Composable
     fun outras(): Color = if (isSystemInDarkTheme()) Color(0xFF7D8AA3) else Color(0xFFA9B7CF)
 
-    /** Contador de pendências do sino (estilo Facebook). */
+    /** Contador de pendências (na bola dos Meus jogos; estilo Facebook). */
     val contador: Color = Color(0xFFE53935)
 }
 

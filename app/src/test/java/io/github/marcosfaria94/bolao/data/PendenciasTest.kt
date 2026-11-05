@@ -184,9 +184,13 @@ class PendenciasTest {
         val sorteio = LocalDate.of(2026, 10, 21)
         val a = Aposta("a", 0, Modalidade.TIMEMANIA, 1, LocalDate.of(2026, 10, 19), dataSorteio = sorteio, valor = 350, criadaEm = 0, comprovante = anexo)
         var e = registrar(base, a, LocalDate.of(2026, 10, 19))
-        // Sem resultado da Caixa por dois dias: pendência para apurar à mão.
-        assertTrue(chaves(e, sorteio.plusDays(1).atTime(12, 0)).none { it.startsWith("apuracao-") })
-        assertTrue("apuracao-a" in chaves(e, sorteio.plusDays(2).atTime(0, 1)))
+        // Sem o resultado da Caixa no dia seguinte ao sorteio (D+1, desde a 0.17): pendência para apurar à mão.
+        assertTrue(chaves(e, sorteio.atTime(23, 50)).none { it.startsWith("apuracao-") })
+        assertTrue("apuracao-a" in chaves(e, sorteio.plusDays(1).atTime(0, 1)))
+        assertEquals("Apurar a aposta", Pendencias.de(e, sorteio.plusDays(1).atTime(9, 0), fuso).single { it.chave == "apuracao-a" }.titulo)
+        // O app ainda acorda sozinho para conferir até o 3º dia; depois, só o Administrador.
+        assertEquals(sorteio.plusDays(1).atTime(9, 30), Pendencias.proximoDespertar(e, sorteio.plusDays(1).atTime(9, 0)))
+        assertEquals(null, Pendencias.proximoDespertar(e, sorteio.plusDays(3).atTime(0, 1)))
 
         // Conferida, mas com algo a confirmar: pendência na hora e nada de apuração automática.
         e = Operacoes.guardarConferencia(
@@ -247,8 +251,8 @@ class PendenciasTest {
     }
 
     @Test
-    fun comprovantesForaDoSino() {
-        // Aposta registrada sem o comprovante: a pendência é do botão Comprovantes, não do sino.
+    fun comprovantesNaTelaDosComprovantes() {
+        // Aposta registrada sem o comprovante: a pendência se resolve na tela dos Comprovantes.
         val hoje = LocalDate.of(2026, 10, 19)
         val a = Aposta("a", 0, Modalidade.QUINA, 7146, hoje, dataSorteio = hoje.plusDays(2), valor = 300, criadaEm = 0)
         val e = Operacoes.registrarAposta(Operacoes.salvarRascunho(base, a), "a", hoje, ms(hoje.atTime(10, 0)))
@@ -256,9 +260,6 @@ class PendenciasTest {
         val anexo = todas.single { it.tipo == Pendencia.Tipo.ANEXO }
         assertTrue(anexo.deComprovante)
         assertEquals(Pendencias.ABA_COMPROVANTES, anexo.destino)
-        val sino = Pendencias.doSino(todas)
-        assertTrue(sino.none { it.deComprovante })
-        assertEquals(todas.size - 1, sino.size)
     }
 
     @Test

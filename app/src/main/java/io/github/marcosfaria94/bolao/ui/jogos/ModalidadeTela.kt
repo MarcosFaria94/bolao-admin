@@ -90,7 +90,7 @@ import java.time.LocalDate
  * Na barra: "← Voltar" na página do jogo e, nos Detalhes, "← Aposta" (volta para a página do
  * volante) e "Voltar →". Os dois "Voltar" (e deslizar para a direita na página do jogo ou para a
  * esquerda nos Detalhes) saem da página, de volta para a tela de onde ela foi aberta ([aoSair]: a
- * Home, os Jogos, as Notificações...).
+ * Home, os Jogos, os Meus jogos...).
  *
  * [apostaId]: a aposta aberta pelo Histórico ou por um aviso. Registrada, ela aparece no lugar do
  * volante (com a apuração e os comprovantes); em andamento, ela é a do volante.

@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.HourglassTop
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -98,8 +100,12 @@ private sealed interface Vendo {
  * Aposta registrada, na página da modalidade (embaixo do quadro com o prêmio e o sorteio dela):
  * "Aposta Nº1", o registro, a situação ("Sorteio hoje"...) e, depois do sorteio, se acumulou; os
  * números (com os acertos, quando o resultado sai); a apuração quando ela ainda falta; e, embaixo,
- * os dois comprovantes (aposta e apuração) para ver e enviar. Vai dentro da coluna da página (não
- * tem rolagem própria). O valor do prêmio aparece aqui (o aviso do celular não traz o valor).
+ * os comprovantes para ver e enviar (o da apuração só depois de ela acontecer). Vai dentro da coluna
+ * da página (não tem rolagem própria). O valor do prêmio aparece aqui (o aviso do celular não traz o valor).
+ *
+ * Enquanto o resultado da Caixa não chega, só "Resultado ainda não apurado" (sem tarja vermelha): a
+ * apuração sai sozinha. Só no dia seguinte ao sorteio (D+1) sem o resultado é um erro: aí aparecem
+ * a tarja e os botões "Tentar de novo" e "Informar à mão".
  */
 @Composable
 fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {}, aoSair: () -> Unit = {}) {
@@ -121,6 +127,8 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
     val apurar = !apurada && (ap != null || (a.dataSorteio != null && !a.dataSorteio.isAfter(hoje)))
     var excluir by remember { mutableStateOf(false) }
 
+    // Sem o resultado no dia seguinte ao sorteio: aí, e só aí, é um erro (a tarja e os botões).
+    val atrasada = a.dataSorteio != null && !hoje.isBefore(a.dataSorteio.plusDays(Pendencias.DIAS_PARA_APURAR_A_MAO))
     var busca by remember(a.id) { mutableStateOf<Busca>(Busca.Carregando) }
     var premio by remember(a.id) { mutableLongStateOf(0L) }
     var premioEditado by remember(a.id) { mutableStateOf(false) }
@@ -132,9 +140,10 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
         busca = Busca.Carregando
         busca = try {
             val c = CaixaApi.concurso(m, a.concurso)
-            if (c.temResultado) Busca.Pronto(c, manual = false) else Busca.Falhou("O resultado do concurso ${a.concurso} ainda não saiu.")
+            if (c.temResultado) Busca.Pronto(c, manual = false) else Busca.Falhou(RESULTADO_NAO_APURADO)
         } catch (t: Throwable) {
-            Busca.Falhou("Não foi possível consultar a Caixa: ${t.message}")
+            // Sem internet, Caixa fora do ar...: para quem usa, é o mesmo "ainda não apurado".
+            Busca.Falhou(RESULTADO_NAO_APURADO)
         }
     }
     LaunchedEffect(a.id, apurar) { if (apurar) buscar() }
@@ -149,6 +158,11 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
         !conferencia.precisaConfirmarValor && conferencia.observacoes.isEmpty()
     val apuracaoEm = Pendencias.apuracaoAutomaticaEm(estado, a)
     val apurandoJa = automatica && apuracaoEm != null && !LocalDateTime.now().isBefore(apuracaoEm)
+    // O resultado já saiu, mas o rateio oficial ainda não (nada a confirmar): a apuração automática espera por ele.
+    val esperandoRateio = pronto != null && conferencia != null && !pronto.manual && pronto.concurso.faixas.isEmpty() &&
+        !conferencia.precisaConfirmarValor && conferencia.observacoes.isEmpty()
+    // "Resultado ainda não apurado": a Caixa não respondeu (ou ainda não publicou o resultado ou o rateio).
+    val semResultado = busca is Busca.Falhou || esperandoRateio
     LaunchedEffect(conferencia) {
         if (conferencia != null && !premioEditado) premio = conferencia.premio
         // Guarda a conferência (sem confirmar): é ela que muda a situação na lista de apostas.
@@ -192,19 +206,29 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
     }
 
     if (apurar) {
-        when (val b = busca) {
-            Busca.Carregando -> Row(verticalAlignment = Alignment.CenterVertically) {
+        if (busca == Busca.Carregando) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 Text("  Buscando o resultado na Caixa...")
             }
-            is Busca.Falhou -> {
-                Aviso(b.motivo, alerta = true)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { escopo.launch { buscar() } }) { Text("Tentar de novo") }
-                    Button(onClick = { busca = Busca.Pronto(concursoVazio(a), manual = true) }) { Text("Informar à mão") }
-                }
+        } else if (semResultado && !atrasada) {
+            // Ainda dentro do prazo: sem tarja e sem botões (a apuração sai sozinha quando a Caixa publicar).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.HourglassTop, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    RESULTADO_NAO_APURADO,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            is Busca.Pronto -> Unit
+        } else if (semResultado) {
+            // D+1 sem o resultado: agora é erro (a tarja), com o "Tentar de novo" e o "Informar à mão".
+            Aviso(RESULTADO_NAO_APURADO, alerta = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { escopo.launch { buscar() } }) { Text("Tentar de novo") }
+                Button(onClick = { busca = Busca.Pronto(pronto?.concurso ?: concursoVazio(a), manual = true) }) { Text("Informar à mão") }
+            }
         }
         if (pronto != null && conferencia != null && automatica) {
             // Sem botão: a apuração sai sozinha.
@@ -220,7 +244,7 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
                     )
                 }
             }
-        } else if (pronto != null && conferencia != null) {
+        } else if (pronto != null && conferencia != null && !esperandoRateio) {
             if (pronto.manual) {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -245,12 +269,24 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
             if (conferencia.precisaConfirmarValor && conferencia.premiada) {
                 Aviso("A Caixa não informou o valor desta faixa: digite o prêmio que aparece no app da Caixa.", alerta = true)
             }
+            // No bolão, a apuração que precisa do Administrador: ver a prévia e apurar (até a 0.16 ficava
+            // na linha do comprovante da apuração, que agora só aparece depois da apuração).
+            if (!individual) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { vendo = Vendo.PreviaApuracao }, enabled = !trabalhando, modifier = Modifier.weight(1f)) {
+                        Text("Visualizar")
+                    }
+                    Button(onClick = { confirmar = true }, enabled = !trabalhando, modifier = Modifier.weight(1f)) {
+                        if (trabalhando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Apurar e enviar")
+                    }
+                }
+            }
         }
     }
 
     if (individual) {
         // Modo individual: sem comprovantes; a apuração é um toque e a aposta pode ser excluída.
-        if (apNova != null && !automatica) {
+        if (apNova != null && !automatica && !esperandoRateio) {
             Button(onClick = { confirmar = true }, enabled = !trabalhando, modifier = Modifier.fillMaxWidth()) {
                 if (trabalhando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Apurar")
             }
@@ -276,10 +312,11 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
                 aoEnviar = { cAposta?.let { c -> escopo.launch { Compartilhar.comprovante(ctx, estado, c) } } },
                 textoEnviar = if (cAposta != null && estado.enviado(cAposta)) "Enviar de novo" else "Enviar",
             )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            // O comprovante da apuração só aparece depois que ela acontece (até a 0.16 aparecia antes, apagado).
             val cApuracao = Operacoes.comprovanteDaApuracao(estado, a)
-            when {
-                apurada -> LinhaComprovante(
+            if (apurada) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                LinhaComprovante(
                     titulo = "Comprovante da apuração",
                     detalhe = detalheDoEnvio(estado, cApuracao),
                     enviado = cApuracao != null && estado.enviado(cApuracao),
@@ -287,35 +324,6 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
                     aoVisualizar = { cApuracao?.let { vendo = Vendo.Registrado(it) } },
                     aoEnviar = { cApuracao?.let { c -> escopo.launch { Compartilhar.comprovante(ctx, estado, c) } } },
                     textoEnviar = if (cApuracao != null && estado.enviado(cApuracao)) "Enviar de novo" else "Enviar",
-                )
-                apNova != null && automatica -> LinhaComprovante(
-                    titulo = "Comprovante da apuração",
-                    detalhe = if (apurandoJa || apuracaoEm == null) "Apurando..." else "Sai sozinho ${quandoSai(apuracaoEm, hoje)}",
-                    enviado = false,
-                    habilitado = true,
-                    podeEnviar = false,
-                    aoVisualizar = { vendo = Vendo.PreviaApuracao },
-                    aoEnviar = {},
-                    textoEnviar = "Enviar",
-                )
-                apNova != null -> LinhaComprovante(
-                    titulo = "Comprovante da apuração",
-                    detalhe = "Ainda não registrado",
-                    enviado = false,
-                    habilitado = true,
-                    aoVisualizar = { vendo = Vendo.PreviaApuracao },
-                    aoEnviar = { confirmar = true },
-                    textoEnviar = "Apurar e enviar",
-                    trabalhando = trabalhando,
-                )
-                else -> LinhaComprovante(
-                    titulo = "Comprovante da apuração",
-                    detalhe = if (apurar) "Esperando o resultado do sorteio" else "Sai depois do sorteio",
-                    enviado = false,
-                    habilitado = false,
-                    aoVisualizar = {},
-                    aoEnviar = {},
-                    textoEnviar = "Enviar",
                 )
             }
         }
@@ -549,6 +557,9 @@ private fun LinhaComprovante(
         }
     }
 }
+
+/** O que aparece enquanto o resultado da Caixa não chega (até a 0.16, "Não foi possível consultar a Caixa: ..."). */
+const val RESULTADO_NAO_APURADO = "Resultado ainda não apurado"
 
 /** "hoje às 21h", "amanhã às 12h", "em 30/10/2026 às 21h": quando a apuração automática sai. */
 private fun quandoSai(quando: LocalDateTime, hoje: LocalDate): String {

@@ -1,6 +1,7 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -8,7 +9,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
-/** Ícones próprios do app: o trevo do ícone, para a aba Jogos. */
+/** Ícones próprios do app: o trevo do ícone, para a aba Jogos, e a bola dos Meus jogos. */
 object Icones {
     // As quatro folhas do trevo do ícone (a mesma folha das imagens), centradas em (12; 10,4).
     private const val FOLHAS =
@@ -41,4 +42,15 @@ object Icones {
 
     /** Trevo cheio (aba escolhida). */
     val TrevoCheio: ImageVector by lazy { trevo("TrevoCheio", cheio = true) }
+
+    /** A bola dos Meus jogos (no aviso do puxão): um círculo cheio com o miolo vazado, como as bolas das loterias. */
+    val Bola: ImageVector by lazy {
+        ImageVector.Builder("Bola", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(
+                pathData = addPathNodes("M12,2A10,10 0 1,0 12,22A10,10 0 1,0 12,2ZM12,6.4A5.6,5.6 0 1,1 12,17.6A5.6,5.6 0 1,1 12,6.4Z"),
+                pathFillType = PathFillType.EvenOdd,
+                fill = SolidColor(Color.Black),
+            )
+        }.build()
+    }
 }

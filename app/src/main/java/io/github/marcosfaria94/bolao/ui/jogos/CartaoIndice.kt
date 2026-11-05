@@ -99,14 +99,12 @@ private val LARGURA_BOLA = 72.dp
  * "Sorteio: Hoje" e os índices. O concurso em destaque tem contorno dourado e, no alto, a
  * estrelinha com "CONCURSO EM DESTAQUE".
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaque: Boolean = false, aoSegurar: (() -> Unit)? = null) {
     val m = item.modalidade
     val u = item.ultimo
     val hoje = LocalDate.now()
     val cor = MaterialTheme.colorScheme.onSurface
-    val suave = MaterialTheme.colorScheme.onSurfaceVariant
     val vibrar = LocalHapticFeedback.current
     // Segurar abre os Detalhes só depois de um tempo maior que o padrão do celular (não abre sem querer).
     val base = LocalViewConfiguration.current
@@ -179,30 +177,41 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
                         color = cor,
                         maxLines = 1,
                     )
-                    val lista = indicesDoCartao(item)
-                    if (lista == null) {
-                        Text(linhaIndices(item), style = MaterialTheme.typography.bodyMedium, color = suave)
-                    } else {
-                        // Respiro entre os índices; numa tela estreita, quebram para a linha de baixo.
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            lista.forEach { (nome, valor) ->
-                                Text(
-                                    buildAnnotatedString {
-                                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(nome) }
-                                        append(" ")
-                                        append(valor)
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = suave,
-                                    maxLines = 1,
-                                )
-                            }
-                        }
-                    }
+                    IndicesNaLinha(item)
                 }
             }
         }
     }
+    }
+}
+
+/**
+ * Os índices numa linha ("k1 0,836   k2 0,091   odds 1:34", o nome em negrito), com respiro entre
+ * eles (numa tela estreita, quebram para a linha de baixo); Loteca, Federal e concurso especial, o texto.
+ * Nos cartões dos Jogos e dos Meus jogos.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun IndicesNaLinha(item: Indices.Item, modifier: Modifier = Modifier) {
+    val suave = MaterialTheme.colorScheme.onSurfaceVariant
+    val lista = indicesDoCartao(item)
+    if (lista == null) {
+        Text(linhaIndices(item), style = MaterialTheme.typography.bodyMedium, color = suave, modifier = modifier)
+    } else {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = modifier) {
+            lista.forEach { (nome, valor) ->
+                Text(
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(nome) }
+                        append(" ")
+                        append(valor)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = suave,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 

@@ -21,14 +21,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,7 +38,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,7 +50,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -67,6 +66,7 @@ import io.github.marcosfaria94.bolao.net.Brasoes
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import java.text.Collator
 import java.util.Locale
+import kotlin.random.Random
 
 /** "Vasco da Gama / RJ" (o time da lista) ou o texto digitado à mão. */
 fun nomeDoTime(caixa: String?): String? {
@@ -152,14 +152,25 @@ private val COLUNA_UF = 64.dp
 private val BRASAO = 36.dp
 
 /**
+ * Um time sorteado para o "Sortear" do Time do Coração: da [lista] (a da busca, se tiver algum time;
+ * senão, todos), sem repetir o [atual] quando dá.
+ */
+fun timeAleatorio(lista: List<TimeDoCoracao>, atual: String?, sorteio: Random = Random.Default): TimeDoCoracao {
+    val base = lista.ifEmpty { TIMES }
+    val escolhido = atual?.let { Conferencia.normalizar(it) }
+    val outros = base.filter { Conferencia.normalizar(it.caixa) != escolhido }.ifEmpty { base }
+    return outros.random(sorteio)
+}
+
+/**
  * A lista dos times: um por linha (o brasão, o nome e a UF), em ordem alfabética. Tocar em "Nome"
  * ou em "UF" (no alto da lista) classifica por aquela coluna; tocar de novo inverte. Dá para buscar
- * e, no fim, digitar outro time (a lista muda a cada dois anos).
+ * e, no alto, o "Sortear" escolhe um time ao acaso (da busca, se houver). Desde a 0.17 não há mais
+ * o campo "Outro time": só os times da lista da Caixa.
  */
 @Composable
 fun DialogoTimes(atual: String?, aoEscolher: (String) -> Unit, aoFechar: () -> Unit) {
     var busca by remember { mutableStateOf("") }
-    var outro by remember { mutableStateOf("") }
     var ordem by remember { mutableStateOf(OrdemDosTimes.NOME) }
     var crescente by remember { mutableStateOf(true) }
     val cor = corModalidade(Modalidade.TIMEMANIA.cor)
@@ -186,6 +197,15 @@ fun DialogoTimes(atual: String?, aoEscolher: (String) -> Unit, aoFechar: () -> U
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, end = 12.dp)) {
                     IconButton(onClick = aoFechar) { Icon(Icons.Outlined.Close, contentDescription = "Fechar") }
                     Text("Time do Coração", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    // Um time ao acaso (da busca, se houver): escolhe e fecha, como tocar no time.
+                    FilledTonalButton(
+                        onClick = { aoEscolher(timeAleatorio(lista, atual).caixa) },
+                        contentPadding = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                    ) {
+                        Icon(Icons.Outlined.Casino, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Sortear", style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp))
+                    }
                 }
                 OutlinedTextField(
                     value = busca,
@@ -244,23 +264,6 @@ fun DialogoTimes(atual: String?, aoEscolher: (String) -> Unit, aoFechar: () -> U
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(16.dp),
                             )
-                        }
-                    }
-                    // A lista muda a cada dois anos: se faltar um time, dá para digitar.
-                    item(key = "outro") {
-                        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Outro time (como está no app da Caixa)", style = MaterialTheme.typography.labelLarge)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                OutlinedTextField(
-                                    value = outro,
-                                    onValueChange = { outro = it.take(40) },
-                                    placeholder = { Text("NOME/UF") },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
-                                    modifier = Modifier.weight(1f),
-                                )
-                                TextButton(enabled = outro.isNotBlank(), onClick = { aoEscolher(outro.trim().uppercase()) }) { Text("Usar") }
-                            }
                         }
                     }
                 }

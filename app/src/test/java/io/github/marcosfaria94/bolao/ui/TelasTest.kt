@@ -53,6 +53,14 @@ import io.github.marcosfaria94.bolao.ui.ajustes.SecaoAjuste
 import io.github.marcosfaria94.bolao.ui.aposta.OrdemDosTimes
 import io.github.marcosfaria94.bolao.ui.aposta.nomeDoTime
 import io.github.marcosfaria94.bolao.ui.aposta.timesEmOrdem
+import io.github.marcosfaria94.bolao.ui.aposta.timeAleatorio
+import io.github.marcosfaria94.bolao.data.Pendencias
+import io.github.marcosfaria94.bolao.ui.home.emOrdemDeSorteioEK1
+import io.github.marcosfaria94.bolao.ui.meusjogos.TipoDoResumo
+import io.github.marcosfaria94.bolao.ui.meusjogos.k1DoConcurso
+import io.github.marcosfaria94.bolao.ui.meusjogos.quantasPendencias
+import io.github.marcosfaria94.bolao.ui.meusjogos.resumoDasPendencias
+import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -361,6 +369,78 @@ class TelasTest {
             resumoDoJogo(aposta(Modalidade.TIMEMANIA, 4, 2290).copy(numeros = (1..10).toList(), extra = "VASCO DA GAMA/RJ")),
         )
         assertEquals("03 09 14 20 25 28 31 · Março", resumoDoJogo(aposta(Modalidade.DIA_DE_SORTE, 5, 1125).copy(numeros = listOf(3, 9, 14, 20, 25, 28, 31), extra = "Março")))
+    }
+
+    @Test
+    fun resumoDasPendenciasNosMeusJogos() {
+        val pessoas = listOf(Pessoa("p1", "A", "A", "x", true), Pessoa("p2", "B", "B", "y"), Pessoa("p3", "C", "C", "z"))
+        val pdf = Arquivo("c.pdf", "c.pdf", "application/pdf", 0)
+        val amanha = hoje.plusDays(1)
+        // Uma a registrar, uma sem o comprovante, uma a conferir e uma com o comprovante para enviar; e o aporte do mês.
+        val r = aposta(Modalidade.QUINA, 0, 7149, registrada = false).copy(id = "r", numeros = listOf(1, 2, 3, 4, 5), dataSorteio = amanha)
+        val sem = aposta(Modalidade.MEGA_SENA, 1, 2950).copy(id = "s", pendenteDeAnexo = true, dataSorteio = amanha)
+        val conferir = aposta(Modalidade.LOTOFACIL, 2, 3500).copy(id = "c", pendenteDeAnexo = true, comprovante = pdf, dataSorteio = amanha)
+        val enviar = aposta(Modalidade.QUINA, 3, 7149).copy(id = "o", dataSorteio = amanha)
+        val c = Comprovante("c1", TipoComprovante.APOSTA, "APOSTA Nº 3", "", hoje, 1, pdf, autenticacao = "", apostaId = "o")
+        val e = Estado(
+            cadastroConcluido = true, cadastradoEm = hoje.withDayOfMonth(1), pessoas = pessoas,
+            apostas = listOf(r, sem, conferir, enviar), comprovantes = listOf(c),
+        )
+        val resumo = resumoDasPendencias(e, Pendencias.de(e, hoje.atTime(12, 0)))
+        assertEquals(
+            listOf(TipoDoResumo.REGISTRAR to 1, TipoDoResumo.SEM_COMPROVANTE to 1, TipoDoResumo.CONFERIR to 1, TipoDoResumo.ENVIAR to 1, TipoDoResumo.APORTE to 1),
+            resumo.map { it.tipo to it.quantidade },
+        )
+        // Cada quadrinho abre a tela que resolve: a aposta, os Comprovantes, o comprovante (um só), o aporte.
+        assertEquals(listOf("aposta/r", "comprovantes", "comprovantes", "comprovante/c1", "aporte"), resumo.map { it.destino })
+        assertEquals(5, quantasPendencias(resumo))
+        // Dois para enviar: os Comprovantes (que têm o "Enviar ao grupo").
+        val c2 = c.copy(id = "c2", apostaId = "x")
+        val dois = e.copy(comprovantes = listOf(c, c2))
+        assertEquals("comprovantes", resumoDasPendencias(dois, Pendencias.de(dois, hoje.atTime(12, 0))).single { it.tipo == TipoDoResumo.ENVIAR }.destino)
+        // Sem nada: o resumo vazio ("Tudo em dia").
+        val emDia = Estado(cadastroConcluido = true, cadastradoEm = hoje.withDayOfMonth(1), pessoas = pessoas, modo = Modo.INDIVIDUAL)
+        assertTrue(resumoDasPendencias(emDia, Pendencias.de(emDia, hoje.atTime(12, 0))).isEmpty())
+    }
+
+    @Test
+    fun meusJogosPeloSorteioEPeloK1() {
+        val q = aposta(Modalidade.QUINA, 1, 7149).copy(id = "q", dataSorteio = hoje.plusDays(1))
+        val m = aposta(Modalidade.MEGA_SENA, 2, 2950).copy(id = "m", dataSorteio = hoje.plusDays(1))
+        val l = aposta(Modalidade.LOTOFACIL, 3, 3500).copy(id = "l", dataSorteio = hoje)
+        val d = aposta(Modalidade.DIA_DE_SORTE, 4, 1125).copy(id = "d", dataSorteio = null)
+        val grupos = jogosEmAndamento(Estado(apostas = listOf(q, m, l, d)), hoje)
+        // O sorteio mais próximo primeiro; no mesmo dia, o maior k1; sem data, no fim.
+        val k = mapOf(Modalidade.QUINA to 0.70, Modalidade.MEGA_SENA to 0.76)
+        assertEquals(
+            listOf("Lotofácil", "Mega-Sena", "Quina", "Dia de Sorte"),
+            emOrdemDeSorteioEK1(grupos) { k[it.modalidade] }.map { it.modalidade.nome },
+        )
+        // Sem o k1 (a Caixa não respondeu): depois dos que têm, no mesmo dia.
+        assertEquals(
+            listOf("Lotofácil", "Quina", "Mega-Sena", "Dia de Sorte"),
+            emOrdemDeSorteioEK1(grupos) { if (it.modalidade == Modalidade.QUINA) 0.5 else null }.map { it.modalidade.nome },
+        )
+        // O k1 (e o k2) só vale para o concurso dos índices de agora.
+        val kq = ResultadoK(numero = 7149, especial = false, acumuladoPrincipal = 0.0, reserva = 0, herancaFaixas = emptyMap(), nAnterior = 0.0, k1 = 0.7, k2 = 0.1)
+        val item = Indices.Item(Modalidade.QUINA, null, kq, 34.0)
+        assertEquals(0.7, k1DoConcurso(item, 7149)!!, 1e-9)
+        assertNull(k1DoConcurso(item, 7150))
+        assertNull(k1DoConcurso(null, 7149))
+    }
+
+    @Test
+    fun sortearOTimeDoCoracao() {
+        val sorteio = Random(7)
+        repeat(30) { assertTrue(timeAleatorio(TIMES, null, sorteio) in TIMES) }
+        // Não repete o time de agora; com a busca, só entre os times da busca.
+        val vasco = TIMES.first { it.nome == "Vasco da Gama" }
+        repeat(30) { assertTrue(timeAleatorio(TIMES, vasco.caixa, sorteio) != vasco) }
+        val dois = TIMES.filter { it.uf == "RJ" }.take(2)
+        repeat(10) { assertEquals(dois[1], timeAleatorio(dois, dois[0].caixa, sorteio)) }
+        // Só ele na busca: fica ele mesmo; a busca sem nenhum time: todos.
+        assertEquals(vasco, timeAleatorio(listOf(vasco), vasco.caixa, sorteio))
+        assertTrue(timeAleatorio(emptyList(), null, sorteio) in TIMES)
     }
 
     @Test

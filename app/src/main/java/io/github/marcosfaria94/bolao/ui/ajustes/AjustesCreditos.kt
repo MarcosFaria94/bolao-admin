@@ -5,10 +5,13 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -53,6 +56,9 @@ import io.github.marcosfaria94.bolao.ui.comum.EmblemaIcone
 /** O app do Claude na Google Play. */
 private const val PACOTE_CLAUDE = "com.anthropic.claude"
 
+/** A cor do Claude (o contorno da pílula dos créditos e o ícone genérico, sem o app instalado). */
+private val LARANJA_CLAUDE = Color(0xFFC15F3C)
+
 /** A tecnologia usada no app (o "Tecnologia" do rodapé dos Ajustes): o nome e para que serve. */
 private val TECNOLOGIA = listOf(
     "Kotlin 2.2" to "A linguagem em que o app foi escrito",
@@ -64,10 +70,10 @@ private val TECNOLOGIA = listOf(
 )
 
 /**
- * Os Créditos, no rodapé da lista dos Ajustes (até a 0.15 eram uma tela): "Criado usando o Claude"
- * (com o ícone do app do Claude, quando ele está instalado; tocar abre a página dele na Google Play),
- * o nome do app com a versão instalada e o botão discreto "Tecnologia", que mostra (ou esconde) a
- * tecnologia usada ali mesmo.
+ * Os Créditos, no rodapé da lista dos Ajustes (até a 0.15 eram uma tela): "Criado com Claude", em
+ * destaque e no centro (desde a 0.17 maior, numa pílula com o contorno na cor do Claude; com o ícone
+ * do app do Claude, quando ele está instalado; tocar abre a página dele na Google Play), o nome do app
+ * com a versão instalada e o botão discreto "Tecnologia", que mostra (ou esconde) a tecnologia ali mesmo.
  */
 @Composable
 internal fun CreditosNoRodape() {
@@ -77,32 +83,36 @@ internal fun CreditosNoRodape() {
     val discreta = MaterialTheme.colorScheme.onSurfaceVariant
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth().padding(top = 26.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 30.dp),
     ) {
+        val pilula = RoundedCornerShape(50)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .clip(RoundedCornerShape(50))
+                .clip(pilula)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .border(1.5.dp, LARANJA_CLAUDE.copy(alpha = 0.55f), pilula)
                 .clickable(onClickLabel = "Abrir o Claude na Google Play") { abrirClaudeNaLoja(ctx) }
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(start = 22.dp, end = 24.dp, top = 12.dp, bottom = 12.dp),
         ) {
-            Text("Criado usando o", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp), color = discreta)
-            Spacer(Modifier.width(7.dp))
+            Text("Criado com", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp, lineHeight = 24.sp), color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.width(10.dp))
             if (icone != null) {
-                Image(icone, contentDescription = null, modifier = Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)))
+                Image(icone, contentDescription = null, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)))
             } else {
-                EmblemaIcone(Icons.Outlined.AutoAwesome, Color(0xFFC15F3C), 22.dp)
+                EmblemaIcone(Icons.Outlined.AutoAwesome, LARANJA_CLAUDE, 32.dp)
             }
-            Spacer(Modifier.width(5.dp))
+            Spacer(Modifier.width(8.dp))
             Text(
                 "Claude",
                 fontFamily = FontFamily.Serif,
-                fontSize = 19.sp,
-                lineHeight = 24.sp,
-                fontWeight = FontWeight.Medium,
+                fontSize = 27.sp,
+                lineHeight = 32.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
         }
+        Spacer(Modifier.height(10.dp))
         Text(
             "$NOME_DO_APP · versão ${Atualizador.nomeInstalado}",
             style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),

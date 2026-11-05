@@ -9,8 +9,6 @@ import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.ui.aposta.Situacao
 import io.github.marcosfaria94.bolao.ui.aposta.nomeDoTime
 import io.github.marcosfaria94.bolao.ui.aposta.situacaoDe
-import io.github.marcosfaria94.bolao.ui.comum.Etiqueta
-import io.github.marcosfaria94.bolao.ui.comum.TomEtiqueta
 import java.time.LocalDate
 
 /** Os jogos de um mesmo concurso que ainda estão em andamento (antes do sorteio). */
@@ -38,6 +36,19 @@ fun jogosEmAndamento(e: Estado, hoje: LocalDate): List<GrupoEmAndamento> =
                 .thenBy { it.modalidade.ordinal }
                 .thenBy { it.concurso },
         )
+
+/**
+ * Os grupos na ordem dos Meus jogos: o sorteio mais próximo primeiro (sem data no fim) e, no mesmo dia,
+ * o maior k1 do concurso ([k1]; sem k1, depois).
+ */
+fun emOrdemDeSorteioEK1(grupos: List<GrupoEmAndamento>, k1: (GrupoEmAndamento) -> Double?): List<GrupoEmAndamento> =
+    grupos.sortedWith(
+        compareBy<GrupoEmAndamento> { it.sorteio == null }
+            .thenBy { it.sorteio }
+            .thenBy { -(k1(it) ?: Double.NEGATIVE_INFINITY) }
+            .thenBy { it.modalidade.ordinal }
+            .thenBy { it.concurso },
+    )
 
 /** Quantos jogos estão em andamento. */
 fun quantosEmAndamento(e: Estado, hoje: LocalDate): Int = jogosEmAndamento(e, hoje).sumOf { it.apostas.size }
@@ -81,11 +92,3 @@ fun resumoDoJogo(a: Aposta): String {
 
 /** Mais dezenas do que isto (Lotomania): só quantas são. */
 private const val MAXIMO_DE_DEZENAS_NA_LINHA = 20
-
-/** A aposta que ainda falta registrar, ou que espera o comprovante da Caixa (ou a conferência dele). */
-fun etiquetaDoJogo(a: Aposta): Etiqueta? = when {
-    !a.registrada -> Etiqueta("Falta registrar", TomEtiqueta.LARANJA)
-    Operacoes.aguardandoComprovante(a) -> Etiqueta("Sem comprovante", TomEtiqueta.VERMELHO)
-    Operacoes.aguardandoConferencia(a) -> Etiqueta("A conferir", TomEtiqueta.ROXO)
-    else -> null
-}

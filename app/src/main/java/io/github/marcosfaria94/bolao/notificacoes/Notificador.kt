@@ -20,7 +20,7 @@ import io.github.marcosfaria94.bolao.data.Premiada
 /**
  * Os dois avisos que vão para o celular: "Ação necessária" (há pendência no bolão) e
  * "Aposta premiada" (sem o valor: o prêmio é surpresa ao abrir o app). Todo o resto fica
- * nas Notificações do app (o sino da barra de cima).
+ * no resumo dos Meus jogos (a bola da barra de cima; até a 0.16, nas Notificações do app).
  */
 object Notificador {
     private const val CANAL_ACOES = "acoes"
@@ -81,7 +81,7 @@ object Notificador {
             .setContentText(texto)
             .setStyle(if (todas.size <= 1) NotificationCompat.BigTextStyle().bigText(texto) else lista)
             .setNumber(todas.size)
-            .setContentIntent(abrir(context, "notificacoes", ID_ACOES))
+            .setContentIntent(abrir(context, "meus-jogos", ID_ACOES))
             .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(context).notify(ID_ACOES, n)
@@ -127,7 +127,7 @@ object Notificador {
             .setColor(COR)
             .setContentTitle("Notificações funcionando")
             .setContentText("É assim que chegam os avisos de ação necessária e de aposta premiada.")
-            .setContentIntent(abrir(context, "notificacoes", 7))
+            .setContentIntent(abrir(context, "meus-jogos", 7))
             .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(context).notify(7, n)

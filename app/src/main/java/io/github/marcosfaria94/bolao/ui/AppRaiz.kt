@@ -18,12 +18,7 @@ import androidx.compose.material3.TextButton
 import io.github.marcosfaria94.bolao.notificacoes.Despertador
 import io.github.marcosfaria94.bolao.notificacoes.SegundoPlano
 import io.github.marcosfaria94.bolao.ui.comum.BarraDaTela
-import androidx.compose.foundation.background
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
-import io.github.marcosfaria94.bolao.ui.comum.PainelLateral
-import io.github.marcosfaria94.bolao.ui.comum.arrastarPainel
 import io.github.marcosfaria94.bolao.ui.comum.FiltroHome
 import io.github.marcosfaria94.bolao.ui.comum.LocalBarraDaTela
 import io.github.marcosfaria94.bolao.ui.home.FiltroTela
@@ -32,16 +27,18 @@ import io.github.marcosfaria94.bolao.ui.comum.acompanharPuxao
 import io.github.marcosfaria94.bolao.ui.comum.deslizarParaFechar
 import io.github.marcosfaria94.bolao.ui.comum.rememberPuxaoAlemDaBorda
 import io.github.marcosfaria94.bolao.ui.tema.AmareloSino
-import io.github.marcosfaria94.bolao.ui.tema.corAguardando
 import io.github.marcosfaria94.bolao.ui.comum.PuxarParaVoltar
 import io.github.marcosfaria94.bolao.ui.comum.soltarDasPaginas
 import io.github.marcosfaria94.bolao.ui.home.quantosEmAndamento
 import io.github.marcosfaria94.bolao.ui.meusjogos.MeusJogosTela
 import io.github.marcosfaria94.bolao.ui.meusjogos.ROTA_MEUS_JOGOS
+import io.github.marcosfaria94.bolao.ui.meusjogos.BolaDosMeusJogos
+import io.github.marcosfaria94.bolao.ui.meusjogos.quantasPendencias
+import io.github.marcosfaria94.bolao.ui.meusjogos.resumoDasPendencias
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.ConfirmationNumber
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -129,7 +126,6 @@ import io.github.marcosfaria94.bolao.ui.financeiro.SaldoTela
 import io.github.marcosfaria94.bolao.ui.ajustes.IntegridadeTela
 import io.github.marcosfaria94.bolao.ui.jogos.JogosTela
 import io.github.marcosfaria94.bolao.ui.jogos.ModalidadeTela
-import io.github.marcosfaria94.bolao.ui.notificacoes.NotificacoesTela
 import io.github.marcosfaria94.bolao.ui.rateio.RateioTela
 import io.github.marcosfaria94.bolao.ui.teste.DialogoSairDoTeste
 import io.github.marcosfaria94.bolao.ui.teste.FaixaModoTeste
@@ -163,7 +159,7 @@ private fun paginaDa(aba: Aba, atual: Int): Int {
     return atual + if (d > n / 2) d - n else d
 }
 
-/** Telas que não limpam o filtro do Histórico: o próprio "Filtrar", os Comprovantes e os Meus jogos (as Notificações ficam nas abas). */
+/** Telas que não limpam o filtro do Histórico: o próprio "Filtrar", os Comprovantes e os Meus jogos. */
 private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_MEUS_JOGOS)
 
 /** Telas sem a seta de voltar na barra de cima (fecham deslizando o dedo, puxando para baixo ou pelo voltar do celular). */
@@ -178,14 +174,14 @@ private val ROTAS_DO_JOGO = setOf("modalidade/{nome}", "nova/{nome}", "detalhes/
 private const val ROTA_ABAS = "abas"
 private const val ROTA_FILTRO = "filtro"
 
-/** As Notificações: o painel à esquerda das abas (não é uma tela da navegação; abrir() cuida). */
-private const val ROTA_NOTIFICACOES = "notificacoes"
-
-/** Comprovantes: até a 0.12 era uma aba; agora abre pelo botão da barra de cima (ou puxando as Notificações). */
+/** Comprovantes: até a 0.12 era uma aba; agora abre pelas pendências do resumo dos Meus jogos. */
 private const val ROTA_COMPROVANTES = Pendencias.ABA_COMPROVANTES
 
-/** Os Meus jogos e os endereços antigos dos jogos em andamento. */
-private val PARA_OS_MEUS_JOGOS = setOf(ROTA_MEUS_JOGOS, "em-andamento", "nao-sorteados")
+/**
+ * Os Meus jogos e os endereços antigos: os jogos em andamento e as Notificações (saíram na 0.17; as
+ * pendências ficaram no resumo dos Meus jogos e os avisos antigos do celular ainda abrem "notificacoes").
+ */
+private val PARA_OS_MEUS_JOGOS = setOf(ROTA_MEUS_JOGOS, "em-andamento", "nao-sorteados", "notificacoes")
 
 /** Itens dos Ajustes que até a 0.15 tinham tela própria (hoje ficam direto na lista). */
 private val PARA_OS_AJUSTES = setOf("ajustes/teste", "ajustes/atualizacao", "ajustes/creditos")
@@ -239,7 +235,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     val ctx = LocalContext.current
     val escopo = rememberCoroutineScope()
     var sairDoTeste by remember { mutableStateOf(false) }
-    // Contadores da barra de cima das abas: as pendências de agora (refeitas a cada minuto, ex.: virada do dia).
+    // O contador da barra de cima das abas: as pendências de agora (refeitas a cada minuto, ex.: virada do dia).
     val agora by produceState(LocalDateTime.now()) {
         while (true) {
             delay(60_000)
@@ -249,8 +245,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     // Pendências do bolão + avisos dos índices (preço diferente, regras da Caixa que mudaram).
     val avisosIndices by ctx.bolao.indices.avisos.collectAsStateWithLifecycle()
     val pendencias = Pendencias.comAvisosDosIndices(Pendencias.de(estado, agora), avisosIndices)
-    // O sino fica com os avisos; a falta de comprovante, com o botão Comprovantes.
-    val doSino = Pendencias.doSino(pendencias)
+    // O resumo dos Meus jogos: cada tipo de pendência com a quantidade.
+    val resumo = resumoDasPendencias(estado, pendencias)
 
     // Ao abrir: confere os sorteios e os índices na hora (sem esperar a próxima hora).
     LaunchedEffect(Unit) {
@@ -268,33 +264,17 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     /** Vai para a aba [aba] na hora (sem animação), pelo caminho mais curto. */
     suspend fun mostrar(aba: Aba) = paginas.scrollToPage(paginaDa(aba, paginas.currentPage))
     val barra = remember { BarraDaTela() }
-    // As Notificações: o painel à esquerda das abas, que entra e sai acompanhando o dedo, como as abas.
-    val painel = remember { PainelLateral() }
     // Tocar na aba em que já se está: a lista dela volta ao começo (um contador por aba).
     val toques = remember { mutableStateListOf(0, 0, 0) }
 
-    /** Vai para a aba [aba], fechando o que estiver aberto por cima (e as Notificações). */
+    /** Vai para a aba [aba], fechando o que estiver aberto por cima. */
     fun irParaAba(aba: Aba) {
         if (nav.currentBackStackEntry?.destination?.route != ROTA_ABAS) nav.popBackStack(ROTA_ABAS, inclusive = false)
-        painel.fecharJa()
         escopo.launch { mostrar(aba) }
     }
 
-    /** Abre as Notificações por cima da aba de agora (fechando o que estiver aberto por cima das abas). */
-    fun abrirNotificacoes() {
-        if (nav.currentBackStackEntry?.destination?.route != ROTA_ABAS) nav.popBackStack(ROTA_ABAS, inclusive = false)
-        painel.abrirJa()
-    }
-
-    /** Os Comprovantes, a partir das Notificações: elas fecham, e os Comprovantes voltam para a aba de antes delas. */
-    fun abrirComprovantesDasNotificacoes() {
-        painel.fecharJa()
-        nav.navigate(ROTA_COMPROVANTES) { launchSingleTop = true }
-    }
-
-    /** Os Meus jogos (puxando as Notificações para baixo ou pelo bilhete): as Notificações fecham, e eles voltam para a aba de antes delas. */
+    /** Os Meus jogos (a bola da barra de cima ou puxando qualquer aba para baixo): voltam para a tela de antes. */
     fun abrirMeusJogos() {
-        painel.fecharJa()
         nav.navigate(ROTA_MEUS_JOGOS) { launchSingleTop = true }
     }
 
@@ -305,7 +285,6 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             aba != null -> irParaAba(aba)
             r in PARA_A_HOME -> irParaAba(Aba.HOME)
             r == "apostar" -> irParaAba(Aba.JOGOS)
-            r == ROTA_NOTIFICACOES -> abrirNotificacoes()
             r in PARA_OS_MEUS_JOGOS -> abrirMeusJogos()
             r in PARA_OS_AJUSTES -> irParaAba(Aba.AJUSTES)
             else -> nav.navigate(r) { launchSingleTop = true }
@@ -352,11 +331,9 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     val abaAtual = abaDa(paginas.currentPage)
     // A ação que a tela de cima pôs na barra (o "Detalhes →" da página do jogo).
     val acao = barra.acao?.takeIf { !ehAba && it.dono === entrada }
-    // As Notificações abertas (mais da metade na tela, como a página do pager): a barra é delas.
-    val nasNotificacoes = ehAba && painel.aberto
     /** O título da tela [r] (na barra de cima). */
     fun tituloDa(r: String, e: NavBackStackEntry?): String = when (r) {
-        ROTA_ABAS -> if (nasNotificacoes) "Notificações" else abaAtual.rotulo
+        ROTA_ABAS -> abaAtual.rotulo
         ROTA_FILTRO -> "Filtrar"
         ROTA_COMPROVANTES -> "Comprovantes"
         ROTA_MEUS_JOGOS -> "Meus jogos"
@@ -404,13 +381,9 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         if (!naHome && rota !in MANTEM_O_FILTRO) filtro = FiltroHome.padrao(LocalDate.now())
     }
 
-    // Nas Notificações, só o número do que espera comprovante (da Caixa ou dos Pix) e do que espera a conferência.
-    val semComprovante = if (estado.individual) 0 else Operacoes.apostasSemComprovante(estado).size + Operacoes.rateiosSemPix(estado).size
-    val aConferir = if (estado.individual) 0 else Operacoes.apostasParaConferir(estado).size + Operacoes.rateiosParaConferir(estado).size
-    // O número do sino: as linhas das Pendências (os comprovantes contam uma linha cada: os que faltam e os a conferir).
-    val noSino = doSino.size + listOf(semComprovante, aConferir).count { it > 0 }
-    // O número do bilhete (ao lado do sino): os jogos em andamento.
+    // A bola dos Meus jogos: os jogos em andamento dentro dela e, no contador vermelho, as pendências.
     val jogos = quantosEmAndamento(estado, agora.toLocalDate())
+    val noContador = quantasPendencias(resumo)
 
     CompositionLocalProvider(LocalBarraDaTela provides barra) {
     Scaffold(
@@ -427,10 +400,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                         }
                     },
                     acoes = {
-                        // Nas abas: o bilhete dos Meus jogos e o sino das notificações, à direita do título
-                        // (nas Notificações, só o bilhete).
-                        if (ehAba) BotaoMeusJogos(jogos) { abrirMeusJogos() }
-                        if (ehAba && !nasNotificacoes) Sino(noSino) { abrirNotificacoes() }
+                        // Nas abas: a bola dos Meus jogos (com as pendências), à direita do título.
+                        if (ehAba) BotaoMeusJogos(jogos, noContador) { abrirMeusJogos() }
                         // O "Detalhes →" da página do jogo (nos Detalhes, o "Voltar →"), na mesma cor e letra do título.
                         acao?.botao?.let { rotulo ->
                             val cor = MaterialTheme.colorScheme.onSurface
@@ -455,11 +426,6 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                             selected = escolhida,
                             onClick = {
                                 when {
-                                    // Com as Notificações abertas: fecham, e vai para a aba tocada.
-                                    painel.visivel -> {
-                                        painel.fecharJa()
-                                        escopo.launch { mostrar(aba) }
-                                    }
                                     // Já nesta aba: a lista volta ao começo.
                                     abaAtual == aba -> toques[i]++
                                     else -> escopo.launch { mostrar(aba) }
@@ -504,67 +470,38 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         ) {
             // As abas: Home, Jogos e Ajustes, uma do lado da outra (deslizar o dedo troca de aba).
             composable(ROTA_ABAS) {
-                // O voltar do celular numa página que não é a Home volta para a Home; com as Notificações abertas, fecha elas.
-                BackHandler(enabled = abaAtual != Aba.HOME && !painel.visivel) { escopo.launch { mostrar(Aba.HOME) } }
-                BackHandler(enabled = painel.visivel) { painel.fecharJa() }
-                // Puxar qualquer aba para baixo (do alto da lista) abre as Notificações. Para os lados, as
-                // abas giram (da Home para a direita, os Ajustes), com a animação do pager.
-                val puxaoVertical = rememberPuxaoAlemDaBorda(vertical = true, noInicio = { abrirNotificacoes() })
-                Box(Modifier.fillMaxSize().onSizeChanged { painel.largura = it.width.toFloat().coerceAtLeast(1f) }) {
-                    Box(Modifier.fillMaxSize().nestedScroll(puxaoVertical)) {
-                        HorizontalPager(
-                            state = paginas,
-                            flingBehavior = soltarDasPaginas(paginas),
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .acompanharPuxao(puxaoVertical)
-                                .graphicsLayer { translationX = painel.deslocamentoDaAba },
-                        ) { pagina ->
-                            val aba = abaDa(pagina)
-                            when (aba) {
-                                Aba.HOME -> HomeTela(
-                                    estado, visitaDaHome, filtro = filtro, abrir = ::abrir, apostar = { irParaAba(Aba.JOGOS) },
-                                    paraOTopo = toques[aba.ordinal],
-                                )
-                                Aba.JOGOS -> JogosTela(
-                                    estado,
-                                    abrirModalidade = { abrir("modalidade/${it.name}") },
-                                    abrirDetalhes = { abrir("detalhes/${it.name}") },
-                                    paraOTopo = toques[aba.ordinal],
-                                )
-                                Aba.AJUSTES -> AjustesTela(estado, atualizacao, abrir = ::abrir, paraOTopo = toques[aba.ordinal])
-                            }
-                        }
-                        IndicadorDoPuxao(
-                            puxaoVertical, puxando = "Notificações", pronto = "Notificações", icone = Icons.Filled.Notifications,
-                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp),
-                        )
-                    }
-                    // As Notificações: as pendências e os meus jogos, à esquerda da aba. Fecham deslizando o
-                    // dedo para os lados; puxar para baixo de novo troca pelos Meus jogos.
-                    if (painel.visivel) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    translationX = painel.deslocamentoDoPainel
-                                    alpha = 1f - (painel.saida / painel.largura).coerceIn(0f, 1f) * 0.6f
-                                }
-                                .background(MaterialTheme.colorScheme.background),
-                        ) {
-                            NotificacoesTela(
-                                doSino,
-                                estado,
-                                abrir = ::abrir,
-                                abrirComprovantes = if (estado.individual) null else ({ abrirComprovantesDasNotificacoes() }),
-                                abrirMeusJogos = { abrirMeusJogos() },
-                                modifier = Modifier.arrastarPainel(painel),
-                                semComprovante = semComprovante,
-                                aConferir = aConferir,
-                                ativa = painel.aberto,
+                // O voltar do celular numa página que não é a Home volta para a Home.
+                BackHandler(enabled = abaAtual != Aba.HOME) { escopo.launch { mostrar(Aba.HOME) } }
+                // Puxar qualquer aba para baixo (do alto da lista) abre os Meus jogos (até a 0.16, as
+                // Notificações). Para os lados, as abas giram (da Home para a direita, os Ajustes).
+                val puxaoVertical = rememberPuxaoAlemDaBorda(vertical = true, noInicio = { abrirMeusJogos() })
+                Box(Modifier.fillMaxSize().nestedScroll(puxaoVertical)) {
+                    HorizontalPager(
+                        state = paginas,
+                        flingBehavior = soltarDasPaginas(paginas),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .acompanharPuxao(puxaoVertical),
+                    ) { pagina ->
+                        val aba = abaDa(pagina)
+                        when (aba) {
+                            Aba.HOME -> HomeTela(
+                                estado, visitaDaHome, filtro = filtro, abrir = ::abrir, apostar = { irParaAba(Aba.JOGOS) },
+                                paraOTopo = toques[aba.ordinal],
                             )
+                            Aba.JOGOS -> JogosTela(
+                                estado,
+                                abrirModalidade = { abrir("modalidade/${it.name}") },
+                                abrirDetalhes = { abrir("detalhes/${it.name}") },
+                                paraOTopo = toques[aba.ordinal],
+                            )
+                            Aba.AJUSTES -> AjustesTela(estado, atualizacao, abrir = ::abrir, paraOTopo = toques[aba.ordinal])
                         }
                     }
+                    IndicadorDoPuxao(
+                        puxaoVertical, puxando = "Meus jogos", pronto = "Meus jogos", icone = Icones.Bola,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp),
+                    )
                 }
             }
             // Todas as telas por cima das abas voltam puxando para baixo (do alto da lista): o aviso diz
@@ -573,8 +510,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             composable(ROTA_FILTRO) { e ->
                 TelaDeCima(nav, e, ::nomeDaTela) { FiltroTela(estado, filtro, mudar = { filtro = it }, aoFechar = { fechar(nav, e) }) }
             }
-            // Comprovantes (os atalhos das Pendências): voltam para a tela de antes; abertos pelas
-            // Notificações, a de antes delas.
+            // Comprovantes (as pendências do resumo dos Meus jogos): voltam para a tela de antes.
             composable(ROTA_COMPROVANTES) { e ->
                 // A leitura dos comprovantes continua mesmo fechando a tela: o modelo fica com as abas.
                 val dono = remember(e) { nav.getBackStackEntry(ROTA_ABAS) }
@@ -584,11 +520,11 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     }
                 }
             }
-            // Meus jogos (puxando as Notificações para baixo, ou pelo bilhete ao lado do sino).
+            // Meus jogos, com o resumo das pendências (a bola da barra de cima, ou puxando qualquer aba para baixo).
             composable(ROTA_MEUS_JOGOS) { e ->
                 TelaDeCima(nav, e, ::nomeDaTela) {
                     Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) {
-                        MeusJogosTela(estado, abrir = ::abrir, apostar = { irParaAba(Aba.JOGOS) })
+                        MeusJogosTela(estado, resumo, abrir = ::abrir, apostar = { irParaAba(Aba.JOGOS) })
                     }
                 }
             }
@@ -670,7 +606,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             onDismissRequest = { Toque.parar() },
             icon = { Icon(Icons.Filled.Notifications, contentDescription = null, tint = AmareloSino) },
             title = { Text("Prêmio principal!") },
-            text = { Text("Uma aposta acertou o prêmio principal. Veja em Notificações ou no Histórico.") },
+            text = { Text("Uma aposta acertou o prêmio principal. Veja no Histórico.") },
             confirmButton = { TextButton(onClick = { Toque.parar() }) { Text("Parar o toque") } },
         )
     }
@@ -737,48 +673,28 @@ private fun PaginaDaAposta(estado: Estado, id: String, abrir: (String) -> Unit, 
 /** Tamanho dos ícones das 3 abas da barra de baixo (o padrão é 24dp). */
 private val ICONE_DA_ABA = 31.dp
 
-/** Tamanho do sino da barra de cima (até a 0.14, 30dp). */
-private val TAMANHO_DO_SINO = 38.dp
-
-/** Tamanho do bilhete dos Meus jogos (ao lado do sino). */
-private val TAMANHO_DO_BILHETE = 34.dp
+/** Tamanho da bola dos Meus jogos na barra de cima (até a 0.16, um bilhete de 34dp ao lado do sino de 38dp). */
+private val TAMANHO_DA_BOLA = 38.dp
 
 /**
- * O bilhete dos Meus jogos (na barra de cima das abas, ao lado do sino): azul, com o número de jogos
- * em andamento num contador azul (com um contorno da cor do fundo, para se separar do bilhete).
+ * A bola dos Meus jogos (na barra de cima das abas; até a 0.16 eram o bilhete e o sino): a bola
+ * dourada com o número de jogos em andamento e, no canto, o contador vermelho das pendências.
  */
 @Composable
-private fun BotaoMeusJogos(jogos: Int, aoTocar: () -> Unit) {
-    IconButton(onClick = aoTocar, modifier = Modifier.size(56.dp)) {
-        BadgedBox(badge = {
-            if (jogos > 0) {
-                val cor = corAguardando()
-                Badge(
-                    containerColor = cor,
-                    contentColor = if (cor.luminance() > 0.5f) Color.Black else Color.White,
-                    modifier = Modifier.border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
-                ) {
-                    Text(if (jogos > 99) "99+" else jogos.toString(), fontWeight = FontWeight.Bold)
-                }
-            }
-        }) {
-            Icon(Icons.Filled.ConfirmationNumber, contentDescription = "Meus jogos", tint = corAguardando(), modifier = Modifier.size(TAMANHO_DO_BILHETE))
-        }
-    }
-}
-
-/** O sino das notificações (na barra de cima das abas): todo amarelo, com o contador vermelho de pendências. */
-@Composable
-private fun Sino(pendencias: Int, aoTocar: () -> Unit) {
-    IconButton(onClick = aoTocar, modifier = Modifier.size(56.dp)) {
+private fun BotaoMeusJogos(jogos: Int, pendencias: Int, aoTocar: () -> Unit) {
+    IconButton(onClick = aoTocar, modifier = Modifier.size(58.dp).semantics(mergeDescendants = true) { contentDescription = "Meus jogos" }) {
         BadgedBox(badge = {
             if (pendencias > 0) {
-                Badge(containerColor = Barra.contador, contentColor = Color.White) {
+                Badge(
+                    containerColor = Barra.contador,
+                    contentColor = Color.White,
+                    modifier = Modifier.border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
+                ) {
                     Text(if (pendencias > 99) "99+" else pendencias.toString(), fontWeight = FontWeight.Bold)
                 }
             }
         }) {
-            Icon(Icons.Filled.Notifications, contentDescription = "Notificações", tint = AmareloSino, modifier = Modifier.size(TAMANHO_DO_SINO))
+            BolaDosMeusJogos(jogos, TAMANHO_DA_BOLA)
         }
     }
 }
