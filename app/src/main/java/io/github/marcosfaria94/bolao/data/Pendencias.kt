@@ -13,7 +13,7 @@ import java.time.YearMonth
 
 /**
  * Uma pendência: algo que o Administrador precisa fazer para o bolão ficar em dia. Desde a 0.17
- * ficam no resumo dos Meus jogos (as Notificações saíram), contadas por tipo. Tocar leva à tela que resolve.
+ * ficam no resumo do Painel de Jogos (as Notificações saíram), contadas por tipo. Tocar leva à tela que resolve.
  */
 data class Pendencia(
     /** Identifica a pendência (evita repetir o aviso no celular). */
@@ -238,7 +238,7 @@ object Pendencias {
     /**
      * As pendências do bolão mais os avisos dos índices (preço de Ajustes diferente do dos
      * parâmetros, regras da Caixa que mudaram), a mais recente primeiro. Os avisos dos índices
-     * ficam só no app, no resumo dos Meus jogos (não vão para o celular).
+     * ficam só no app, no resumo do Painel de Jogos (não vão para o celular).
      */
     fun comAvisosDosIndices(pendencias: List<Pendencia>, avisos: List<Indices.Aviso>, fuso: ZoneId = ZoneId.systemDefault()): List<Pendencia> {
         if (avisos.isEmpty()) return pendencias

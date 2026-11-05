@@ -1,11 +1,11 @@
-package io.github.marcosfaria94.bolao.ui.meusjogos
+package io.github.marcosfaria94.bolao.ui.painel
 
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.Pendencia
 import io.github.marcosfaria94.bolao.data.Pendencias
 
-/** Os tipos de pendência do resumo dos Meus jogos, na ordem em que aparecem. */
+/** Os tipos de pendência do resumo do Painel de Jogos, na ordem em que aparecem. */
 enum class TipoDoResumo(val rotulo: String) {
     REGISTRAR("Falta registrar"),
     SEM_COMPROVANTE("Sem comprovante"),
@@ -22,7 +22,7 @@ enum class TipoDoResumo(val rotulo: String) {
 data class ItemDoResumo(val tipo: TipoDoResumo, val quantidade: Int, val destino: String)
 
 /**
- * O resumo das pendências (o alto dos Meus jogos, desde que as Notificações saíram, na 0.17): cada
+ * O resumo das pendências (o alto do Painel de Jogos, desde que as Notificações saíram, na 0.17): cada
  * tipo com a quantidade, só os que têm alguma. Os comprovantes que faltam e os que esperam a
  * conferência abrem os Comprovantes; os envios, o comprovante (um só) ou os Comprovantes (vários); o
  * resto, a tela da primeira pendência daquele tipo (a mais antiga).
@@ -48,5 +48,5 @@ fun resumoDasPendencias(e: Estado, pendencias: List<Pendencia>): List<ItemDoResu
     )
 }
 
-/** O número do botão dos Meus jogos (na barra de cima): a soma das pendências do resumo. */
+/** O número do botão do Painel de Jogos (na barra de cima): a soma das pendências do resumo. */
 fun quantasPendencias(resumo: List<ItemDoResumo>): Int = resumo.sumOf { it.quantidade }

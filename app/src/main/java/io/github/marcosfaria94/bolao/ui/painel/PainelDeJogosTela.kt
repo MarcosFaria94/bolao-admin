@@ -1,4 +1,4 @@
-package io.github.marcosfaria94.bolao.ui.meusjogos
+package io.github.marcosfaria94.bolao.ui.painel
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -46,7 +45,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -78,7 +76,6 @@ import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
 import io.github.marcosfaria94.bolao.ui.comum.Icones
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
-import io.github.marcosfaria94.bolao.ui.comum.bola3D
 import io.github.marcosfaria94.bolao.ui.home.GrupoEmAndamento
 import io.github.marcosfaria94.bolao.ui.home.emOrdemDeSorteioEK1
 import io.github.marcosfaria94.bolao.ui.home.jogosEmAndamento
@@ -95,43 +92,120 @@ import io.github.marcosfaria94.bolao.ui.tema.corEntrada
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import io.github.marcosfaria94.bolao.ui.tema.corRateio
 import java.time.LocalDate
+import android.content.Context
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.runtime.rememberCoroutineScope
+import io.github.marcosfaria94.bolao.imagem.ImagemDosJogos
+import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
-/** Endereço da tela Meus jogos (o botão da bola na barra de cima, ou puxar qualquer aba para baixo). */
-const val ROTA_MEUS_JOGOS = "meus-jogos"
+/** Endereço da tela Painel de Jogos (o botão da bola na barra de cima, ou puxar qualquer aba para baixo). */
+const val ROTA_PAINEL = "meus-jogos"
 
 /**
- * Meus jogos (desde a 0.17, também o lugar das pendências: as Notificações saíram). No alto, o resumo:
- * cada pendência com a quantidade, num quadrinho que abre a tela que resolve ([resumo]), e quantos
- * jogos estão em andamento e quantos OK. Depois, os jogos em andamento (registrados esperando o sorteio
- * e os que falta registrar), um cartão por modalidade e concurso: o sorteio mais próximo primeiro e,
- * no mesmo dia, o maior k1. No cartão, a bola (sigla e concurso, como nas outras telas), o nome, o k1,
- * o k2 e as odds do concurso, o sorteio e o prêmio estimado; e cada aposta com as dezenas em bolas
- * coloridas (como no volante) e, à direita, OK ou Pendente. Tocar numa aposta abre a página dela; sem
- * jogos, o "Apostar" vai para os Jogos ([apostar]). A raiz cuida de voltar (puxando para baixo ou
- * deslizando para o lado).
+ * Painel de Jogos (até a 0.17, "Meus jogos"; desde a 0.17, também o lugar das pendências: as
+ * Notificações saíram). No alto, as pendências (desde a 0.18, uma lista compacta): cada tipo numa linha
+ * com o ícone, o nome e a quantidade, que abre a tela que resolve ([resumo]), e quantos jogos estão em
+ * andamento e quantos OK. Depois, o título "JOGOS EM ANDAMENTO" (com o "Compartilhar jogos", que manda
+ * uma imagem leve com as apostas registradas) e os jogos num bloco só, uma linha entre um concurso e
+ * outro (registrados esperando o sorteio e os que falta registrar): o sorteio mais próximo primeiro e,
+ * no mesmo dia, o maior k1. Em cada concurso, a bola (sigla e concurso, como nas outras telas), o nome,
+ * o k1, o k2 e as odds, o sorteio e o prêmio estimado; e cada aposta com as dezenas em bolas coloridas
+ * (como no volante) e, à direita, OK ou Pendente. Tocar numa aposta abre a página dela; sem jogos, o
+ * "Apostar" vai para os Jogos ([apostar]). A raiz cuida de voltar (puxando para baixo ou deslizando
+ * para o lado).
  */
 @Composable
-fun MeusJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String) -> Unit, apostar: () -> Unit) {
+fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String) -> Unit, apostar: () -> Unit) {
     val ctx = LocalContext.current
-    // Com o resumo na tela, o aviso "Ação necessária" do celular já cumpriu o papel.
+    // Com as pendências na tela, o aviso "Ação necessária" do celular já cumpriu o papel.
     LaunchedEffect(Unit) { Notificador.limparAcoes(ctx) }
     val itens by ctx.bolao.indices.itens.collectAsStateWithLifecycle()
     val hoje = LocalDate.now()
     val grupos = emOrdemDeSorteioEK1(jogosEmAndamento(estado, hoje)) { k1DoConcurso(itens[it.modalidade], it.concurso) }
     val todas = grupos.flatMap { it.apostas }
     val ok = todas.count { pendenciaDoJogo(estado, it) == null }
+    // O "Compartilhar jogos" manda só as apostas registradas (as que falta registrar ainda não valem).
+    val registradas = todas.filter { it.registrada }
+    val escopo = rememberCoroutineScope()
 
     LazyColumn(
         contentPadding = PaddingTela,
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
         item(key = "resumo") { CartaoDoResumo(resumo, todas.size, ok, abrir) }
+        item(key = "titulo-jogos") {
+            TituloDosJogos(compartilhar = if (registradas.isEmpty()) null else {
+                { escopo.launch { compartilharJogos(ctx, registradas) } }
+            })
+        }
         if (grupos.isEmpty()) {
             item(key = "vazio") { Vazio(apostar) }
         } else {
-            items(grupos, key = { "${it.modalidade.name}-${it.concurso}-${it.sorteio}" }) { g ->
-                CartaoDoConcurso(estado, g, itens[g.modalidade], hoje, abrir)
+            item(key = "jogos") {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    grupos.forEachIndexed { i, g ->
+                        // Uma linha entre um concurso e outro (mais forte que a linha entre as apostas).
+                        if (i > 0) HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
+                        BlocoDoConcurso(estado, g, itens[g.modalidade], hoje, abrir)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Gera a imagem dos jogos (leve, em PNG) e abre o compartilhamento do Android (WhatsApp, Telegram...).
+ * No modo de teste a imagem diz que é um teste.
+ */
+private suspend fun compartilharJogos(ctx: Context, apostas: List<Aposta>) {
+    val arquivo = withContext(Dispatchers.Default) {
+        ImagemDosJogos.salvar(ctx, apostas, LocalDate.now(), ctx.bolao.repo.emTeste, File(Compartilhar.pastaTemporaria(ctx), "jogos.png"))
+    }
+    Compartilhar.enviarArquivo(ctx, Compartilhar.uri(ctx, arquivo), "image/png", "Compartilhar jogos")
+}
+
+/**
+ * O título dos jogos ("JOGOS EM ANDAMENTO", como os grupos dos Ajustes), separando-os das pendências; à
+ * direita, o "Compartilhar jogos" (só com alguma aposta registrada).
+ */
+@Composable
+private fun TituloDosJogos(compartilhar: (() -> Unit)?) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 40.dp),
+    ) {
+        Text(
+            "JOGOS EM ANDAMENTO",
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp, letterSpacing = 0.8.sp),
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(start = 16.dp, end = 8.dp),
+        )
+        if (compartilhar != null) {
+            FilledTonalButton(
+                onClick = compartilhar,
+                contentPadding = PaddingValues(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                modifier = Modifier.heightIn(min = 40.dp),
+            ) {
+                Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("Compartilhar jogos", style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.5.sp), maxLines = 1, softWrap = false)
             }
         }
     }
@@ -166,8 +240,9 @@ private fun visualDo(tipo: TipoDoResumo): Pair<ImageVector, Color> = when (tipo)
 }
 
 /**
- * O resumo: "Resumo" e, à direita, quantos jogos e quantos OK; embaixo, cada pendência num quadrinho
- * (o ícone, a quantidade e o nome), dois por linha. Sem pendência, "Tudo em dia".
+ * As pendências (desde a 0.18, uma lista compacta; na 0.17 eram quadrinhos): "Pendências" e, à direita,
+ * quantos jogos e quantos OK; embaixo, uma linha por tipo (o ícone, o nome, a quantidade e a seta), que
+ * abre a tela que resolve. Sem pendência, "Tudo em dia".
  */
 @Composable
 private fun CartaoDoResumo(resumo: List<ItemDoResumo>, jogos: Int, ok: Int, abrir: (String) -> Unit) {
@@ -176,74 +251,67 @@ private fun CartaoDoResumo(resumo: List<ItemDoResumo>, jogos: Int, ok: Int, abri
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Resumo",
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 23.sp),
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    (if (jogos == 1) "1 jogo" else "$jogos jogos") + if (jogos > 0) " · $ok OK" else "",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp)) {
+            Text(
+                "Pendências",
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 23.sp),
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                (if (jogos == 1) "1 jogo" else "$jogos jogos") + if (jogos > 0) " · $ok OK" else "",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        if (resumo.isEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 16.dp)) {
+                Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = corOk(), modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Tudo em dia: nenhuma pendência.", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp))
             }
-            if (resumo.isEmpty()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = corOk(), modifier = Modifier.size(24.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text("Tudo em dia: nenhuma pendência.", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp))
-                }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    resumo.chunked(2).forEach { linha ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                            linha.forEach { item -> Quadrinho(item) { abrir(item.destino) } }
-                            if (linha.size == 1) Spacer(Modifier.weight(1f))
-                        }
-                    }
-                }
+        } else {
+            resumo.forEachIndexed { i, item ->
+                if (i > 0) HorizontalDivider(Modifier.padding(start = 62.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                LinhaDoResumo(item) { abrir(item.destino) }
             }
+            Spacer(Modifier.height(6.dp))
         }
     }
 }
 
-/** Uma pendência do resumo: o ícone num círculo e a quantidade (grande) em cima; o nome embaixo. */
+/** Uma pendência: o ícone num círculo colorido, o nome, a quantidade (na cor) e a seta. */
 @Composable
-private fun RowScope.Quadrinho(item: ItemDoResumo, aoTocar: () -> Unit) {
+private fun LinhaDoResumo(item: ItemDoResumo, aoTocar: () -> Unit) {
     val (icone, cor) = visualDo(item.tipo)
-    Column(
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .weight(1f)
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .fillMaxWidth()
             .clickable(onClickLabel = "Resolver: ${item.tipo.rotulo}", onClick = aoTocar)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .heightIn(min = 52.dp)
+            .padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(36.dp).background(cor.copy(alpha = 0.16f), CircleShape), contentAlignment = Alignment.Center) {
-                Icon(icone, contentDescription = null, tint = cor, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.weight(1f))
-            Text(
-                if (item.quantidade > 99) "99+" else item.quantidade.toString(),
-                fontSize = 26.sp,
-                lineHeight = 30.sp,
-                fontWeight = FontWeight.Bold,
-                color = cor,
-            )
+        Box(Modifier.size(32.dp).background(cor.copy(alpha = 0.16f), CircleShape), contentAlignment = Alignment.Center) {
+            Icon(icone, contentDescription = null, tint = cor, modifier = Modifier.size(18.dp))
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.width(14.dp))
         Text(
             item.tipo.rotulo,
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 18.sp),
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 21.sp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
+        Text(
+            if (item.quantidade > 99) "99+" else item.quantidade.toString(),
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, lineHeight = 21.sp),
+            fontWeight = FontWeight.Bold,
+            color = cor,
+        )
+        Spacer(Modifier.width(4.dp))
+        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -258,16 +326,12 @@ private fun premioDoConcurso(g: GrupoEmAndamento, item: Indices.Item?): String {
 }
 
 /**
- * Um concurso: a bola (sigla e concurso), o nome e os índices; o sorteio e o prêmio; e as apostas,
- * cada uma com as dezenas em bolas e OK ou Pendente.
+ * Um concurso (dentro do bloco dos jogos): a bola (sigla e concurso), o nome e os índices; o sorteio e
+ * o prêmio; e as apostas, cada uma com as dezenas em bolas e OK ou Pendente.
  */
 @Composable
-private fun CartaoDoConcurso(estado: Estado, g: GrupoEmAndamento, item: Indices.Item?, hoje: LocalDate, abrir: (String) -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+private fun BlocoDoConcurso(estado: Estado, g: GrupoEmAndamento, item: Indices.Item?, hoje: LocalDate, abrir: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp)) {
             EmblemaModalidade(g.modalidade, g.concurso.takeIf { it > 0 }, tamanho = 58.dp)
             Spacer(Modifier.width(14.dp))
@@ -290,7 +354,7 @@ private fun CartaoDoConcurso(estado: Estado, g: GrupoEmAndamento, item: Indices.
             Informacao(Icons.Outlined.EmojiEvents, "Prêmio estimado", premioDoConcurso(g, item))
         }
         g.apostas.forEach { a ->
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
             LinhaDaAposta(a, ok = pendenciaDoJogo(estado, a) == null) { abrir("aposta/${a.id}") }
         }
     }
@@ -472,23 +536,15 @@ private fun Vazio(apostar: () -> Unit) {
 }
 
 /**
- * O ícone dos Meus jogos (na barra de cima das abas; até a 0.16 era um bilhete): uma bola 3D dourada,
- * como as das loterias, com o número de jogos em andamento no círculo branco do meio.
+ * O ícone do Painel de Jogos (na barra de cima das abas; desde a 0.18, no lugar da bola dourada): um
+ * quadrado azul-marinho de cantos arredondados com o painel (os 4 blocos) em dourado.
  */
 @Composable
-fun BolaDosMeusJogos(jogos: Int, tamanho: Dp = 36.dp, modifier: Modifier = Modifier) {
-    Box(modifier.size(tamanho).bola3D(Dourado), contentAlignment = Alignment.Center) {
-        Box(Modifier.size(tamanho * 0.58f).background(Color.White, CircleShape), contentAlignment = Alignment.Center) {
-            val letra = (tamanho * if (jogos > 9) 0.29f else 0.36f).emSp()
-            Text(
-                if (jogos > 99) "99" else jogos.toString(),
-                color = AzulMarinho,
-                fontSize = letra,
-                lineHeight = letra,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-                softWrap = false,
-            )
-        }
+fun IconeDoPainel(tamanho: Dp = 38.dp, modifier: Modifier = Modifier) {
+    Box(
+        modifier.size(tamanho).background(AzulMarinho, RoundedCornerShape(tamanho * 0.29f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icones.Painel, contentDescription = null, tint = Dourado, modifier = Modifier.size(tamanho * 0.72f))
     }
 }

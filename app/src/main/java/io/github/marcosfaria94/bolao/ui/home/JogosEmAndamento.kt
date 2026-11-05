@@ -38,7 +38,7 @@ fun jogosEmAndamento(e: Estado, hoje: LocalDate): List<GrupoEmAndamento> =
         )
 
 /**
- * Os grupos na ordem dos Meus jogos: o sorteio mais próximo primeiro (sem data no fim) e, no mesmo dia,
+ * Os grupos na ordem do Painel de Jogos: o sorteio mais próximo primeiro (sem data no fim) e, no mesmo dia,
  * o maior k1 do concurso ([k1]; sem k1, depois).
  */
 fun emOrdemDeSorteioEK1(grupos: List<GrupoEmAndamento>, k1: (GrupoEmAndamento) -> Double?): List<GrupoEmAndamento> =
@@ -54,7 +54,7 @@ fun emOrdemDeSorteioEK1(grupos: List<GrupoEmAndamento>, k1: (GrupoEmAndamento) -
 fun quantosEmAndamento(e: Estado, hoje: LocalDate): Int = jogosEmAndamento(e, hoje).sumOf { it.apostas.size }
 
 /**
- * O que ainda falta numa aposta em andamento (o "Pendente" dos Meus jogos), ou null quando ela está
+ * O que ainda falta numa aposta em andamento (o "Pendente" do Painel de Jogos), ou null quando ela está
  * OK: registrada, com o comprovante da Caixa conferido e (no bolão) o comprovante enviado ao grupo.
  */
 fun pendenciaDoJogo(e: Estado, a: Aposta): String? = when {
@@ -65,7 +65,7 @@ fun pendenciaDoJogo(e: Estado, a: Aposta): String? = when {
     else -> null
 }
 
-/** O jogo numa linha, para os Meus jogos: as dezenas (ou quantas são), os trevos, o time, o mês, o bilhete. */
+/** O jogo numa linha, para o Painel de Jogos: as dezenas (ou quantas são), os trevos, o time, o mês, o bilhete. */
 fun resumoDoJogo(a: Aposta): String {
     val m = a.modalidade
     return when (m.formato) {

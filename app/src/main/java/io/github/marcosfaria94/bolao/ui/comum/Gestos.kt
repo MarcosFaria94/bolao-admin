@@ -98,6 +98,46 @@ fun Modifier.deslizarParaFechar(aoFechar: () -> Unit): Modifier = composed {
         }
 }
 
+/**
+ * Deslizar o dedo para os lados dispara [aoDeslizar] sem a tela acompanhar o dedo (sem prévia): ao
+ * passar do limite (a mesma fração da largura do [deslizarParaFechar]), na hora; ou ao soltar, num
+ * deslize rápido. Uma vez por gesto. A rolagem para cima e para baixo continua. (A lista dos times da
+ * Timemania, desde a 0.18: fecha gravando o time marcado.)
+ */
+fun Modifier.deslizarParaOsLados(aoDeslizar: () -> Unit): Modifier = composed {
+    val acao by rememberUpdatedState(aoDeslizar)
+    var largura by remember { mutableFloatStateOf(1f) }
+    val rastreador = remember { VelocityTracker() }
+    this
+        .onSizeChanged { largura = it.width.toFloat().coerceAtLeast(1f) }
+        .pointerInput(Unit) {
+            var andado = 0f
+            var feito = false
+            detectHorizontalDragGestures(
+                onDragStart = {
+                    rastreador.resetTracking()
+                    andado = 0f
+                    feito = false
+                },
+                onDragEnd = {
+                    val velocidade = rastreador.calculateVelocity().x
+                    if (!feito && andado != 0f && abs(velocidade) > VELOCIDADE_PARA_FECHAR && sign(velocidade) == sign(andado)) {
+                        feito = true
+                        acao()
+                    }
+                },
+            ) { mudanca, dx ->
+                mudanca.consume()
+                rastreador.addPosition(mudanca.uptimeMillis, mudanca.position)
+                andado += dx
+                if (!feito && abs(andado) > largura * FRACAO_PARA_FECHAR) {
+                    feito = true
+                    acao()
+                }
+            }
+        }
+}
+
 /** Puxar a tela mais do que isto da largura fecha (ou um puxão rápido). Até a 0.15, 30%. */
 private const val FRACAO_PARA_FECHAR = 0.2f
 
@@ -199,7 +239,7 @@ class PuxaoAlemDaBorda(
 val LIMITE_DO_PUXAO = 56.dp
 
 /**
- * Para cima e para baixo (abrir os Meus jogos, voltar puxando para baixo): a 0.15
+ * Para cima e para baixo (abrir o Painel de Jogos, voltar puxando para baixo): a 0.15
  * deixou mais difícil (96dp, puxão rápido com 60% do caminho a 2600 px/s) e ficou pesado; a 0.16
  * alivia, mas o puxão rápido ainda pede boa parte do caminho, para não abrir sem querer ao rolar a lista.
  */

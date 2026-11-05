@@ -42,7 +42,7 @@ import kotlin.math.roundToLong
  *
  * Desde a 0.7: o cálculo usa o preço de Ajustes (não o do arquivo), avisa quando os dois são
  * diferentes e, a cada concurso novo, confere o rateio pago pela Caixa com as regras do arquivo
- * (AuditoriaRegras): 3 concursos seguidos fora das regras viram um aviso no resumo dos Meus jogos.
+ * (AuditoriaRegras): 3 concursos seguidos fora das regras viram um aviso no resumo do Painel de Jogos.
  */
 class Indices(private val context: Context) {
 
@@ -69,7 +69,7 @@ class Indices(private val context: Context) {
             get() = precoAjustes != null && precoParametros != null && precoAjustes != precoParametros
     }
 
-    /** Aviso dos índices para o resumo dos Meus jogos e o topo da lista de Jogos. */
+    /** Aviso dos índices para o resumo do Painel de Jogos e o topo da lista de Jogos. */
     data class Aviso(
         val chave: String,
         val modalidade: Modalidade,

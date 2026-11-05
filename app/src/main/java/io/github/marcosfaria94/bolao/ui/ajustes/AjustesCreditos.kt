@@ -52,6 +52,15 @@ import androidx.core.graphics.drawable.toBitmap
 import io.github.marcosfaria94.bolao.data.NOME_DO_APP
 import io.github.marcosfaria94.bolao.net.Atualizador
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaIcone
+import io.github.marcosfaria94.bolao.ui.tema.Dourado
+import io.github.marcosfaria94.bolao.ui.tema.AzulMarinho
+import io.github.marcosfaria94.bolao.ui.comum.copiar
+import io.github.marcosfaria94.bolao.ui.comum.Desenhos
+import androidx.compose.material.icons.outlined.VolunteerActivism
+import androidx.compose.material.icons.outlined.Check
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.Button
 
 /** O app do Claude na Google Play. */
 private const val PACOTE_CLAUDE = "com.anthropic.claude"
@@ -70,10 +79,24 @@ private val TECNOLOGIA = listOf(
 )
 
 /**
- * Os Créditos, no rodapé da lista dos Ajustes (até a 0.15 eram uma tela): "Criado com Claude", em
- * destaque e no centro (desde a 0.17 maior, numa pílula com o contorno na cor do Claude; com o ícone
- * do app do Claude, quando ele está instalado; tocar abre a página dele na Google Play), o nome do app
- * com a versão instalada e o botão discreto "Tecnologia", que mostra (ou esconde) a tecnologia ali mesmo.
+ * O "Apoie" do rodapé dos Ajustes (desde a 0.18): o texto, o nome e a chave Pix do Administrador; o
+ * botão copia a chave.
+ */
+internal const val APOIE_TEXTO =
+    "Gratuito e sem anúncios, sempre. Fique à vontade para retribuir com qualquer valor. Toda doação é bem-vinda."
+internal const val APOIE_NOME = "Marcos de Faria Valadares"
+internal const val APOIE_PIX = "pixfacil@aol.com"
+
+/** Quanto tempo o botão "Apoie" mostra "Pix copiado" depois do toque. */
+private const val COPIADO_MS = 2500L
+
+/**
+ * Os Créditos, no rodapé da lista dos Ajustes (até a 0.15 eram uma tela). Primeiro o "Apoie" (desde a
+ * 0.18): a xícara de café sorrindo, o texto, o nome e a chave Pix, e o botão que copia a chave. Depois,
+ * "Criado com" e, embaixo, "Claude", em destaque e no centro (numa pílula com o contorno na cor do
+ * Claude; com o ícone do app do Claude, quando ele está instalado; tocar abre a página dele na Google
+ * Play), o nome do app com a versão instalada e o botão discreto "Tecnologia", que mostra (ou esconde)
+ * a tecnologia ali mesmo.
  */
 @Composable
 internal fun CreditosNoRodape() {
@@ -85,32 +108,37 @@ internal fun CreditosNoRodape() {
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth().padding(top = 30.dp),
     ) {
-        val pilula = RoundedCornerShape(50)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        Apoie()
+        Spacer(Modifier.height(22.dp))
+        val pilula = RoundedCornerShape(28.dp)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .clip(pilula)
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .border(1.5.dp, LARANJA_CLAUDE.copy(alpha = 0.55f), pilula)
                 .clickable(onClickLabel = "Abrir o Claude na Google Play") { abrirClaudeNaLoja(ctx) }
-                .padding(start = 22.dp, end = 24.dp, top = 12.dp, bottom = 12.dp),
+                .padding(start = 30.dp, end = 32.dp, top = 12.dp, bottom = 14.dp),
         ) {
+            // Duas linhas: "Criado com" em cima e o Claude (com o ícone) embaixo.
             Text("Criado com", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp, lineHeight = 24.sp), color = MaterialTheme.colorScheme.onSurface)
-            Spacer(Modifier.width(10.dp))
-            if (icone != null) {
-                Image(icone, contentDescription = null, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)))
-            } else {
-                EmblemaIcone(Icons.Outlined.AutoAwesome, LARANJA_CLAUDE, 32.dp)
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (icone != null) {
+                    Image(icone, contentDescription = null, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)))
+                } else {
+                    EmblemaIcone(Icons.Outlined.AutoAwesome, LARANJA_CLAUDE, 32.dp)
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Claude",
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 27.sp,
+                    lineHeight = 32.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "Claude",
-                fontFamily = FontFamily.Serif,
-                fontSize = 27.sp,
-                lineHeight = 32.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
         }
         Spacer(Modifier.height(10.dp))
         Text(
@@ -169,3 +197,59 @@ fun abrirClaudeNaLoja(ctx: Context) {
         }
     }
 }
+
+/**
+ * O "Apoie": a xícara de café sorrindo, o texto, o nome e a chave Pix, e o botão dourado que copia a
+ * chave (a partir do Android 13 o sistema confirma a cópia; o botão também mostra "Pix copiado").
+ */
+@Composable
+private fun Apoie() {
+    val ctx = LocalContext.current
+    var copiado by remember { mutableStateOf(false) }
+    LaunchedEffect(copiado) {
+        if (copiado) {
+            delay(COPIADO_MS)
+            copiado = false
+        }
+    }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
+        ) {
+            Image(Desenhos.Xicara, contentDescription = "Xícara de café sorrindo", modifier = Modifier.size(84.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(
+                APOIE_TEXTO,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 21.sp),
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(APOIE_NOME, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp), fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+            Text(APOIE_PIX, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = {
+                    copiar(ctx, "Chave Pix", APOIE_PIX)
+                    copiado = true
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Dourado, contentColor = AzulMarinho),
+                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
+                modifier = Modifier.height(52.dp),
+            ) {
+                Icon(
+                    if (copiado) Icons.Outlined.Check else Icons.Outlined.VolunteerActivism,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(if (copiado) "Pix copiado" else "Apoie", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+

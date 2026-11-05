@@ -29,12 +29,11 @@ import io.github.marcosfaria94.bolao.ui.comum.rememberPuxaoAlemDaBorda
 import io.github.marcosfaria94.bolao.ui.tema.AmareloSino
 import io.github.marcosfaria94.bolao.ui.comum.PuxarParaVoltar
 import io.github.marcosfaria94.bolao.ui.comum.soltarDasPaginas
-import io.github.marcosfaria94.bolao.ui.home.quantosEmAndamento
-import io.github.marcosfaria94.bolao.ui.meusjogos.MeusJogosTela
-import io.github.marcosfaria94.bolao.ui.meusjogos.ROTA_MEUS_JOGOS
-import io.github.marcosfaria94.bolao.ui.meusjogos.BolaDosMeusJogos
-import io.github.marcosfaria94.bolao.ui.meusjogos.quantasPendencias
-import io.github.marcosfaria94.bolao.ui.meusjogos.resumoDasPendencias
+import io.github.marcosfaria94.bolao.ui.painel.PainelDeJogosTela
+import io.github.marcosfaria94.bolao.ui.painel.ROTA_PAINEL
+import io.github.marcosfaria94.bolao.ui.painel.IconeDoPainel
+import io.github.marcosfaria94.bolao.ui.painel.quantasPendencias
+import io.github.marcosfaria94.bolao.ui.painel.resumoDasPendencias
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.border
@@ -159,12 +158,12 @@ private fun paginaDa(aba: Aba, atual: Int): Int {
     return atual + if (d > n / 2) d - n else d
 }
 
-/** Telas que não limpam o filtro do Histórico: o próprio "Filtrar", os Comprovantes e os Meus jogos. */
-private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_MEUS_JOGOS)
+/** Telas que não limpam o filtro do Histórico: o próprio "Filtrar", os Comprovantes e o Painel de Jogos. */
+private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_PAINEL)
 
 /** Telas sem a seta de voltar na barra de cima (fecham deslizando o dedo, puxando para baixo ou pelo voltar do celular). */
 private val SEM_SETA = setOf(
-    "aporte", "rateio", "extrato", "extrato/{mes}", ROTA_FILTRO, "saldo", ROTA_COMPROVANTES, ROTA_MEUS_JOGOS, ROTA_SECAO_AJUSTES, "integridade",
+    "aporte", "rateio", "extrato", "extrato/{mes}", ROTA_FILTRO, "saldo", ROTA_COMPROVANTES, ROTA_PAINEL, ROTA_SECAO_AJUSTES, "integridade",
 )
 
 /** A página do jogo (o volante, a aposta aberta ou os Detalhes): o título "← Voltar" também volta. */
@@ -174,14 +173,14 @@ private val ROTAS_DO_JOGO = setOf("modalidade/{nome}", "nova/{nome}", "detalhes/
 private const val ROTA_ABAS = "abas"
 private const val ROTA_FILTRO = "filtro"
 
-/** Comprovantes: até a 0.12 era uma aba; agora abre pelas pendências do resumo dos Meus jogos. */
+/** Comprovantes: até a 0.12 era uma aba; agora abre pelas pendências do resumo do Painel de Jogos. */
 private const val ROTA_COMPROVANTES = Pendencias.ABA_COMPROVANTES
 
 /**
- * Os Meus jogos e os endereços antigos: os jogos em andamento e as Notificações (saíram na 0.17; as
- * pendências ficaram no resumo dos Meus jogos e os avisos antigos do celular ainda abrem "notificacoes").
+ * O Painel de Jogos e os endereços antigos: os jogos em andamento e as Notificações (saíram na 0.17; as
+ * pendências ficaram no resumo do Painel de Jogos e os avisos antigos do celular ainda abrem "notificacoes").
  */
-private val PARA_OS_MEUS_JOGOS = setOf(ROTA_MEUS_JOGOS, "em-andamento", "nao-sorteados", "notificacoes")
+private val PARA_O_PAINEL = setOf(ROTA_PAINEL, "em-andamento", "nao-sorteados", "notificacoes")
 
 /** Itens dos Ajustes que até a 0.15 tinham tela própria (hoje ficam direto na lista). */
 private val PARA_OS_AJUSTES = setOf("ajustes/teste", "ajustes/atualizacao", "ajustes/creditos")
@@ -245,7 +244,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     // Pendências do bolão + avisos dos índices (preço diferente, regras da Caixa que mudaram).
     val avisosIndices by ctx.bolao.indices.avisos.collectAsStateWithLifecycle()
     val pendencias = Pendencias.comAvisosDosIndices(Pendencias.de(estado, agora), avisosIndices)
-    // O resumo dos Meus jogos: cada tipo de pendência com a quantidade.
+    // O resumo do Painel de Jogos: cada tipo de pendência com a quantidade.
     val resumo = resumoDasPendencias(estado, pendencias)
 
     // Ao abrir: confere os sorteios e os índices na hora (sem esperar a próxima hora).
@@ -273,9 +272,9 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         escopo.launch { mostrar(aba) }
     }
 
-    /** Os Meus jogos (a bola da barra de cima ou puxando qualquer aba para baixo): voltam para a tela de antes. */
-    fun abrirMeusJogos() {
-        nav.navigate(ROTA_MEUS_JOGOS) { launchSingleTop = true }
+    /** O Painel de Jogos (o ícone da barra de cima ou puxando qualquer aba para baixo): volta para a tela de antes. */
+    fun abrirPainel() {
+        nav.navigate(ROTA_PAINEL) { launchSingleTop = true }
     }
 
     // Uma aba (ex.: a pendência "Fazer a aposta de hoje" abre os Jogos) troca de aba; o resto abre por cima.
@@ -285,7 +284,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             aba != null -> irParaAba(aba)
             r in PARA_A_HOME -> irParaAba(Aba.HOME)
             r == "apostar" -> irParaAba(Aba.JOGOS)
-            r in PARA_OS_MEUS_JOGOS -> abrirMeusJogos()
+            r in PARA_O_PAINEL -> abrirPainel()
             r in PARA_OS_AJUSTES -> irParaAba(Aba.AJUSTES)
             else -> nav.navigate(r) { launchSingleTop = true }
         }
@@ -336,7 +335,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         ROTA_ABAS -> abaAtual.rotulo
         ROTA_FILTRO -> "Filtrar"
         ROTA_COMPROVANTES -> "Comprovantes"
-        ROTA_MEUS_JOGOS -> "Meus jogos"
+        ROTA_PAINEL -> "Painel de Jogos"
         ROTA_SECAO_AJUSTES -> SecaoAjuste.de(e?.arguments?.getString("secao"))?.titulo(estado.individual) ?: "Ajustes"
         "aporte" -> "Aporte"
         "rateio" -> "Rateio"
@@ -381,8 +380,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         if (!naHome && rota !in MANTEM_O_FILTRO) filtro = FiltroHome.padrao(LocalDate.now())
     }
 
-    // A bola dos Meus jogos: os jogos em andamento dentro dela e, no contador vermelho, as pendências.
-    val jogos = quantosEmAndamento(estado, agora.toLocalDate())
+    // O contador vermelho do ícone do Painel de Jogos: as pendências.
     val noContador = quantasPendencias(resumo)
 
     CompositionLocalProvider(LocalBarraDaTela provides barra) {
@@ -400,8 +398,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                         }
                     },
                     acoes = {
-                        // Nas abas: a bola dos Meus jogos (com as pendências), à direita do título.
-                        if (ehAba) BotaoMeusJogos(jogos, noContador) { abrirMeusJogos() }
+                        // Nas abas: o ícone do Painel de Jogos (com as pendências), à direita do título.
+                        if (ehAba) BotaoDoPainel(noContador) { abrirPainel() }
                         // O "Detalhes →" da página do jogo (nos Detalhes, o "Voltar →"), na mesma cor e letra do título.
                         acao?.botao?.let { rotulo ->
                             val cor = MaterialTheme.colorScheme.onSurface
@@ -472,9 +470,9 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             composable(ROTA_ABAS) {
                 // O voltar do celular numa página que não é a Home volta para a Home.
                 BackHandler(enabled = abaAtual != Aba.HOME) { escopo.launch { mostrar(Aba.HOME) } }
-                // Puxar qualquer aba para baixo (do alto da lista) abre os Meus jogos (até a 0.16, as
+                // Puxar qualquer aba para baixo (do alto da lista) abre o Painel de Jogos (até a 0.16, as
                 // Notificações). Para os lados, as abas giram (da Home para a direita, os Ajustes).
-                val puxaoVertical = rememberPuxaoAlemDaBorda(vertical = true, noInicio = { abrirMeusJogos() })
+                val puxaoVertical = rememberPuxaoAlemDaBorda(vertical = true, noInicio = { abrirPainel() })
                 Box(Modifier.fillMaxSize().nestedScroll(puxaoVertical)) {
                     HorizontalPager(
                         state = paginas,
@@ -499,7 +497,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                         }
                     }
                     IndicadorDoPuxao(
-                        puxaoVertical, puxando = "Meus jogos", pronto = "Meus jogos", icone = Icones.Bola,
+                        puxaoVertical, puxando = "Painel de Jogos", pronto = "Painel de Jogos", icone = Icones.Painel,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp),
                     )
                 }
@@ -510,7 +508,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             composable(ROTA_FILTRO) { e ->
                 TelaDeCima(nav, e, ::nomeDaTela) { FiltroTela(estado, filtro, mudar = { filtro = it }, aoFechar = { fechar(nav, e) }) }
             }
-            // Comprovantes (as pendências do resumo dos Meus jogos): voltam para a tela de antes.
+            // Comprovantes (as pendências do resumo do Painel de Jogos): voltam para a tela de antes.
             composable(ROTA_COMPROVANTES) { e ->
                 // A leitura dos comprovantes continua mesmo fechando a tela: o modelo fica com as abas.
                 val dono = remember(e) { nav.getBackStackEntry(ROTA_ABAS) }
@@ -520,11 +518,11 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     }
                 }
             }
-            // Meus jogos, com o resumo das pendências (a bola da barra de cima, ou puxando qualquer aba para baixo).
-            composable(ROTA_MEUS_JOGOS) { e ->
+            // Painel de Jogos, com o resumo das pendências (o ícone da barra de cima, ou puxando qualquer aba para baixo).
+            composable(ROTA_PAINEL) { e ->
                 TelaDeCima(nav, e, ::nomeDaTela) {
                     Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) {
-                        MeusJogosTela(estado, resumo, abrir = ::abrir, apostar = { irParaAba(Aba.JOGOS) })
+                        PainelDeJogosTela(estado, resumo, abrir = ::abrir, apostar = { irParaAba(Aba.JOGOS) })
                     }
                 }
             }
@@ -673,16 +671,16 @@ private fun PaginaDaAposta(estado: Estado, id: String, abrir: (String) -> Unit, 
 /** Tamanho dos ícones das 3 abas da barra de baixo (o padrão é 24dp). */
 private val ICONE_DA_ABA = 31.dp
 
-/** Tamanho da bola dos Meus jogos na barra de cima (até a 0.16, um bilhete de 34dp ao lado do sino de 38dp). */
-private val TAMANHO_DA_BOLA = 38.dp
+/** Tamanho do ícone do Painel de Jogos na barra de cima (até a 0.17, a bola de 38dp; até a 0.16, um bilhete e o sino). */
+private val TAMANHO_DO_ICONE = 38.dp
 
 /**
- * A bola dos Meus jogos (na barra de cima das abas; até a 0.16 eram o bilhete e o sino): a bola
- * dourada com o número de jogos em andamento e, no canto, o contador vermelho das pendências.
+ * O ícone do Painel de Jogos (na barra de cima das abas): o quadrado azul-marinho com o painel dourado
+ * e, no canto, o contador vermelho das pendências.
  */
 @Composable
-private fun BotaoMeusJogos(jogos: Int, pendencias: Int, aoTocar: () -> Unit) {
-    IconButton(onClick = aoTocar, modifier = Modifier.size(58.dp).semantics(mergeDescendants = true) { contentDescription = "Meus jogos" }) {
+private fun BotaoDoPainel(pendencias: Int, aoTocar: () -> Unit) {
+    IconButton(onClick = aoTocar, modifier = Modifier.size(58.dp).semantics(mergeDescendants = true) { contentDescription = "Painel de Jogos" }) {
         BadgedBox(badge = {
             if (pendencias > 0) {
                 Badge(
@@ -694,7 +692,7 @@ private fun BotaoMeusJogos(jogos: Int, pendencias: Int, aoTocar: () -> Unit) {
                 }
             }
         }) {
-            BolaDosMeusJogos(jogos, TAMANHO_DA_BOLA)
+            IconeDoPainel(TAMANHO_DO_ICONE)
         }
     }
 }

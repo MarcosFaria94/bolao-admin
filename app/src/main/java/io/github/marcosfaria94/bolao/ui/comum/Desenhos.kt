@@ -11,7 +11,8 @@ import androidx.compose.ui.unit.dp
 /**
  * Desenhos coloridos dos emblemas (círculos do Histórico e dos atalhos da Home): cofrinho do
  * aporte, as 3 pilhas de moedas do rateio, o extrato, o troféu do prêmio, o rendimento e o
- * complemento do Administrador. Cada um tem as próprias cores (vão sem tint) numa grade de 48.
+ * complemento do Administrador; e a xícara de café sorrindo do "Apoie" (rodapé dos Ajustes). Cada um tem
+ * as próprias cores (vão sem tint) numa grade de 48.
  */
 object Desenhos {
 
@@ -126,6 +127,32 @@ object Desenhos {
             forma("M9,24A15,15 0 1,0 39,24A15,15 0 1,0 9,24Z", cor = 0xFFF2B630, traco = 0xFFC98A12, espessura = 1.6f)
             forma("M13,24A11,11 0 1,0 35,24A11,11 0 1,0 13,24Z", traco = 0xFFFFE08A, espessura = 1.4f)
             forma("M24,17 L24,31 M17,24 L31,24", traco = 0xFF8A5A12, espessura = 3.4f, redondo = true)
+        }
+    }
+
+    /** A xícara de café sorrindo (o "Apoie", no rodapé dos Ajustes): dourada, com a fumacinha e o pires. */
+    val Xicara: ImageVector by lazy {
+        desenho("Xicara") {
+            // A fumacinha.
+            forma("M17,13.5 C15.4,11.4 18.6,9.8 17,7.5", traco = 0xFFA3AEBD, espessura = 1.8f, redondo = true)
+            forma("M22,13 C20.4,10.4 23.6,8.8 22,5.5", traco = 0xFFA3AEBD, espessura = 1.8f, redondo = true)
+            forma("M27,13.5 C25.4,11.4 28.6,9.8 27,7.5", traco = 0xFFA3AEBD, espessura = 1.8f, redondo = true)
+            // O pires.
+            forma("M5,40.5A19,3.6 0 1,0 43,40.5A19,3.6 0 1,0 5,40.5Z", cor = 0xFFDCE3EC, traco = 0xFFAEB9C7, espessura = 0.9f)
+            // A asa (contorno e dourado por cima).
+            forma("M33.4,22.2 C40.6,21 41.6,30.6 32.2,31.8", traco = 0xFFC98A12, espessura = 4.6f, redondo = true)
+            forma("M33.4,22.2 C40.6,21 41.6,30.6 32.2,31.8", traco = 0xFFF2B630, espessura = 2.4f, redondo = true)
+            // A xícara e o brilho.
+            forma("M10,18 L34,18 L32,34 C31.6,37 29.5,39.2 26.5,39.2 L17.5,39.2 C14.5,39.2 12.4,37 12,34 Z", cor = 0xFFF2B630, traco = 0xFFC98A12, espessura = 1f, redondo = true)
+            forma("M13.4,21.4 L14.7,32.6", traco = 0xFFFFE08A, espessura = 1.6f, redondo = true)
+            // O café.
+            forma("M10,18A12,2.6 0 1,0 34,18A12,2.6 0 1,0 10,18Z", cor = 0xFF7A4528, traco = 0xFFC98A12, espessura = 1f)
+            // O rosto: olhos fechados de alegria, bochechas e o sorriso.
+            forma("M16.4,25.8 Q18,24.1 19.6,25.8", traco = 0xFF5A3420, espessura = 1.6f, redondo = true)
+            forma("M24.4,25.8 Q26,24.1 27.6,25.8", traco = 0xFF5A3420, espessura = 1.6f, redondo = true)
+            forma("M13.7,29.4A1.7,1.3 0 1,0 17.1,29.4A1.7,1.3 0 1,0 13.7,29.4Z", cor = 0xFFF59E9E)
+            forma("M26.9,29.4A1.7,1.3 0 1,0 30.3,29.4A1.7,1.3 0 1,0 26.9,29.4Z", cor = 0xFFF59E9E)
+            forma("M18.6,29.6 Q22,33.4 25.4,29.6", traco = 0xFF5A3420, espessura = 1.7f, redondo = true)
         }
     }
 }

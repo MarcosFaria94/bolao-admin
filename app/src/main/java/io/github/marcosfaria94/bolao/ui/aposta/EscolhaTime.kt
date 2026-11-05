@@ -26,13 +26,11 @@ import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -46,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -56,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.domain.Conferencia
 import io.github.marcosfaria94.bolao.domain.LeituraComprovante
 import io.github.marcosfaria94.bolao.domain.Modalidade
@@ -63,6 +63,10 @@ import io.github.marcosfaria94.bolao.domain.TIMES
 import io.github.marcosfaria94.bolao.domain.TimeDoCoracao
 import io.github.marcosfaria94.bolao.domain.timeDoCoracao
 import io.github.marcosfaria94.bolao.net.Brasoes
+import io.github.marcosfaria94.bolao.ui.comum.IndicadorDoPuxao
+import io.github.marcosfaria94.bolao.ui.comum.acompanharPuxao
+import io.github.marcosfaria94.bolao.ui.comum.deslizarParaOsLados
+import io.github.marcosfaria94.bolao.ui.comum.rememberPuxaoAlemDaBorda
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import java.text.Collator
 import java.util.Locale
@@ -164,15 +168,19 @@ fun timeAleatorio(lista: List<TimeDoCoracao>, atual: String?, sorteio: Random = 
 
 /**
  * A lista dos times: um por linha (o brasão, o nome e a UF), em ordem alfabética. Tocar em "Nome"
- * ou em "UF" (no alto da lista) classifica por aquela coluna; tocar de novo inverte. Dá para buscar
- * e, no alto, o "Sortear" escolhe um time ao acaso (da busca, se houver). Desde a 0.17 não há mais
- * o campo "Outro time": só os times da lista da Caixa.
+ * ou em "UF" (no alto da lista) classifica por aquela coluna; tocar de novo inverte. Dá para buscar.
+ * Tocar num time escolhe e fecha; o "Sortear" do alto escolhe um time ao acaso (da busca, se houver),
+ * fecha e avisa numa mensagem rápida qual time saiu. Desde a 0.18: puxar a lista para baixo (do alto)
+ * também sorteia; deslizar o dedo para os lados fecha (fica o time escolhido), sem a tela acompanhar
+ * o dedo; e não há mais o X ao lado do título. Desde a 0.17 não há mais o campo "Outro time": só os
+ * times da lista da Caixa.
  */
 @Composable
 fun DialogoTimes(atual: String?, aoEscolher: (String) -> Unit, aoFechar: () -> Unit) {
     var busca by remember { mutableStateOf("") }
     var ordem by remember { mutableStateOf(OrdemDosTimes.NOME) }
     var crescente by remember { mutableStateOf(true) }
+    val repo = LocalContext.current.bolao.repo
     val cor = corModalidade(Modalidade.TIMEMANIA.cor)
     val filtro = LeituraComprovante.simples(busca).filter { it.isLetterOrDigit() }
     val lista = timesEmOrdem(
@@ -190,16 +198,23 @@ fun DialogoTimes(atual: String?, aoEscolher: (String) -> Unit, aoFechar: () -> U
             crescente = true
         }
     }
+    /** Um time ao acaso (da busca, se houver): escolhe, fecha e avisa qual saiu. */
+    fun sortear() {
+        val t = timeAleatorio(lista, atual)
+        aoEscolher(t.caixa)
+        repo.avisar("Time sorteado: ${t.nome} / ${t.uf}")
+    }
+    // Puxar a lista para baixo (do alto) também sorteia.
+    val puxao = rememberPuxaoAlemDaBorda(vertical = true, noInicio = ::sortear)
 
     Dialog(onDismissRequest = aoFechar, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize()) {
+        Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize().deslizarParaOsLados(aoFechar)) {
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, end = 12.dp)) {
-                    IconButton(onClick = aoFechar) { Icon(Icons.Outlined.Close, contentDescription = "Fechar") }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 6.dp, bottom = 2.dp)) {
                     Text("Time do Coração", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    // Um time ao acaso (da busca, se houver): escolhe e fecha, como tocar no time.
+                    // Um time ao acaso (da busca, se houver): escolhe, fecha e avisa qual saiu.
                     FilledTonalButton(
-                        onClick = { aoEscolher(timeAleatorio(lista, atual).caixa) },
+                        onClick = ::sortear,
                         contentPadding = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
                     ) {
                         Icon(Icons.Outlined.Casino, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -225,47 +240,54 @@ fun DialogoTimes(atual: String?, aoEscolher: (String) -> Unit, aoFechar: () -> U
                     Cabecalho("UF", ordem == OrdemDosTimes.UF, crescente, Modifier.width(COLUNA_UF), centro = true) { classificar(OrdemDosTimes.UF) }
                 }
                 HorizontalDivider()
-                LazyColumn(Modifier.weight(1f), state = rolagem, contentPadding = PaddingValues(bottom = 16.dp)) {
-                    items(lista, key = { it.caixa }) { t ->
-                        val este = escolhido != null && Conferencia.normalizar(t.caixa) == escolhido
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(if (este) cor.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface)
-                                .clickable(role = Role.Button) { aoEscolher(t.caixa) }
-                                .heightIn(min = 58.dp)
-                                .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
-                        ) {
-                            Brasao(t, BRASAO)
-                            Spacer(Modifier.width(14.dp))
-                            Text(
-                                t.nome,
-                                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp),
-                                fontWeight = if (este) FontWeight.Bold else FontWeight.Normal,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (este) Icon(Icons.Outlined.Check, contentDescription = "Escolhido", tint = cor, modifier = Modifier.size(20.dp))
-                            Text(
-                                t.uf,
-                                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.width(COLUNA_UF),
-                            )
+                // Puxar a lista para baixo (do alto) sorteia um time, como o "Sortear".
+                Box(Modifier.weight(1f).fillMaxWidth().nestedScroll(puxao)) {
+                    LazyColumn(Modifier.fillMaxSize().acompanharPuxao(puxao), state = rolagem, contentPadding = PaddingValues(bottom = 16.dp)) {
+                        items(lista, key = { it.caixa }) { t ->
+                            val este = escolhido != null && Conferencia.normalizar(t.caixa) == escolhido
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(if (este) cor.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surface)
+                                    .clickable(role = Role.Button) { aoEscolher(t.caixa) }
+                                    .heightIn(min = 58.dp)
+                                    .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+                            ) {
+                                Brasao(t, BRASAO)
+                                Spacer(Modifier.width(14.dp))
+                                Text(
+                                    t.nome,
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp),
+                                    fontWeight = if (este) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (este) Icon(Icons.Outlined.Check, contentDescription = "Escolhido", tint = cor, modifier = Modifier.size(20.dp))
+                                Text(
+                                    t.uf,
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.width(COLUNA_UF),
+                                )
+                            }
+                            HorizontalDivider(Modifier.padding(start = 16.dp + BRASAO + 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
                         }
-                        HorizontalDivider(Modifier.padding(start = 16.dp + BRASAO + 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    }
-                    if (lista.isEmpty()) {
-                        item(key = "nenhum") {
-                            Text(
-                                "Nenhum time com \"$busca\".",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(16.dp),
-                            )
+                        if (lista.isEmpty()) {
+                            item(key = "nenhum") {
+                                Text(
+                                    "Nenhum time com \"$busca\".",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(16.dp),
+                                )
+                            }
                         }
                     }
+                    IndicadorDoPuxao(
+                        puxao, puxando = "Sortear", pronto = "Sortear", icone = Icons.Outlined.Casino,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp),
+                    )
                 }
             }
         }

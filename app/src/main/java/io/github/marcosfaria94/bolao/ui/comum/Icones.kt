@@ -1,7 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -9,7 +8,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
-/** Ícones próprios do app: o trevo do ícone, para a aba Jogos, e a bola dos Meus jogos. */
+/** Ícones próprios do app: o trevo do ícone, para a aba Jogos, e o painel do Painel de Jogos. */
 object Icones {
     // As quatro folhas do trevo do ícone (a mesma folha das imagens), centradas em (12; 10,4).
     private const val FOLHAS =
@@ -43,14 +42,26 @@ object Icones {
     /** Trevo cheio (aba escolhida). */
     val TrevoCheio: ImageVector by lazy { trevo("TrevoCheio", cheio = true) }
 
-    /** A bola dos Meus jogos (no aviso do puxão): um círculo cheio com o miolo vazado, como as bolas das loterias. */
-    val Bola: ImageVector by lazy {
-        ImageVector.Builder("Bola", 24.dp, 24.dp, 24f, 24f).apply {
-            addPath(
-                pathData = addPathNodes("M12,2A10,10 0 1,0 12,22A10,10 0 1,0 12,2ZM12,6.4A5.6,5.6 0 1,1 12,17.6A5.6,5.6 0 1,1 12,6.4Z"),
-                pathFillType = PathFillType.EvenOdd,
-                fill = SolidColor(Color.Black),
-            )
+    /**
+     * O painel (os 4 blocos) do Painel de Jogos, desde a 0.18 (até a 0.17, a bola): o "layout-dashboard"
+     * dos Tabler Icons (MIT, (c) Paweł Kuna), em traço de 2 numa grade de 24.
+     */
+    val Painel: ImageVector by lazy {
+        ImageVector.Builder("Painel", 24.dp, 24.dp, 24f, 24f).apply {
+            listOf(
+                "M5,4h4a1,1 0 0,1 1,1v6a1,1 0 0,1 -1,1h-4a1,1 0 0,1 -1,-1v-6a1,1 0 0,1 1,-1",
+                "M5,16h4a1,1 0 0,1 1,1v2a1,1 0 0,1 -1,1h-4a1,1 0 0,1 -1,-1v-2a1,1 0 0,1 1,-1",
+                "M15,12h4a1,1 0 0,1 1,1v6a1,1 0 0,1 -1,1h-4a1,1 0 0,1 -1,-1v-6a1,1 0 0,1 1,-1",
+                "M15,4h4a1,1 0 0,1 1,1v2a1,1 0 0,1 -1,1h-4a1,1 0 0,1 -1,-1v-2a1,1 0 0,1 1,-1",
+            ).forEach { d ->
+                addPath(
+                    pathData = addPathNodes(d),
+                    stroke = SolidColor(Color.Black),
+                    strokeLineWidth = 2f,
+                    strokeLineCap = StrokeCap.Round,
+                    strokeLineJoin = StrokeJoin.Round,
+                )
+            }
         }.build()
     }
 }

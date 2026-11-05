@@ -70,12 +70,12 @@ private val ESPACO = 14.dp
 /**
  * Home: o saldo (com o provisionado e o extra à direita), os atalhos de Aporte, Rateio e Extrato,
  * a próxima aposta (o "Apostar" pulsa no dia de aposta) e o Histórico de tudo o que entrou e saiu,
- * com o resumo do filtro e o "Filtrar". A bola dos Meus jogos (com as pendências) fica na barra de cima. No modo
+ * com o resumo do filtro e o "Filtrar". O ícone do Painel de Jogos (com as pendências) fica na barra de cima. No modo
  * individual: só o saldo (que começa em zero e cai a cada aposta) e o Histórico das apostas e dos
  * prêmios.
  *
  * O [filtro] fica na raiz do app (a tela "Filtrar" muda ele); ele volta ao padrão sozinho ao trocar
- * de tela, menos nos Meus jogos e nos Comprovantes. [visita] muda a cada vez que se vai para outra aba: aí a
+ * de tela, menos no Painel de Jogos e nos Comprovantes. [visita] muda a cada vez que se vai para outra aba: aí a
  * rolagem recomeça.
  */
 @Composable

@@ -188,7 +188,7 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
 /**
  * Os índices numa linha ("k1 0,836   k2 0,091   odds 1:34", o nome em negrito), com respiro entre
  * eles (numa tela estreita, quebram para a linha de baixo); Loteca, Federal e concurso especial, o texto.
- * Nos cartões dos Jogos e dos Meus jogos.
+ * Nos cartões dos Jogos e do Painel de Jogos.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

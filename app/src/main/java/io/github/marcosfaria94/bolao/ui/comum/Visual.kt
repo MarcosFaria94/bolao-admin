@@ -96,7 +96,7 @@ fun Modifier.pulsando(ligado: Boolean, cor: Color): Modifier = composed {
 
 /**
  * Barra de título das telas: título maior e um pouco mais abaixo que o padrão, com a seta de
- * voltar nas telas que não são abas e, à direita, as [acoes] (nas abas, a bola dos Meus jogos).
+ * voltar nas telas que não são abas e, à direita, as [acoes] (nas abas, o ícone do Painel de Jogos).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

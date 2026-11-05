@@ -56,10 +56,10 @@ import io.github.marcosfaria94.bolao.ui.aposta.timesEmOrdem
 import io.github.marcosfaria94.bolao.ui.aposta.timeAleatorio
 import io.github.marcosfaria94.bolao.data.Pendencias
 import io.github.marcosfaria94.bolao.ui.home.emOrdemDeSorteioEK1
-import io.github.marcosfaria94.bolao.ui.meusjogos.TipoDoResumo
-import io.github.marcosfaria94.bolao.ui.meusjogos.k1DoConcurso
-import io.github.marcosfaria94.bolao.ui.meusjogos.quantasPendencias
-import io.github.marcosfaria94.bolao.ui.meusjogos.resumoDasPendencias
+import io.github.marcosfaria94.bolao.ui.painel.TipoDoResumo
+import io.github.marcosfaria94.bolao.ui.painel.k1DoConcurso
+import io.github.marcosfaria94.bolao.ui.painel.quantasPendencias
+import io.github.marcosfaria94.bolao.ui.painel.resumoDasPendencias
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -345,7 +345,7 @@ class TelasTest {
     }
 
     @Test
-    fun meusJogosOkOuPendente() {
+    fun painelOkOuPendente() {
         val q = aposta(Modalidade.QUINA, 1, 7148).copy(numeros = listOf(71, 5, 12, 33, 47))
         val e = Estado(apostas = listOf(q))
         // Registrada e sem comprovante do bolão para enviar: OK.
@@ -372,7 +372,7 @@ class TelasTest {
     }
 
     @Test
-    fun resumoDasPendenciasNosMeusJogos() {
+    fun resumoDasPendenciasNoPainel() {
         val pessoas = listOf(Pessoa("p1", "A", "A", "x", true), Pessoa("p2", "B", "B", "y"), Pessoa("p3", "C", "C", "z"))
         val pdf = Arquivo("c.pdf", "c.pdf", "application/pdf", 0)
         val amanha = hoje.plusDays(1)
@@ -404,7 +404,7 @@ class TelasTest {
     }
 
     @Test
-    fun meusJogosPeloSorteioEPeloK1() {
+    fun painelPeloSorteioEPeloK1() {
         val q = aposta(Modalidade.QUINA, 1, 7149).copy(id = "q", dataSorteio = hoje.plusDays(1))
         val m = aposta(Modalidade.MEGA_SENA, 2, 2950).copy(id = "m", dataSorteio = hoje.plusDays(1))
         val l = aposta(Modalidade.LOTOFACIL, 3, 3500).copy(id = "l", dataSorteio = hoje)
