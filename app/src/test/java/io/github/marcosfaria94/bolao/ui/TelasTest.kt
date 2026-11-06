@@ -468,7 +468,9 @@ class TelasTest {
         val q = aposta(Modalidade.QUINA, 1, 7149)
         assertEquals("QUINA · CONCURSO 7149 · SORTEIO HOJE", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = hoje), hoje))
         assertEquals("QUINA · CONCURSO 7149 · SORTEIO AMANHÃ", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = hoje.plusDays(1)), hoje))
-        val longe = hoje.plusDays(5)
+        // Desde a 0.20: "EM N DIAS" até 7 dias; depois, a data.
+        assertEquals("QUINA · CONCURSO 7149 · SORTEIO EM 5 DIAS", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = hoje.plusDays(5)), hoje))
+        val longe = hoje.plusDays(8)
         assertEquals("QUINA · CONCURSO 7149 · SORTEIO ${Datas.longa(longe)}", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = longe), hoje))
         // Sem a data divulgada: só a modalidade e o concurso.
         assertEquals("QUINA · CONCURSO 7149", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = null), hoje))

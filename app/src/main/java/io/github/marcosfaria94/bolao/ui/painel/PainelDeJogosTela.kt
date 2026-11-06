@@ -375,7 +375,7 @@ private fun BlocoDoConcurso(estado: Estado, g: GrupoEmAndamento, item: Indices.I
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
             ) {
-                Informacao(Icons.Outlined.Event, "Sorteio", g.sorteio?.let { Datas.relativa(it, hoje) } ?: NAO_DIVULGADO)
+                Informacao(Icons.Outlined.Event, "Sorteio", g.sorteio?.let { Datas.sorteio(it, hoje) } ?: NAO_DIVULGADO)
                 Informacao(Icons.Outlined.EmojiEvents, "Prêmio estimado", premioDoConcurso(g, item))
             }
         }

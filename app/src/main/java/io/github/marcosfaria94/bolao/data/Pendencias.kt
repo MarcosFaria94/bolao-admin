@@ -1,10 +1,10 @@
 package io.github.marcosfaria94.bolao.data
 
+import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
 import io.github.marcosfaria94.bolao.domain.Calendario
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
-import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -71,10 +71,6 @@ object Pendencias {
 
     /** Hora do aviso "Apurar a aposta" quando a apuração automática não conseguiu o resultado. */
     const val HORA_APURACAO = 8
-
-    /** Hora em que o resultado costuma estar na Caixa (os sorteios são às 20h; aos domingos, às 11h). */
-    const val HORA_RESULTADO = 21
-    const val HORA_RESULTADO_DOMINGO = 12
 
     /** Enquanto o resultado (ou o rateio oficial) não sai, confere de novo a cada meia hora. */
     const val MINUTOS_NOVA_CONFERENCIA = 30L
@@ -282,18 +278,21 @@ object Pendencias {
     /**
      * Apostas cujo resultado já deve ter saído e que precisam de conferência: as que ainda não
      * foram conferidas e as conferidas sem o rateio oficial ou com algum dado faltando
-     * (conferir de novo, até a Caixa completar). Sorteios de domingo são às 11h; nos outros dias, à noite.
+     * (conferir de novo, até a Caixa completar): 1 hora depois do sorteio ([horaDoResultado]).
      */
     fun aguardandoResultado(e: Estado, agora: LocalDateTime): List<Aposta> = e.apostas.filter { a ->
         val sorteio = a.dataSorteio ?: return@filter false
         if (!a.registrada || a.pendenteDeAnexo || a.apuracao?.confirmadaEm != null) return@filter false
         if (conferenciaCompleta(a)) return@filter false
-        !agora.isBefore(horaDoResultado(sorteio))
+        !agora.isBefore(horaDoResultado(a.modalidade, sorteio))
     }
 
-    /** Quando o resultado do sorteio do dia [sorteio] costuma estar na Caixa. */
-    fun horaDoResultado(sorteio: LocalDate): LocalDateTime =
-        sorteio.atTime(if (sorteio.dayOfWeek == DayOfWeek.SUNDAY) HORA_RESULTADO_DOMINGO else HORA_RESULTADO, 0)
+    /**
+     * Quando o resultado do sorteio do dia [sorteio] costuma estar na Caixa: 1 hora depois do sorteio
+     * (desde a 0.20: às 22h; a Federal, às 21h; aos domingos, às 12h). Ver [AgendaDaCaixa].
+     */
+    fun horaDoResultado(m: Modalidade, sorteio: LocalDate): LocalDateTime =
+        sorteio.atTime(AgendaDaCaixa.horaDoSorteio(m, sorteio)).plus(AgendaDaCaixa.ESPERA_DEPOIS_DO_SORTEIO)
 
     /** Conferida com o rateio oficial e sem nada a confirmar: a apuração automática pode sair. */
     private fun conferenciaCompleta(a: Aposta): Boolean {
@@ -331,7 +330,7 @@ object Pendencias {
         val vezes = e.apostas.mapNotNull { a ->
             val sorteio = a.dataSorteio ?: return@mapNotNull null
             if (!a.registrada || a.pendenteDeAnexo || a.apuracao?.confirmadaEm != null) return@mapNotNull null
-            val resultado = horaDoResultado(sorteio)
+            val resultado = horaDoResultado(a.modalidade, sorteio)
             // Alguns dias depois do sorteio sem apuração, quem resolve é o Administrador (a pendência pede desde D+1).
             if (!agora.isBefore(sorteio.plusDays(DIAS_DE_CONFERENCIA_AUTOMATICA).atStartOfDay())) return@mapNotNull null
             when {

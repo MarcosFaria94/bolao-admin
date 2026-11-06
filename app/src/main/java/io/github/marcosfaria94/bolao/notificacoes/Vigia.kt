@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Roda de hora em hora e na hora marcada pelo [Despertador] (resultado do sorteio, apuração), mesmo
  * com o app fechado:
+ * 0. atualiza os dados dos Jogos guardados no celular, quando a agenda dos sorteios pede (desde a 0.20);
  * 1. confere os jogos já sorteados na Caixa (e de novo, até o rateio oficial sair);
  * 2. faz a apuração sozinha quando não há nada a confirmar, na hora em que o resultado sai (no
  *    bolão, o envio do comprovante ao grupo vira pendência);
@@ -42,6 +43,9 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
         val teste = repo.emTeste
         var e = repo.atual()
         val agora = LocalDateTime.now()
+
+        // 0. Os dados dos Jogos (desde a 0.20): só os jogos cujo sorteio já passou e o resultado não chegou.
+        runCatching { ctx.bolao.indices.consultar() }
 
         // 1. Conferência automática depois do horário do sorteio.
         for (a in Pendencias.aguardandoResultado(e, agora)) {

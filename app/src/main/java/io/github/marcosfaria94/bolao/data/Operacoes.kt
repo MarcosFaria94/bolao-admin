@@ -434,6 +434,38 @@ object Operacoes {
     }
 
     /**
+     * A aposta espelho da Lotomania (desde a 0.20): uma aposta nova, ainda não registrada, no mesmo
+     * concurso e com o mesmo valor da [original], com os números que ficaram de fora dela.
+     */
+    fun apostaEspelho(original: Aposta, agora: Long): Aposta = original.copy(
+        id = novoId(),
+        numero = 0,
+        numeros = Volante.espelho(original.modalidade, original.numeros),
+        espelho = false,
+        registrada = false,
+        comprovante = null,
+        apuracao = null,
+        pendenteDeAnexo = false,
+        notasDoAnexo = emptyList(),
+        criadaEm = agora,
+    )
+
+    /**
+     * Registra a aposta [id] e, se ela pede a aposta espelho (Lotomania com [Aposta.espelho]), registra
+     * também a espelho, logo depois (o número seguinte do mês). Devolve o estado e a espelho registrada
+     * (null = sem espelho).
+     */
+    fun registrarComEspelho(e: Estado, id: String, hoje: LocalDate, agora: Long): Pair<Estado, Aposta?> {
+        val a = e.apostas.first { it.id == id }
+        val comUma = registrarAposta(e, id, hoje, agora)
+        if (!a.espelho || !Volante.temEspelho(a.modalidade)) return comUma to null
+        require(a.numeros.size == a.modalidade.qtdAposta) { "Complete o volante antes da aposta espelho." }
+        val espelho = apostaEspelho(a, agora + 1)
+        val comAsDuas = registrarAposta(salvarRascunho(comUma, espelho), espelho.id, hoje, agora + 1)
+        return comAsDuas to comAsDuas.apostas.first { it.id == espelho.id }
+    }
+
+    /**
      * Registro com o comprovante da Caixa já anexado e conferido na hora (dados de exemplo e testes):
      * registra e aprova de uma vez, como até a 0.9.
      */

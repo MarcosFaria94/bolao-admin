@@ -40,6 +40,13 @@ object CaixaApi {
     private val cacheUltimo = ConcurrentHashMap<Modalidade, Pair<Long, Concurso>>()
     private val cacheConcurso = ConcurrentHashMap<String, Concurso>()
 
+    /**
+     * Avisado a cada último concurso que chega da Caixa por [ultimo] (o volante, o registro): os Jogos
+     * guardam no celular, se for mais novo que o guardado (desde a 0.20).
+     */
+    @Volatile
+    var aoReceberUltimo: ((Modalidade, Concurso, String) -> Unit)? = null
+
     /** Endereços vindos do parametros_k.json (seção "api"). */
     fun configurar(params: String, bases: List<String>) {
         if (params.isNotBlank()) paramsUrl = params
@@ -52,8 +59,9 @@ object CaixaApi {
         if (usarCache && guardado != null && System.currentTimeMillis() - guardado.first < VALIDADE_ULTIMO_MS) {
             return guardado.second
         }
-        val c = buscar(m, "/api/${m.slugApi}").first
+        val (c, texto) = buscar(m, "/api/${m.slugApi}")
         cacheUltimo[m] = System.currentTimeMillis() to c
+        aoReceberUltimo?.let { runCatching { it(m, c, texto) } }
         return c
     }
 

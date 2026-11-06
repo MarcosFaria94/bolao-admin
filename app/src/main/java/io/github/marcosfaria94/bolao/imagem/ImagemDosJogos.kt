@@ -166,12 +166,13 @@ object ImagemDosJogos {
 
     /**
      * "QUINA · CONCURSO 7149 · SORTEIO HOJE": a modalidade, o concurso e o dia do sorteio ("HOJE",
-     * "AMANHÃ" ou "07/11/2026"; sem a data divulgada, só a modalidade e o concurso).
+     * "AMANHÃ", "EM 3 DIAS" até 7 dias, desde a 0.20, ou "22/11/2026"; sem a data divulgada, só a
+     * modalidade e o concurso).
      */
     fun cabecalhoDe(a: Aposta, hoje: LocalDate): String = listOfNotNull(
         a.modalidade.nome.uppercase(),
         "CONCURSO ${a.concurso}",
-        a.dataSorteio?.let { "SORTEIO ${Datas.relativa(it, hoje).uppercase()}" },
+        a.dataSorteio?.let { "SORTEIO ${Datas.sorteio(it, hoje).uppercase()}" },
     ).joinToString(" · ")
 
     /** Gera e grava a imagem em [destino] (PNG). */

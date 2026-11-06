@@ -2,6 +2,7 @@ package io.github.marcosfaria94.bolao.data
 
 import android.content.Context
 import io.github.marcosfaria94.bolao.bolao
+import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
@@ -13,6 +14,7 @@ import io.github.marcosfaria94.bolao.net.CaixaApi
 import io.github.marcosfaria94.bolao.net.CaixaParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -24,11 +26,15 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToLong
 
@@ -39,6 +45,13 @@ import kotlin.math.roundToLong
  * Para cada modalidade: o último concurso apurado (u) e o anterior a ele (a), da API da Caixa,
  * no máximo 3 pedidos ao mesmo tempo. As respostas ficam guardadas no celular: a tela abre com
  * o que já se sabe e se atualiza quando a Caixa responde. Concursos já sorteados (a) não mudam.
+ *
+ * Desde a 0.20 a Caixa só é consultada quando a agenda dos sorteios pede ([AgendaDaCaixa]): uma vez
+ * depois de cada sorteio (1 hora depois), e de novo a cada 15 minutos enquanto o resultado não
+ * chega. Os dados guardados valem até o próximo sorteio e nunca voltam para um concurso mais velho
+ * (servidores da Caixa às vezes respondem com dados atrasados). A última consulta de cada modalidade
+ * (e o erro, se deu) fica guardada no celular ([consultas]), para a tela mostrar se os dados são
+ * certos ou estão esperando o resultado.
  *
  * Desde a 0.7: o cálculo usa o preço de Ajustes (não o do arquivo), avisa quando os dois são
  * diferentes e, a cada concurso novo, confere o rateio pago pela Caixa com as regras do arquivo
@@ -97,6 +110,19 @@ class Indices(private val context: Context) {
     @Serializable
     private data class ArquivoAuditoria(val versao: String = "", val modalidades: Map<String, Auditoria> = emptyMap())
 
+    /** A última consulta à Caixa de uma modalidade (guardada no celular). */
+    @Serializable
+    data class Consulta(
+        /** Última vez que o app perguntou à Caixa (deu certo ou não), em ms. */
+        val tentativa: Long = 0,
+        /** Última resposta da Caixa, em ms. */
+        val sucesso: Long = 0,
+        /** O erro da última tentativa (null = a Caixa respondeu). */
+        val erro: String? = null,
+    ) {
+        val tentativaEm: Instant? get() = tentativa.takeIf { it > 0 }?.let { Instant.ofEpochMilli(it) }
+    }
+
     val parametros: ParametrosK? by lazy {
         runCatching { context.assets.open("parametros_k.json").use { ParametrosK.ler(it.readBytes().decodeToString()) } }.getOrNull()
     }
@@ -111,9 +137,15 @@ class Indices(private val context: Context) {
     private val _atualizando = MutableStateFlow(false)
     val atualizando: StateFlow<Boolean> = _atualizando.asStateFlow()
 
-    /** Falhou a última consulta (sem internet, Caixa fora do ar...). */
-    private val _falhou = MutableStateFlow(false)
-    val falhou: StateFlow<Boolean> = _falhou.asStateFlow()
+    private val _consultas = MutableStateFlow<Map<Modalidade, Consulta>>(emptyMap())
+    /** A última consulta de cada modalidade (quando foi e o erro, se deu). */
+    val consultas: StateFlow<Map<Modalidade, Consulta>> = _consultas.asStateFlow()
+
+    /** Uma consulta de cada vez. */
+    private val trava = Mutex()
+
+    /** Os dados guardados no celular já foram lidos (a agenda depende deles). */
+    private lateinit var carregamento: Job
 
     private val _auditorias = MutableStateFlow<Map<Modalidade, Auditoria>>(emptyMap())
     val auditorias: StateFlow<Map<Modalidade, Auditoria>> = _auditorias.asStateFlow()
@@ -132,13 +164,13 @@ class Indices(private val context: Context) {
     /** Desde quando cada preço está diferente do dos parâmetros (nesta abertura do app). */
     private val precoDiferenteDesde = ConcurrentHashMap<Modalidade, Long>()
 
-    @Volatile
-    private var ultimaAtualizacao = 0L
-
     init {
         parametros?.let { CaixaApi.configurar(it.paramsUrl, it.basesReserva) }
-        escopo.launch {
+        // O último concurso consultado em outras telas (o volante, o registro) também entra aqui.
+        CaixaApi.aoReceberUltimo = { m, c, texto -> escopo.launch { carregamento.join(); receber(m, c, texto, null) } }
+        carregamento = escopo.launch {
             carregarAuditoria()
+            carregarConsultas()
             carregarGuardados()
         }
         // O preço de Ajustes entra no cálculo: mudou lá, os índices são refeitos na hora.
@@ -167,6 +199,7 @@ class Indices(private val context: Context) {
     private fun arquivoUltimo(m: Modalidade) = File(pasta, "${m.slugApi}-ultimo.json")
     private fun arquivoConcurso(m: Modalidade, n: Int) = File(pasta, "${m.slugApi}-$n.json")
     private val arquivoAuditoria: File get() = File(pasta, "auditoria.json")
+    private val arquivoConsultas: File get() = File(pasta, "consultas.json")
 
     private fun ler(m: Modalidade, f: File): Concurso? =
         if (f.isFile) runCatching { CaixaParser.ler(m, f.readText()) }.getOrNull() else null
@@ -218,60 +251,114 @@ class Indices(private val context: Context) {
         publicarAvisos()
     }
 
-    /** Consulta a Caixa (no máximo a cada 10 minutos, a não ser que [forcar]). */
+    /** A situação dos dados da modalidade [m] agora: em dia (certos) ou esperando o resultado. */
+    fun situacao(
+        m: Modalidade,
+        agora: Instant = Instant.now(),
+        mapa: Map<Modalidade, Item> = _itens.value,
+        ultimas: Map<Modalidade, Consulta> = _consultas.value,
+    ): AgendaDaCaixa.Situacao = AgendaDaCaixa.situacao(m, mapa[m]?.ultimo, agora, ultimas[m]?.tentativaEm)
+
+    /**
+     * Consulta a Caixa, só para os jogos que a agenda pede (o sorteio passou e o resultado ainda não
+     * chegou). [forcar] = "Tentar agora": todos os que não estão em dia, sem esperar o intervalo entre
+     * as tentativas.
+     */
     fun atualizar(forcar: Boolean = false) {
         if (_atualizando.value) return
-        if (!forcar && System.currentTimeMillis() - ultimaAtualizacao < VALIDADE_MS) return
-        _atualizando.value = true
-        escopo.launch {
+        escopo.launch { consultar(forcar) }
+    }
+
+    /** Ao entrar nos Jogos (ou na página de um jogo): a agenda decide se precisa consultar. */
+    fun atualizarAoEntrar() = atualizar()
+
+    /** O mesmo que [atualizar], esperando terminar (o [io.github.marcosfaria94.bolao.notificacoes.Vigia], com o app fechado). */
+    suspend fun consultar(forcar: Boolean = false) {
+        carregamento.join()
+        if (!trava.tryLock()) return
+        try {
+            val agora = Instant.now()
+            val devidas = Modalidade.entries.filter { m ->
+                val s = situacao(m, agora)
+                // Sem o concurso anterior (o k1 precisa dele): pede de novo, respeitando o intervalo.
+                val semAnterior = concursos[m]?.let { (u, a) -> a == null && chave(m) != null && u.numero > 1 } == true
+                val podeTentar = _consultas.value[m]?.tentativaEm?.let { !agora.isBefore(it.plus(AgendaDaCaixa.INTERVALO_DAS_TENTATIVAS)) } ?: true
+                if (forcar) !s.certa || semAnterior else s.precisaConsultar(agora) || (semAnterior && podeTentar)
+            }
+            if (devidas.isEmpty()) return
+            _atualizando.value = true
             val limite = Semaphore(3)
-            var algumaFalha = false
             try {
-                Modalidade.entries.map { m ->
-                    async {
-                        try {
-                            val (u, textoU) = limite.withPermit { CaixaApi.ultimoComTexto(m) }
-                            guardar(arquivoUltimo(m), textoU)
-                            val a = if (chave(m) != null && u.numero > 1) {
-                                val f = arquivoConcurso(m, u.numero - 1)
-                                ler(m, f) ?: limite.withPermit {
-                                    runCatching { CaixaApi.concursoComTexto(m, u.numero - 1) }.getOrNull()
-                                }?.let { (c, texto) ->
-                                    guardar(f, texto)
-                                    c
-                                }
-                            } else {
-                                null
-                            }
-                            concursos[m] = u to a
-                            val item = calcular(m, u, a)
-                            _itens.update { it + (m to item) }
-                            auditar(m, u, a)
-                        } catch (t: Throwable) {
-                            algumaFalha = true
-                        }
-                    }
-                }.awaitAll()
+                devidas.map { m -> escopo.async { consultarModalidade(m, limite) } }.awaitAll()
                 // Guarda só os concursos anteriores que ainda servem (o último de cada modalidade).
-                val manter = _itens.value.values.mapNotNull { i -> i.ultimo?.let { arquivoConcurso(i.modalidade, it.numero - 1).name } }.toSet()
+                val manter = concursos.map { (m, par) -> arquivoConcurso(m, par.first.numero - 1).name }.toSet()
                 pasta.listFiles()?.filter { it.name.matches(Regex(".+-\\d+\\.json")) && it.name !in manter }?.forEach { it.delete() }
                 salvarAuditoria()
+                salvarConsultas()
             } finally {
                 publicarAvisos()
-                _falhou.value = algumaFalha
-                ultimaAtualizacao = System.currentTimeMillis()
                 _atualizando.value = false
             }
+        } finally {
+            trava.unlock()
+        }
+    }
+
+    /** Pergunta à Caixa o último concurso da modalidade [m] e guarda a tentativa (e o erro, se deu). */
+    private suspend fun consultarModalidade(m: Modalidade, limite: Semaphore) {
+        val agora = System.currentTimeMillis()
+        try {
+            val (u, texto) = limite.withPermit { CaixaApi.ultimoComTexto(m) }
+            receber(m, u, texto, limite)
+            _consultas.update { it + (m to Consulta(tentativa = agora, sucesso = agora)) }
+        } catch (t: Throwable) {
+            val antes = _consultas.value[m] ?: Consulta()
+            _consultas.update { it + (m to antes.copy(tentativa = agora, erro = t.message ?: "Não foi possível consultar a Caixa.")) }
         }
     }
 
     /**
-     * Ao entrar nos Jogos (ou na página de um jogo): consulta a Caixa de novo, para a lista e o
-     * volante não ficarem com um concurso que já foi sorteado. Só espera se a última consulta
-     * foi há poucos segundos (ir e voltar entre as abas não repete a consulta).
+     * Um último concurso da modalidade [m] que a Caixa mandou: fica no lugar do guardado só se for mais
+     * novo (ou o mesmo, mais completo); o anterior (do k1) vem do celular ou da Caixa.
      */
-    fun atualizarAoEntrar() {
-        if (System.currentTimeMillis() - ultimaAtualizacao >= VALIDADE_AO_ENTRAR_MS) atualizar(forcar = true)
+    private suspend fun receber(m: Modalidade, novo: Concurso, texto: String, limite: Semaphore?) {
+        val guardado = concursos[m]?.first
+        val u = if (AgendaDaCaixa.aceitar(guardado, novo)) {
+            guardar(arquivoUltimo(m), texto)
+            novo
+        } else {
+            guardado ?: return
+        }
+        val antes = concursos[m]?.takeIf { it.first.numero == u.numero }?.second
+        val a = antes ?: anterior(m, u, limite)
+        if (u === guardado && a == antes) return
+        concursos[m] = u to a
+        _itens.update { it + (m to calcular(m, u, a)) }
+        auditar(m, u, a)
+        if (limite == null) {
+            salvarAuditoria()
+            publicarAvisos()
+        }
+    }
+
+    /** O concurso anterior ao [u] (para o k1): do celular ou da Caixa (null = Loteca, Federal ou sem resposta). */
+    private suspend fun anterior(m: Modalidade, u: Concurso, limite: Semaphore?): Concurso? {
+        if (chave(m) == null || u.numero <= 1) return null
+        val f = arquivoConcurso(m, u.numero - 1)
+        ler(m, f)?.let { return it }
+        suspend fun buscar() = runCatching { CaixaApi.concursoComTexto(m, u.numero - 1) }.getOrNull()
+        val (c, texto) = (if (limite != null) limite.withPermit { buscar() } else buscar()) ?: return null
+        guardar(f, texto)
+        return c
+    }
+
+    private fun carregarConsultas() {
+        val lido = runCatching { json.decodeFromString(SERIALIZADOR_CONSULTAS, arquivoConsultas.readText()) }.getOrNull() ?: return
+        _consultas.value = lido.mapNotNull { (slug, c) -> Modalidade.entries.firstOrNull { it.slugApi == slug }?.let { it to c } }.toMap()
+    }
+
+    private fun salvarConsultas() {
+        guardar(arquivoConsultas, json.encodeToString(SERIALIZADOR_CONSULTAS, _consultas.value.mapKeys { it.key.slugApi }))
     }
 
     // ---------- auditoria das regras ----------
@@ -358,10 +445,7 @@ class Indices(private val context: Context) {
     fun destaque(mapa: Map<Modalidade, Item>): Item? = ordenados(mapa).firstOrNull { it.k1 != null }
 
     companion object {
-        private const val VALIDADE_MS = 10 * 60 * 1000L
-
-        /** Entrar de novo nos Jogos antes disto não repete a consulta. */
-        private const val VALIDADE_AO_ENTRAR_MS = 15 * 1000L
+        private val SERIALIZADOR_CONSULTAS = MapSerializer(String.serializer(), Consulta.serializer())
 
         /** Concursos seguidos fora das regras para avisar que elas mudaram. */
         const val DIVERGENCIAS_PARA_AVISAR = 3

@@ -43,7 +43,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -116,13 +115,19 @@ fun BotaoTimeDoCoracao(atual: String?, aoEscolher: (String) -> Unit) {
     }
 }
 
-/** O brasão do time (da Wikipédia, guardado no celular); enquanto não chega (ou sem internet), um escudo genérico. */
+/**
+ * O brasão do time (da Wikipédia, guardado no celular); enquanto não chega (ou sem internet), um escudo genérico.
+ * Até a 0.19, trocar o time (no "Sortear" ou na lista) deixava o brasão do time anterior no botão da página
+ * da aposta: a imagem lembrada não acompanhava o time. Desde a 0.20 ela é de cada time.
+ */
 @Composable
 fun Brasao(time: TimeDoCoracao, tamanho: Dp = 36.dp) {
     val ctx = LocalContext.current.applicationContext
-    val imagem by produceState(Brasoes.naMemoria(time), time) {
-        if (value == null) value = Brasoes.carregar(ctx, time)
+    val estado = remember(time.wiki) { mutableStateOf(Brasoes.naMemoria(time)) }
+    LaunchedEffect(time.wiki) {
+        if (estado.value == null) estado.value = Brasoes.carregar(ctx, time)
     }
+    val imagem by estado
     Box(Modifier.size(tamanho), contentAlignment = Alignment.Center) {
         val i = imagem
         if (i != null) {

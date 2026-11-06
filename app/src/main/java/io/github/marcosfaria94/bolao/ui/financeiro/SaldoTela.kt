@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -47,25 +48,27 @@ import java.io.File
 /**
  * Documento do saldo atual (o "Saldo atual" do termo), no mesmo estilo dos comprovantes, para
  * mandar ao grupo: vai só a imagem, sem texto. Não é registro: a imagem é feita na hora, numa
- * pasta temporária, e apagada depois.
+ * pasta temporária, e apagada depois. Desde a 0.20 o documento tem a sua autenticação (o hash do
+ * saldo e da posição, encadeado com o último registro), feita de novo a cada envio pelo WhatsApp
+ * (com a hora do envio) e sem ficar guardada: não entra no Histórico nem na auditoria.
  */
 @Composable
 fun SaldoTela(estado: Estado) {
     val ctx = LocalContext.current
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
-    val geradoEm = remember { System.currentTimeMillis() }
+    // A hora da posição: a da abertura da tela e, a cada envio, a do envio (com a autenticação nova).
+    var geradoEm by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val saldo = Operacoes.saldo(estado)
     val titular = estado.administrador?.nome.orEmpty()
-    val linhas = remember(saldo, titular) {
-        LayoutTermico.consultaSaldo(
-            estado.nomeExibicao,
-            Mensagens.saldo(saldo, titular),
-            geradoEm,
-            estado.comprovantes.lastOrNull()?.autenticacao,
-            teste = estado.exemplo,
-        )
-    }
+    fun linhasEm(momento: Long) = LayoutTermico.consultaSaldo(
+        estado.nomeExibicao,
+        Mensagens.saldo(saldo, titular),
+        momento,
+        estado.comprovantes.lastOrNull()?.autenticacao,
+        teste = estado.exemplo,
+    )
+    val linhas = remember(saldo, titular, geradoEm) { linhasEm(geradoEm) }
     val imagem by produceState<Bitmap?>(null, linhas) {
         value = withContext(Dispatchers.Default) { runCatching { RenderTermico.desenhar(ctx, linhas) }.getOrNull() }
     }
@@ -82,7 +85,8 @@ fun SaldoTela(estado: Estado) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            "Saldo atual do bolão, para mandar ao grupo (vai só a imagem). Ele não é registrado nem fica guardado no app.",
+            "Saldo atual do bolão, para mandar ao grupo (vai só a imagem). Ele não é registrado nem fica guardado no app: " +
+                "a autenticação é feita a cada envio.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -103,9 +107,13 @@ fun SaldoTela(estado: Estado) {
                 enviando = true
                 escopo.launch {
                     try {
+                        // Cada envio é um documento novo: a posição e a autenticação da hora do envio.
+                        val momento = System.currentTimeMillis()
+                        geradoEm = momento
+                        val enviadas = linhasEm(momento)
                         val arquivo = withContext(Dispatchers.Default) {
-                            File(Compartilhar.pastaTemporaria(ctx), "saldo-${System.currentTimeMillis()}.png").also {
-                                RenderTermico.salvar(ctx, linhas, it)
+                            File(Compartilhar.pastaTemporaria(ctx), "saldo-$momento.png").also {
+                                RenderTermico.salvar(ctx, enviadas, it)
                             }
                         }
                         Compartilhar.whatsapp(ctx, "", listOf(Anexo(arquivo, "image/png")))

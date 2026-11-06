@@ -7,6 +7,7 @@ import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.imagem.LayoutTermico.Estilo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
@@ -100,7 +101,15 @@ class LayoutTermicoTest {
         assertTrue(textos.contains("CAIXA DO BOLÃO: R$ 14,03"))
         assertTrue(textos.contains("POSIÇÃO EM: 19/10/2026 11:45:10"))
         assertTrue(textos.contains("ÚLTIMO REGISTRO: ${Autenticacao.formatar(codigo)}"))
-        assertFalse(textos.any { it.startsWith("AUTENTICAÇÃO") })
+        // Desde a 0.20, a autenticação do próprio documento (o saldo, a posição e o último registro), depois do último registro.
+        val autenticacao = LayoutTermico.autenticacaoDoSaldo(texto, agora, codigo)
+        assertEquals(Autenticacao.calcular(codigo, listOf("SALDO ATUAL", texto, "19/10/2026 11:45:10")), autenticacao)
+        assertEquals(textos.indexOf("ÚLTIMO REGISTRO: ${Autenticacao.formatar(codigo)}") + 1, textos.indexOf("AUTENTICAÇÃO: ${Autenticacao.formatar(autenticacao)}"))
+        // Outro envio (outra hora) ou outro saldo: outra autenticação.
+        assertNotEquals(autenticacao, LayoutTermico.autenticacaoDoSaldo(texto, agora + 1_000, codigo))
+        assertNotEquals(autenticacao, LayoutTermico.autenticacaoDoSaldo(Mensagens.saldo(1404, "Fulano de Tal"), agora, codigo))
+        // Ainda sem nenhum registro: a autenticação sai do mesmo jeito (sem o último registro).
+        assertTrue(LayoutTermico.consultaSaldo("Bolão dos Amigos", texto, agora, null).any { it.texto.startsWith("AUTENTICAÇÃO: ") })
         assertEquals(LayoutTermico.AVISO_SALDO, linhas.filter { it.estilo == Estilo.PEQUENO }.joinToString(" ") { it.texto })
     }
 

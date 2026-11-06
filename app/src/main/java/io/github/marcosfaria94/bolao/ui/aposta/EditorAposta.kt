@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -37,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -51,6 +53,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -58,6 +61,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -253,8 +257,16 @@ fun SecaoVolante(
     }
 
     pendencias.firstOrNull()?.let { Aviso(it, alerta = true) }
+    val comEspelho = r.espelho && Volante.temEspelho(m)
     if (pendencias.isEmpty() && !individual) {
-        Aviso("Registre a aposta e faça o jogo no app Loterias CAIXA com estes números. Depois, anexe o comprovante da Caixa na aba Comprovantes.")
+        Aviso(
+            if (comEspelho) {
+                "Registre as apostas e faça o jogo no app Loterias CAIXA com estes números, marcando a Aposta espelho. " +
+                    "Depois, anexe os comprovantes da Caixa na aba Comprovantes."
+            } else {
+                "Registre a aposta e faça o jogo no app Loterias CAIXA com estes números. Depois, anexe o comprovante da Caixa na aba Comprovantes."
+            },
+        )
     }
     if (!ficaEmAndamento(r)) {
         Aviso("Se sair agora, a aposta é descartada: complete o " + (if (federal) "bilhete." else "volante."))
@@ -265,7 +277,7 @@ fun SecaoVolante(
         trabalhando = registrando || conferindo,
         aoVisualizar = { vendo = true },
         mostrarVisualizar = !individual,
-        textoRegistrar = "Registrar aposta",
+        textoRegistrar = if (comEspelho) "Registrar apostas" else "Registrar aposta",
         aoRegistrar = {
             // Antes de registrar: o concurso ainda é o que está recebendo apostas?
             conferindo = true
@@ -318,15 +330,25 @@ fun SecaoVolante(
     }
 
     confirmar?.let { antes ->
+        // Lotomania com a aposta espelho (desde a 0.20): duas apostas, a segunda com os 50 números que ficaram de fora.
+        val total = if (comEspelho) r.valor * 2 else r.valor
+        val espelho = if (comEspelho) {
+            "Com a aposta espelho: são duas apostas de ${Dinheiro.rs(r.valor)}, a segunda com os 50 números que ficaram de fora."
+        } else {
+            ""
+        }
         val explicacao = if (individual) {
-            "Desconta ${Dinheiro.rs(r.valor)} do saldo. Dá para excluir a aposta depois."
+            "Desconta ${Dinheiro.rs(total)} do saldo. Dá para excluir " + (if (comEspelho) "as apostas" else "a aposta") + " depois."
+        } else if (comEspelho) {
+            "Desconta ${Dinheiro.rs(total)} do saldo. Depois, anexe os comprovantes da Caixa na aba Comprovantes: " +
+                "até a conferência deles, as apostas ainda podem ser descartadas."
         } else {
             "Desconta ${Dinheiro.rs(r.valor)} do saldo. Depois, anexe o comprovante da Caixa na aba Comprovantes: " +
                 "até a conferência dele, a aposta ainda pode ser descartada."
         }
         DialogoSimNao(
-            titulo = "Deseja registrar aposta?",
-            texto = listOf(antes, explicacao).filter { it.isNotBlank() }.joinToString("\n\n"),
+            titulo = if (comEspelho) "Deseja registrar as apostas?" else "Deseja registrar aposta?",
+            texto = listOf(antes, espelho, explicacao).filter { it.isNotBlank() }.joinToString("\n\n"),
             aoNao = { confirmar = null },
             aoSim = {
                 confirmar = null
@@ -335,11 +357,21 @@ fun SecaoVolante(
                     try {
                         val agora = System.currentTimeMillis()
                         val final = atual
-                        val novo = repo.atualizar { e -> Operacoes.registrarAposta(Operacoes.salvarRascunho(e, final), final.id, hoje, agora) }
+                        var espelhoRegistrada: Aposta? = null
+                        val novo = repo.atualizar { e ->
+                            val (x, esp) = Operacoes.registrarComEspelho(Operacoes.salvarRascunho(e, final), final.id, hoje, agora)
+                            espelhoRegistrada = esp
+                            x
+                        }
                         val n = novo.apostas.firstOrNull { it.id == final.id }?.numero ?: numero
+                        val esp = espelhoRegistrada
                         avisos.showSnackbar(
-                            if (individual) "Aposta Nº$n registrada."
-                            else "Aposta Nº$n registrada. Anexe o comprovante da Caixa na aba Comprovantes.",
+                            when {
+                                esp != null && individual -> "Apostas Nº$n e Nº${esp.numero} (espelho) registradas."
+                                esp != null -> "Apostas Nº$n e Nº${esp.numero} (espelho) registradas. Anexe os comprovantes da Caixa na aba Comprovantes."
+                                individual -> "Aposta Nº$n registrada."
+                                else -> "Aposta Nº$n registrada. Anexe o comprovante da Caixa na aba Comprovantes."
+                            },
                         )
                     } catch (t: Throwable) {
                         avisos.showSnackbar("Não foi possível registrar: ${t.message}")
@@ -563,6 +595,7 @@ private fun VolanteEditavel(
                 Extra.MES_DE_SORTE -> BotaoMesDeSorte(r.extra) { mudar(r.copy(extra = it)) }
                 Extra.NENHUM -> Unit
             }
+            if (Volante.temEspelho(m)) OpcaoEspelho(r.espelho, r.valor) { mudar(r.copy(espelho = it)) }
         }
         Formato.COLUNAS -> {
             Text("Um número em cada coluna", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -640,3 +673,32 @@ private fun VolanteEditavel(
         }
     }
 }
+
+/**
+ * A opção "Aposta espelho" do volante da Lotomania (desde a 0.20), como no volante da Caixa: ligada, o
+ * registro faz também uma segunda aposta, com os 50 números que ficaram de fora (pelo mesmo [preco]).
+ */
+@Composable
+private fun OpcaoEspelho(ligada: Boolean, preco: Long, aoMudar: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .toggleable(value = ligada, role = Role.Switch, onValueChange = aoMudar)
+            .padding(vertical = 6.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(TITULO_ESPELHO, style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Faz outra aposta com os 50 números que ficaram de fora (mais ${Dinheiro.rs(preco)}).",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = ligada, onCheckedChange = null)
+    }
+}
+
+const val TITULO_ESPELHO = "Aposta espelho"

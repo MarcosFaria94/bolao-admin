@@ -61,6 +61,15 @@ object Datas {
         else -> longa(d)
     }
 
+    /**
+     * O dia do sorteio nas telas (desde a 0.20, depois de "Sorteio: "): "Hoje", "Amanhã", "Em 3 dias"
+     * (até 7 dias), "Ontem" ou a data ("22/10/2026").
+     */
+    fun sorteio(d: LocalDate, hoje: LocalDate): String = when (val n = dias(d, hoje)) {
+        in 2L..7L -> "Em $n dias"
+        else -> relativa(d, hoje)
+    }
+
     /** No meio da frase: "ontem", "hoje", "amanhã" ou "em 22/10/2026". */
     fun quando(d: LocalDate, hoje: LocalDate): String = when (dias(d, hoje)) {
         -1L -> "ontem"

@@ -141,6 +141,11 @@ data class Aposta(
     val pendenteDeAnexo: Boolean = false,
     /** O que a leitura do comprovante da Caixa mudou ou não conseguiu ler (para a conferência). */
     val notasDoAnexo: List<String> = emptyList(),
+    /**
+     * Lotomania (desde a 0.20): registrar junto a aposta espelho, uma segunda aposta com os 50 números
+     * que ficaram de fora desta (como a opção "Aposta espelho" do volante da Caixa).
+     */
+    val espelho: Boolean = false,
 )
 
 @Serializable

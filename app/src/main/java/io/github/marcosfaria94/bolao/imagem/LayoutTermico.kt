@@ -45,7 +45,16 @@ object LayoutTermico {
     /** Aviso do documento de saldo (que não é registrado). */
     const val AVISO_SALDO =
         "Documento informativo, gerado na hora: não é um comprovante registrado e não fica guardado no app. " +
-            "O código acima é o do último comprovante registrado."
+            "A autenticação (hash SHA-256 do saldo e da posição, encadeado com o último registro) vale só para este envio."
+
+    /**
+     * O código de autenticação do documento do saldo (desde a 0.20): o SHA-256 do subtítulo, do bloco
+     * do saldo e da posição (data e hora, como impressas), encadeado com o código do último comprovante
+     * registrado ([ultimaAutenticacao]). É feito a cada envio e não fica guardado (nem no Histórico nem na
+     * auditoria): quem tiver o app com os mesmos registros consegue refazer a conta.
+     */
+    fun autenticacaoDoSaldo(texto: String, geradoEm: Long, ultimaAutenticacao: String?): String =
+        Autenticacao.calcular(ultimaAutenticacao, listOf(SUBTITULO_SALDO, texto, Datas.dataHora(geradoEm)))
 
     /** Colunas da letra do aviso num papel de [colunas] colunas normais. */
     fun colunasPequenas(colunas: Int): Int = colunas * 10 / 9
@@ -179,7 +188,8 @@ object LayoutTermico {
 
     /**
      * Documento do saldo atual (tela "Saldo"): mesmo visual dos comprovantes, mas não é registro.
-     * [ultimaAutenticacao] liga o documento ao último comprovante registrado.
+     * [ultimaAutenticacao] liga o documento ao último comprovante registrado; desde a 0.20, o documento
+     * tem a sua autenticação ([autenticacaoDoSaldo]).
      */
     fun consultaSaldo(grupo: String, texto: String, geradoEm: Long, ultimaAutenticacao: String?, teste: Boolean = false): List<Linha> {
         val bloco = texto.split("\n").map { Linha(it) }
@@ -198,6 +208,7 @@ object LayoutTermico {
             add(Linha("=".repeat(largura)))
             add(Linha("POSIÇÃO EM: ${Datas.dataHora(geradoEm)}"))
             if (!ultimaAutenticacao.isNullOrBlank()) add(Linha("ÚLTIMO REGISTRO: ${Autenticacao.formatar(ultimaAutenticacao)}"))
+            add(Linha("AUTENTICAÇÃO: ${Autenticacao.formatar(autenticacaoDoSaldo(texto, geradoEm, ultimaAutenticacao))}"))
             add(Linha(estilo = Estilo.ESPACO))
             addAll(pequenas(AVISO_SALDO, largura))
         }

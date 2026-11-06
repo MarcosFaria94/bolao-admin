@@ -19,7 +19,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.HourglassTop
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Indices
+import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
@@ -46,6 +51,7 @@ import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
 import io.github.marcosfaria94.bolao.ui.tema.Tarja
+import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 import java.time.LocalDate
 
 /** Casas decimais dos índices na tela (parametros_k.json). */
@@ -90,17 +96,36 @@ const val NAO_DIVULGADO = "Não divulgado"
 fun precoDoCartao(m: Modalidade, estado: Estado): String =
     if (m.precoVariavel) "Variável" else Dinheiro.rs(estado.config.preco(m))
 
+/**
+ * O aviso do cartão quando os dados não são certos (desde a 0.20): "Aguardando resultado" (o sorteio
+ * já passou e o resultado não chegou) ou "Aguardando rateio" (o resultado chegou sem o rateio). Em
+ * dia (ou sem a data do próximo sorteio), nada.
+ */
+fun avisoDoCartao(s: AgendaDaCaixa.Situacao?): String? = when (s?.estado) {
+    AgendaDaCaixa.Estado.SORTEANDO, AgendaDaCaixa.Estado.AGUARDANDO -> "Aguardando resultado"
+    AgendaDaCaixa.Estado.SEM_RATEIO -> "Aguardando rateio"
+    else -> null
+}
+
 /** Largura da coluna da bola e do nome (igual em todos os cartões, para as bolas ficarem alinhadas). */
 private val LARGURA_BOLA = 72.dp
 
 /**
  * Uma modalidade na lista ordenada pelo k1 (Jogos): a bola (sigla e próximo concurso) com o nome
  * da modalidade embaixo; ao lado, o preço no canto de cima, "Prêmio: R$ 58,5 Milhões",
- * "Sorteio: Hoje" e os índices. O concurso em destaque tem contorno dourado e, no alto, a
- * estrelinha com "CONCURSO EM DESTAQUE".
+ * "Sorteio: Hoje" (desde a 0.20, "Em 3 dias" até 7 dias) e os índices. O concurso em destaque tem
+ * contorno dourado e, no alto, a estrelinha com "CONCURSO EM DESTAQUE". Quando os dados não são certos
+ * ([situacao]), o aviso ao lado do preço ([avisoDoCartao]).
  */
 @Composable
-fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaque: Boolean = false, aoSegurar: (() -> Unit)? = null) {
+fun CartaoIndice(
+    item: Indices.Item,
+    estado: Estado,
+    aoTocar: () -> Unit,
+    destaque: Boolean = false,
+    aoSegurar: (() -> Unit)? = null,
+    situacao: AgendaDaCaixa.Situacao? = null,
+) {
     val m = item.modalidade
     val u = item.ultimo
     val hoje = LocalDate.now()
@@ -155,9 +180,23 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    // O preço no canto de cima, à direita.
-                    Row(Modifier.fillMaxWidth()) {
-                        Spacer(Modifier.weight(1f))
+                    // O preço no canto de cima, à direita; à esquerda, o aviso quando os dados não são certos.
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        val aviso = avisoDoCartao(situacao)
+                        if (aviso != null) {
+                            Icon(Icons.Outlined.HourglassTop, contentDescription = null, tint = corDestaque(), modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(3.dp))
+                            TextoQueCabe(
+                                aviso,
+                                MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
+                                cor = corDestaque(),
+                                peso = FontWeight.SemiBold,
+                                menor = 9.sp,
+                                modifier = Modifier.weight(1f).padding(end = 6.dp),
+                            )
+                        } else {
+                            Spacer(Modifier.weight(1f))
+                        }
                         EtiquetaPreco(precoDoCartao(m, estado))
                     }
                     TextoQueCabe(
@@ -172,7 +211,7 @@ fun CartaoIndice(item: Indices.Item, estado: Estado, aoTocar: () -> Unit, destaq
                     )
                     // "Sorteio:" e a data na mesma cor.
                     Text(
-                        "Sorteio: " + (u?.proximaData?.let { Datas.relativa(it, hoje) } ?: NAO_DIVULGADO),
+                        "Sorteio: " + (u?.proximaData?.let { Datas.sorteio(it, hoje) } ?: NAO_DIVULGADO),
                         style = MaterialTheme.typography.bodyLarge,
                         color = cor,
                         maxLines = 1,

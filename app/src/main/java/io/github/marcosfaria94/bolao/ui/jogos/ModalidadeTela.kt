@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.HourglassTop
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +61,7 @@ import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Indices
+import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
@@ -77,7 +81,9 @@ import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.bola3D
 import io.github.marcosfaria94.bolao.ui.comum.estiloNaBola
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
+import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
+import java.time.Instant
 import java.time.LocalDate
 
 /**
@@ -109,7 +115,8 @@ fun ModalidadeTela(
     val indices = remember { app.indices }
     val itens by indices.itens.collectAsStateWithLifecycle()
     val atualizando by indices.atualizando.collectAsStateWithLifecycle()
-    // Ao entrar: a Caixa de novo (o concurso do volante não pode ser um que já foi sorteado).
+    val consultas by indices.consultas.collectAsStateWithLifecycle()
+    // Ao entrar: a agenda dos sorteios decide se consulta a Caixa (o concurso do volante não pode ser um que já foi sorteado).
     LaunchedEffect(Unit) { indices.atualizarAoEntrar() }
     val item: Indices.Item? = itens[m]
     val u = item?.ultimo
@@ -185,6 +192,11 @@ fun ModalidadeTela(
     val premio = aposta.premioEstimado?.takeIf { it > 0 } ?: u?.premioEstimadoProximo?.takeIf { doProximo && it > 0 }
     val sorteio = aposta.dataSorteio ?: u?.proximaData?.takeIf { doProximo }
     val emDestaque = doProximo && indices.destaque(itens)?.modalidade == m
+    // O próximo concurso (da Caixa, guardado no celular) já foi sorteado e o resultado ainda não chegou.
+    val situacao = indices.situacao(m, Instant.now(), itens, consultas)
+    val avisoDoQuadro = situacao.sorteio?.takeIf { doProximo && situacao.sorteado }?.let {
+        "Sorteado ${AgendaDaCaixa.quando(it, Instant.now())}: aguardando o resultado da Caixa."
+    }
 
     // As duas páginas ficam montadas: ir aos Detalhes e voltar não perde nada da página do jogo.
     Box(Modifier.fillMaxSize().nestedScroll(puxao)) {
@@ -209,6 +221,7 @@ fun ModalidadeTela(
                 federal = m == Modalidade.FEDERAL,
                 destaque = emDestaque,
                 consultando = premio == null && sorteio == null && atualizando,
+                aviso = avisoDoQuadro,
             )
             if (registrada != null) {
                 SecaoApostaRegistrada(
@@ -266,7 +279,7 @@ private fun CabecalhoModalidade(m: Modalidade, concurso: Int?) {
  * contorno dourado e a estrelinha.
  */
 @Composable
-private fun QuadroPremio(premio: Long?, sorteio: LocalDate?, hoje: LocalDate, federal: Boolean, destaque: Boolean, consultando: Boolean) {
+private fun QuadroPremio(premio: Long?, sorteio: LocalDate?, hoje: LocalDate, federal: Boolean, destaque: Boolean, consultando: Boolean, aviso: String? = null) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = if (destaque) BorderStroke(2.dp, Dourado) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -299,7 +312,15 @@ private fun QuadroPremio(premio: Long?, sorteio: LocalDate?, hoje: LocalDate, fe
                 // A Caixa ainda não divulgou a estimativa: no lugar do valor grande, uma linha como a do sorteio.
                 RotuloValor("Prêmio", NAO_DIVULGADO)
             }
-            RotuloValor("Sorteio", sorteio?.let { Datas.relativa(it, hoje) } ?: NAO_DIVULGADO)
+            RotuloValor("Sorteio", sorteio?.let { Datas.sorteio(it, hoje) } ?: NAO_DIVULGADO)
+            // Desde a 0.20: o concurso já foi sorteado e o resultado ainda não chegou ao app.
+            if (aviso != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                    Icon(Icons.Outlined.HourglassTop, contentDescription = null, tint = corDestaque(), modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(aviso, style = MaterialTheme.typography.bodyMedium, color = corDestaque())
+                }
+            }
         }
     }
 }

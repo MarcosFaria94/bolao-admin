@@ -115,10 +115,14 @@ class PendenciasTest {
         val sorteio = LocalDate.of(2026, 10, 21)
         val a = Aposta("a", 0, Modalidade.QUINA, 1, LocalDate.of(2026, 10, 19), dataSorteio = sorteio, valor = 300, criadaEm = 0, comprovante = anexo)
         var e = registrar(base, a, LocalDate.of(2026, 10, 19))
-        // O resultado sai à noite: o sorteio é às 20h e a conferência começa às 21h (domingo, ao meio-dia).
-        assertEquals(0, Pendencias.aguardandoResultado(e, sorteio.atTime(20, 50)).size)
-        assertEquals(1, Pendencias.aguardandoResultado(e, sorteio.atTime(21, 0)).size)
+        // O resultado sai à noite: desde a 0.20, o sorteio é às 21h e a conferência começa 1 hora depois,
+        // às 22h (a Federal sorteia às 20h; aos domingos, às 11h).
+        assertEquals(0, Pendencias.aguardandoResultado(e, sorteio.atTime(21, 50)).size)
+        assertEquals(1, Pendencias.aguardandoResultado(e, sorteio.atTime(22, 0)).size)
         assertEquals(1, Pendencias.aguardandoResultado(e, sorteio.atTime(22, 10)).size)
+        assertEquals(sorteio.atTime(22, 0), Pendencias.horaDoResultado(Modalidade.QUINA, sorteio))
+        assertEquals(sorteio.atTime(21, 0), Pendencias.horaDoResultado(Modalidade.FEDERAL, sorteio))
+        assertEquals(LocalDate.of(2026, 10, 25).atTime(12, 0), Pendencias.horaDoResultado(Modalidade.QUINA, LocalDate.of(2026, 10, 25)))
 
         // Conferida sem o rateio oficial: confere de novo na próxima vez e ainda não apura.
         e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, conferidaEm = ms(sorteio.atTime(22, 10))))
@@ -162,18 +166,19 @@ class PendenciasTest {
         val sorteio = LocalDate.of(2026, 10, 21)
         val a = Aposta("a", 0, Modalidade.QUINA, 1, LocalDate.of(2026, 10, 19), dataSorteio = sorteio, valor = 300, criadaEm = 0, comprovante = anexo)
         var e = registrar(base, a, LocalDate.of(2026, 10, 19))
-        // Antes do sorteio: acorda na hora do resultado.
-        assertEquals(sorteio.atTime(21, 0), Pendencias.proximoDespertar(e, sorteio.atTime(9, 0)))
+        // Antes do sorteio: acorda na hora do resultado (1 hora depois do sorteio das 21h, desde a 0.20).
+        assertEquals(sorteio.atTime(22, 0), Pendencias.proximoDespertar(e, sorteio.atTime(9, 0)))
+        assertEquals(sorteio.atTime(22, 0), Pendencias.proximoDespertar(e, sorteio.atTime(21, 10)))
         // Depois, enquanto o resultado (ou o rateio oficial) não sai: de meia em meia hora.
-        assertEquals(sorteio.atTime(21, 40), Pendencias.proximoDespertar(e, sorteio.atTime(21, 10)))
-        e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, conferidaEm = ms(sorteio.atTime(21, 10))))
-        assertEquals(sorteio.atTime(22, 0), Pendencias.proximoDespertar(e, sorteio.atTime(21, 30)))
+        assertEquals(sorteio.atTime(22, 40), Pendencias.proximoDespertar(e, sorteio.atTime(22, 10)))
+        e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, conferidaEm = ms(sorteio.atTime(22, 10))))
+        assertEquals(sorteio.atTime(23, 0), Pendencias.proximoDespertar(e, sorteio.atTime(22, 30)))
         // Conferida com o rateio: a apuração já pode sair (se ainda não saiu, tenta de novo em meia hora).
-        e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, rateioOficial = rateio, conferidaEm = ms(sorteio.atTime(22, 0))))
-        assertEquals(sorteio.atTime(22, 30), Pendencias.proximoDespertar(e, sorteio.atTime(22, 0)))
+        e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, rateioOficial = rateio, conferidaEm = ms(sorteio.atTime(23, 0))))
+        assertEquals(sorteio.atTime(23, 30), Pendencias.proximoDespertar(e, sorteio.atTime(23, 0)))
         // Apurada (no mesmo dia): nada a esperar.
-        e = Operacoes.confirmarApuracao(e, "a", e.apostas.single().apuracao!!, sorteio, ms(sorteio.atTime(22, 1)))
-        assertEquals(null, Pendencias.proximoDespertar(e, sorteio.atTime(22, 2)))
+        e = Operacoes.confirmarApuracao(e, "a", e.apostas.single().apuracao!!, sorteio, ms(sorteio.atTime(23, 1)))
+        assertEquals(null, Pendencias.proximoDespertar(e, sorteio.atTime(23, 2)))
         // Dois dias depois do sorteio sem resultado, quem resolve é o Administrador (sem despertador).
         val semResultado = registrar(base, a.copy(id = "b"), LocalDate.of(2026, 10, 19))
         assertEquals(null, Pendencias.proximoDespertar(semResultado, sorteio.plusDays(3).atTime(9, 0)))

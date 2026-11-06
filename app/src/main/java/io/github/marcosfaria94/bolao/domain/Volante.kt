@@ -27,6 +27,15 @@ object Volante {
 
     fun universo(m: Modalidade): IntRange = m.menor..m.maior
 
+    /** Só a Lotomania tem a aposta espelho. */
+    fun temEspelho(m: Modalidade): Boolean = m == Modalidade.LOTOMANIA
+
+    /**
+     * A aposta espelho da Lotomania (desde a 0.20): os números que ficaram de fora dos [numeros]
+     * (com 50 marcados, os outros 50), em ordem.
+     */
+    fun espelho(m: Modalidade, numeros: List<Int>): List<Int> = (universo(m) - numeros.toSet()).sorted()
+
     /** Mês de Sorte ou Time do Coração sorteado, como os números. */
     private fun extraAleatorio(m: Modalidade, r: Random): String? = when (m.extra) {
         Extra.MES_DE_SORTE -> MESES_DE_SORTE.random(r)

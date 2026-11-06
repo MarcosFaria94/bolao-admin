@@ -445,4 +445,36 @@ class OperacoesTest {
         assertEquals(listOf(1, 2, 1), rateios.map { Operacoes.numeroNoMes(antigo, it) })
         assertNull(Operacoes.primeiraAutenticacaoQuebrada(e))
     }
+
+    /** Lotomania com a aposta espelho (desde a 0.20): duas apostas, a segunda com os 50 números que ficaram de fora. */
+    @Test
+    fun apostaEspelhoDaLotomania() {
+        var e = Operacoes.registrarAporteMensal(inicial(), d(1), agora())
+        val saldo = Operacoes.saldo(e)
+        val pares = (0 until 100 step 2).toList()
+        val a = semComprovante("lm", 4, Modalidade.LOTOMANIA, 2790).copy(numeros = pares, espelho = true)
+        val (depois, espelho) = Operacoes.registrarComEspelho(Operacoes.salvarRascunho(e, a), "lm", d(4), agora())
+        e = depois
+        assertNotNull(espelho)
+        val original = e.apostas.single { it.id == "lm" }
+        // Nº1 e Nº2, no mesmo concurso, com os números que se completam (os ímpares) e o mesmo valor.
+        assertEquals(listOf(1, 2), listOf(original.numero, espelho!!.numero))
+        assertEquals((1 until 100 step 2).toList(), espelho.numeros)
+        assertEquals(2790, espelho.concurso)
+        assertEquals(original.dataSorteio, espelho.dataSorteio)
+        assertTrue(espelho.registrada && espelho.pendenteDeAnexo && !espelho.espelho)
+        assertEquals(saldo - 2 * 300, Operacoes.saldo(e))
+        assertEquals(2, Operacoes.apostasSemComprovante(e).size)
+        // Sem a opção (ou fora da Lotomania): só uma aposta.
+        val (soUma, nenhuma) = Operacoes.registrarComEspelho(Operacoes.salvarRascunho(e, a.copy(id = "x", espelho = false)), "x", d(4), agora())
+        assertNull(nenhuma)
+        assertEquals(3, soUma.apostas.count { it.registrada })
+        val (quina, semEspelho) = Operacoes.registrarComEspelho(Operacoes.salvarRascunho(e, semComprovante("q", 4).copy(espelho = true)), "q", d(4), agora())
+        assertNull(semEspelho)
+        assertEquals(3, quina.apostas.count { it.registrada })
+        // Volante incompleto: não registra nada.
+        assertThrows(IllegalArgumentException::class.java) {
+            Operacoes.registrarComEspelho(Operacoes.salvarRascunho(e, a.copy(id = "y", numeros = listOf(1, 2, 3))), "y", d(4), agora())
+        }
+    }
 }

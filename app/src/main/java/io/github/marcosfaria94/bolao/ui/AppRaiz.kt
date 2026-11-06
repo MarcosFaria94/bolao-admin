@@ -252,7 +252,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     // O resumo do Painel de Jogos: cada tipo de pendência com a quantidade.
     val resumo = resumoDasPendencias(estado, pendencias)
 
-    // Ao abrir: confere os sorteios e os índices na hora (sem esperar a próxima hora).
+    // Ao abrir: confere os sorteios na hora (sem esperar a próxima hora) e os índices, se a agenda pedir.
     LaunchedEffect(Unit) {
         Vigia.rodarAgora(ctx)
         ctx.bolao.indices.atualizar()
@@ -360,7 +360,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     var visitaDaHome by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(paginas.currentPage) { if (abaAtual != Aba.HOME) visitaDaHome++ }
 
-    // Toda vez que se entra nos Jogos (pela barra, deslizando ou voltando de um jogo): a Caixa de novo.
+    // Toda vez que se entra nos Jogos (pela barra, deslizando ou voltando de um jogo): a agenda dos sorteios
+    // decide se precisa consultar a Caixa (desde a 0.20, os dados valem até o próximo sorteio).
     val abaAssentada = abaDa(paginas.settledPage)
     LaunchedEffect(ehAba, abaAssentada) { if (ehAba && abaAssentada == Aba.JOGOS) ctx.bolao.indices.atualizarAoEntrar() }
     LaunchedEffect(abaAssentada) { aoMudarDeAba(abaAssentada) }
