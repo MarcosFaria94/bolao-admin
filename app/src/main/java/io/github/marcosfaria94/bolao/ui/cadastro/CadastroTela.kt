@@ -41,6 +41,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -51,11 +52,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -76,7 +77,6 @@ import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
 import io.github.marcosfaria94.bolao.ui.comum.BarraTitulo
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
-import io.github.marcosfaria94.bolao.ui.comum.CampoInteiro
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.teste.BotaoExperimentar
@@ -91,12 +91,22 @@ class FormPessoa {
     var pix by mutableStateOf("")
 }
 
-class CadastroViewModel(app: Application) : AndroidViewModel(app) {
-    private val repo: Repositorio = app.bolao.repo
+class CadastroViewModel(app: Application, val sessao: String) : AndroidViewModel(app) {
+    private val sessoes = app.bolao.sessoes
+    private val repo: Repositorio = sessoes.repo(sessao)
 
-    var passo by mutableIntStateOf(0)
+    /** Bolão: o nome que identifica a sessão (opcional; vazio = o genérico, ver [nomeGenerico]). Desde a 0.21. */
+    var nomeBolao by mutableStateOf("")
+
+    /** O nome genérico desta sessão ("Bolão 2"), se o nome ficar vazio. */
+    val nomeGenerico: String get() = sessoes.nomeGenerico(exceto = sessao)
+
+    /** Já existe uma sessão Individual: só pode haver uma (desde a 0.21). */
+    val individualOcupado: Boolean get() = sessoes.temIndividual(exceto = sessao)
+
+    var passo by mutableIntStateOf(System.getProperty("fotos.passo")?.toInt() ?: 0)
     /** Bolão (o grupo) ou Individual: escolhido no passo 1. */
-    var modo by mutableStateOf(Modo.BOLAO)
+    var modo by mutableStateOf(if (System.getProperty("fotos.individual") == "1") Modo.INDIVIDUAL else Modo.BOLAO)
     val pessoas = mutableStateListOf(FormPessoa(), FormPessoa(), FormPessoa())
     var administrador by mutableIntStateOf(0)
     /** Modo individual: o nome de quem usa (opcional). */
@@ -178,6 +188,10 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
     fun concluir(aoErro: (String) -> Unit) {
         if (salvando) return
         if (individual) {
+            if (individualOcupado) {
+                aoErro("Já existe a sessão Individual: só pode haver uma.")
+                return
+            }
             concluirIndividual(aoErro)
             return
         }
@@ -227,6 +241,8 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
                         termoSemAssinatura = termoSemAssinatura ?: it.termoSemAssinatura,
                     )
                 }
+                // O nome da sessão (desde a 0.21): o escolhido ou o genérico.
+                sessoes.nomear(sessao, nomeBolao, Modo.BOLAO)
             } catch (t: Throwable) {
                 aoErro("Não foi possível salvar: ${t.message}")
             } finally {
@@ -258,6 +274,8 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
                         ),
                     )
                 }
+                // A sessão Individual se chama sempre "Individual" (desde a 0.21).
+                sessoes.nomear(sessao, "", Modo.INDIVIDUAL)
             } catch (t: Throwable) {
                 aoErro("Não foi possível salvar: ${t.message}")
             } finally {
@@ -270,12 +288,17 @@ class CadastroViewModel(app: Application) : AndroidViewModel(app) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun CadastroTela(recomeco: Int = 0) {
-    // Cada volta ao cadastro (depois de apagar tudo) tem um cadastro novo, sem nada do anterior,
-    // e começa no "Como vai usar o app?" (as boas-vindas ficam para o app recém-instalado).
-    val vm: CadastroViewModel = viewModel(key = "cadastro-$recomeco")
-    remember(vm) { if (recomeco > 0 && vm.passo == 0) vm.passo = 1 }
+fun CadastroTela(sessao: String, recomeco: Int = 0) {
     val ctx = LocalContext.current
+    val app = ctx.bolao
+    val listaDeSessoes by app.sessoes.lista.collectAsStateWithLifecycle()
+    // Outras sessões já existem (desde a 0.21): o cadastro é de uma sessão nova, que dá para cancelar.
+    val outras = listaDeSessoes.any { it.id != sessao }
+    // Cada cadastro (de cada sessão, e depois de apagar tudo) é novo, sem nada do anterior, e começa no
+    // "Como vai usar o app?" (as boas-vindas ficam para o app recém-instalado).
+    val vm: CadastroViewModel = viewModel(key = "cadastro-$sessao-$recomeco") { CadastroViewModel(app, sessao) }
+    remember(vm) { if ((recomeco > 0 || outras) && vm.passo == 0) vm.passo = 1 }
+    var cancelar by remember { mutableStateOf(false) }
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
     val avisar: (String) -> Unit = { msg -> escopo.launch { avisos.showSnackbar(msg) } }
@@ -306,7 +329,14 @@ fun CadastroTela(recomeco: Int = 0) {
 
     Scaffold(
         topBar = {
-            BarraTitulo("Cadastro inicial", subtitulo = if (vm.passo > 0) "Passo ${vm.passo} de ${vm.totalPassos}" else null)
+            BarraTitulo(
+                if (outras) "Nova sessão" else "Cadastro inicial",
+                subtitulo = if (vm.passo > 0) "Passo ${vm.passo} de ${vm.totalPassos}" else null,
+                acoes = {
+                    // Uma sessão nova (com outras já criadas) pode ser cancelada: ela é apagada e o app volta à anterior.
+                    if (outras) TextButton(onClick = { cancelar = true }) { Text("Cancelar") }
+                },
+            )
         },
         snackbarHost = { SnackbarHost(avisos) },
     ) { padding ->
@@ -376,6 +406,19 @@ fun CadastroTela(recomeco: Int = 0) {
                 }
             }
         }
+    }
+
+    if (cancelar) {
+        DialogoConfirmar(
+            titulo = "Cancelar a sessão nova?",
+            texto = "O cadastro desta sessão não foi concluído: ela é apagada e o app volta à sessão anterior.",
+            confirmar = "Cancelar a sessão",
+            aoConfirmar = {
+                cancelar = false
+                app.escopo.launch { runCatching { app.sessoes.excluir(sessao) } }
+            },
+            aoFechar = { cancelar = false },
+        )
     }
 
     if (confirmarRestaurar) {
@@ -457,28 +500,37 @@ private fun PassoModo(vm: CadastroViewModel) {
         escolhida = !vm.individual,
         aoEscolher = { vm.modo = Modo.BOLAO },
     )
+    val ocupado = vm.individualOcupado
     OpcaoDeModo(
         titulo = "Individual",
-        texto = "Só para você, bem enxuto: registra as apostas e os prêmios. O saldo começa em zero e cai a cada aposta " +
-            "(mostra quanto você gastou) e sobe com os prêmios. Sem comprovantes, sem termo; tudo pode ser excluído e o " +
-            "app pode ser apagado a qualquer momento.",
+        texto = if (ocupado) {
+            "Já existe a sessão Individual: só pode haver uma. Use a que já existe (Alternar sessão)."
+        } else {
+            "Só para você, bem enxuto: registra as apostas e os prêmios. O saldo começa em zero e cai a cada aposta " +
+                "(mostra quanto você gastou) e sobe com os prêmios. Sem comprovantes, sem termo; tudo pode ser excluído e o " +
+                "app pode ser apagado a qualquer momento."
+        },
         escolhida = vm.individual,
+        habilitada = !ocupado,
         aoEscolher = { vm.modo = Modo.INDIVIDUAL },
     )
+    // Com o Individual ocupado, o modo fica no Bolão.
+    LaunchedEffect(ocupado) { if (ocupado) vm.modo = Modo.BOLAO }
 }
 
 @Composable
-private fun OpcaoDeModo(titulo: String, texto: String, escolhida: Boolean, aoEscolher: () -> Unit) {
+private fun OpcaoDeModo(titulo: String, texto: String, escolhida: Boolean, aoEscolher: () -> Unit, habilitada: Boolean = true) {
     Card(
         colors = CardDefaults.cardColors(
             containerColor = if (escolhida) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .selectable(selected = escolhida, onClick = aoEscolher, role = Role.RadioButton),
+            .selectable(selected = escolhida, enabled = habilitada, onClick = aoEscolher, role = Role.RadioButton)
+            .alpha(if (habilitada) 1f else 0.55f),
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
-            RadioButton(selected = escolhida, onClick = null)
+            RadioButton(selected = escolhida, onClick = null, enabled = habilitada)
             Spacer(Modifier.width(10.dp))
             Column {
                 Text(titulo, style = MaterialTheme.typography.titleMedium)
@@ -508,6 +560,19 @@ private fun PassoIndividual(vm: CadastroViewModel) {
 
 @Composable
 private fun PassoIntegrantes(vm: CadastroViewModel) {
+    // O nome do bolão (desde a 0.21): identifica a sessão; vazio, o genérico ("Bolão 2").
+    Text("Nome do bolão", style = MaterialTheme.typography.titleLarge)
+    OutlinedTextField(
+        value = vm.nomeBolao,
+        onValueChange = { vm.nomeBolao = it.take(io.github.marcosfaria94.bolao.data.Sessoes.TAMANHO_DO_NOME) },
+        label = { Text("Nome do bolão (opcional)") },
+        placeholder = { Text(vm.nomeGenerico) },
+        supportingText = { Text("Identifica o bolão ao alternar sessão. Vazio: \"${vm.nomeGenerico}\".") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(Modifier.height(4.dp))
     Text("Integrantes", style = MaterialTheme.typography.titleLarge)
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text("Quantos integrantes?", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))

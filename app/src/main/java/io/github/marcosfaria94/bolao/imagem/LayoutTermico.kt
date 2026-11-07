@@ -42,11 +42,6 @@ object LayoutTermico {
     /** Subtítulo do documento do saldo (o "Saldo atual" do termo). */
     const val SUBTITULO_SALDO = "SALDO ATUAL"
 
-    /** Aviso do documento de saldo (que não é registrado). */
-    const val AVISO_SALDO =
-        "Documento informativo, gerado na hora: não é um comprovante registrado e não fica guardado no app. " +
-            "A autenticação (hash SHA-256 do saldo e da posição, encadeado com o último registro) vale só para este envio."
-
     /**
      * O código de autenticação do documento do saldo (desde a 0.20): o SHA-256 do subtítulo, do bloco
      * do saldo e da posição (data e hora, como impressas), encadeado com o código do último comprovante
@@ -189,7 +184,8 @@ object LayoutTermico {
     /**
      * Documento do saldo atual (tela "Saldo"): mesmo visual dos comprovantes, mas não é registro.
      * [ultimaAutenticacao] liga o documento ao último comprovante registrado; desde a 0.20, o documento
-     * tem a sua autenticação ([autenticacaoDoSaldo]).
+     * tem a sua autenticação ([autenticacaoDoSaldo]). Desde a 0.21, sem o aviso de "documento
+     * informativo" no rodapé (pedido do usuário: o documento enviado é autenticado).
      */
     fun consultaSaldo(grupo: String, texto: String, geradoEm: Long, ultimaAutenticacao: String?, teste: Boolean = false): List<Linha> {
         val bloco = texto.split("\n").map { Linha(it) }
@@ -209,8 +205,6 @@ object LayoutTermico {
             add(Linha("POSIÇÃO EM: ${Datas.dataHora(geradoEm)}"))
             if (!ultimaAutenticacao.isNullOrBlank()) add(Linha("ÚLTIMO REGISTRO: ${Autenticacao.formatar(ultimaAutenticacao)}"))
             add(Linha("AUTENTICAÇÃO: ${Autenticacao.formatar(autenticacaoDoSaldo(texto, geradoEm, ultimaAutenticacao))}"))
-            add(Linha(estilo = Estilo.ESPACO))
-            addAll(pequenas(AVISO_SALDO, largura))
         }
     }
 

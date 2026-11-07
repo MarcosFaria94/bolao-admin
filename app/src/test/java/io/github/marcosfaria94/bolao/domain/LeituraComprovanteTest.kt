@@ -83,6 +83,83 @@ class LeituraComprovanteTest {
         assertEquals(listOf(2, 5), mi.trevos)
     }
 
+    /** O comprovante do Dia de Sorte (PDF da Caixa de 07/11/2026), com o rodapé dos telefones. */
+    private val rodape = """
+        0800 726 0101                           4004 0104                          0800 104 0104     0800 726 0207     0800 725 7474
+                                                                                   Alô CAIXA:(Demais Atendimento CAIXA
+        SAC(Sugestões, reclamações e elogios)   Alô CAIXA:(Regiões Metropolitanas) Regiões)                            Ouvidoria
+    """.trimIndent()
+
+    @Test
+    fun telefoneDoRodapeNaoEOConcurso() {
+        // Como o PDF sai em linhas (o rótulo e o valor na mesma linha).
+        val emLinhas = """
+            Loterias
+            Comprovante de Aposta Dia de Sorte
+            Dados da Aposta
+            Nome:            MARCOS DE FARIA VALADARES                CPF:   119.099.906-47
+            Data da aposta: 07/11/2026                                Subcanal da compra:  ANDROID
+            Valor da aposta: R$ 2,50                                  Hora da compra:      10:40:59
+            Modalidade:      Dia de Sorte                             Concurso:            1342
+            Teimosinha:      Não                                      Data do sorteio:     08/11/2026
+            Seus Números:
+            06 | 07 | 11 | 15 | 17 | 24 | 26
+            Mês de Sorte: Junho
+            Validade do prêmio: 90 dias
+            A4112AC3BF37EDE6465F7A45658595589C24
+            $rodape
+        """.trimIndent()
+        val l = LeituraComprovante.ler(Modalidade.DIA_DE_SORTE, emLinhas)
+        assertEquals(1342, l.concurso)
+        assertEquals(listOf(6, 7, 11, 15, 17, 24, 26), l.numeros)
+        assertEquals("Junho", l.extra)
+        assertTrue(4004 !in l.concursos)
+
+        // Como o reconhecimento de texto pode devolver: a coluna dos rótulos separada da dos valores,
+        // e o nome da modalidade logo antes do telefone (até a 0.20 o concurso virava 4004).
+        val emColunas = """
+            Comprovante de Aposta Dia de Sorte
+            Modalidade:
+            Teimosinha:
+            Concurso:
+            Data do sorteio:
+            Código E. Lotérico:
+            Dia de Sorte
+            1342
+            08/11/2026
+            04.025304-0
+            Seus Números:
+            06 | 07 | 11 | 15 | 17 | 24 | 26
+            Mês de Sorte: Junho
+            Dia de Sorte
+            4004 0104
+            0800 726 0101
+        """.trimIndent()
+        val c = LeituraComprovante.ler(Modalidade.DIA_DE_SORTE, emColunas)
+        assertEquals(1342, c.concurso)
+        assertTrue(4004 !in c.concursos)
+        // Pelas seções (aba Comprovantes), também.
+        val porSecao = LeituraComprovante.secoes(emColunas).flatMap { (m, t) -> LeituraComprovante.lerApostas(m, t) }
+        assertEquals(listOf(1342), porSecao.map { it.concurso })
+    }
+
+    @Test
+    fun concursoQueBateComAAposta() {
+        val l = LeituraComprovante.Lida(concurso = 4004, concursos = listOf(4004, 1342), numeros = listOf(1, 2, 3, 4, 5, 6, 7))
+        // Um dos candidatos é o da aposta: ele ganha.
+        assertEquals(1342, LeituraComprovante.escolherConcurso(l, listOf(1342)).lida.concurso)
+        // Perto do da aposta (o comprovante é de outro concurso): vale o lido.
+        val perto = LeituraComprovante.escolherConcurso(l.copy(concursos = listOf(1345)), listOf(1342))
+        assertEquals(1345, perto.lida.concurso)
+        assertNull(perto.duvidoso)
+        // Longe de todas: a leitura fica sem o concurso e o número vai para a nota.
+        val longe = LeituraComprovante.escolherConcurso(l.copy(concursos = listOf(4004)), listOf(1342))
+        assertNull(longe.lida.concurso)
+        assertEquals(4004, longe.duvidoso)
+        // Sem apostas para comparar: o mais provável.
+        assertEquals(4004, LeituraComprovante.escolherConcurso(l, emptyList()).lida.concurso)
+    }
+
     @Test
     fun outrosFormatos() {
         assertEquals(listOf(3, 0, 7, 1, 9, 4, 2), LeituraComprovante.ler(Modalidade.SUPER_SETE, "Colunas: 3 0 7 1 9 4 2").numeros)

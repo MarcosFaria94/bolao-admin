@@ -98,6 +98,38 @@ class AssociacaoTest {
         assertEquals(listOf("ms"), r.concursoMudado)
     }
 
+    /** Até a 0.20 o "4004" do telefone do rodapé virava o concurso das apostas do Dia de Sorte. */
+    @Test
+    fun telefoneDoRodapeNaoMudaOConcurso() {
+        val jogo = listOf(6, 7, 11, 15, 17, 24, 26)
+        var e = registrar(inicial(), "ds1", Modalidade.DIA_DE_SORTE, 1342, jogo)
+        e = registrar(e, "ds2", Modalidade.DIA_DE_SORTE, 1342, listOf(1, 2, 3, 4, 5, 6, 7))
+        val emColunas = """
+            Comprovante de Aposta Dia de Sorte
+            Concurso:
+            Data do sorteio:
+            Dia de Sorte
+            1342
+            08/11/2026
+            Seus Números:
+            06 | 07 | 11 | 15 | 17 | 24 | 26
+            Dia de Sorte
+            4004 0104
+        """.trimIndent()
+        val r = Associacao.associar(e, listOf(Associacao.Entrada(arquivo("Aposta.pdf"), emColunas)))
+        val a = r.estado.apostas.first { it.id == "ds1" }
+        assertEquals(1342, a.concurso)
+        assertEquals(Associacao.Tipo.ANEXADO, r.avisos.first().tipo)
+        assertTrue(r.concursoMudado.isEmpty())
+        // Só um número longe demais (sem o 1342 no texto): a aposta fica com o concurso dela, com a nota.
+        val soOLongo = "Comprovante de Aposta Dia de Sorte\nConcurso:\nDia de Sorte\n4004\nNúmeros: 01 02 03 04 05 06 07"
+        val r2 = Associacao.associar(r.estado, listOf(Associacao.Entrada(arquivo("Aposta (1).pdf"), soOLongo)))
+        val b = r2.estado.apostas.first { it.id == "ds2" }
+        assertEquals(1342, b.concurso)
+        assertEquals(Associacao.Tipo.ANEXADO, r2.avisos.first().tipo)
+        assertTrue(b.notasDoAnexo.toString(), b.notasDoAnexo.contains(Associacao.notaConcursoDuvidoso(4004, 1342)))
+    }
+
     @Test
     fun repeticoesSaoDescartadas() {
         var e = inicial()

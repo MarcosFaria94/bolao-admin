@@ -6,6 +6,12 @@ import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Comprovante
 import io.github.marcosfaria94.bolao.data.Config
 import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.data.IndicesDaAposta
+import io.github.marcosfaria94.bolao.data.Sessao
+import io.github.marcosfaria94.bolao.data.Sessoes
+import io.github.marcosfaria94.bolao.ui.sessoes.resumoDaSessao
+import io.github.marcosfaria94.bolao.ui.sessoes.sessoesCriadas
+import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.Extrato
 import io.github.marcosfaria94.bolao.data.Indices
 import io.github.marcosfaria94.bolao.data.Lancamento
@@ -63,7 +69,7 @@ import io.github.marcosfaria94.bolao.imagem.ImagemDosJogos
 import io.github.marcosfaria94.bolao.data.Pendencias
 import io.github.marcosfaria94.bolao.ui.home.emOrdemDeSorteioEK1
 import io.github.marcosfaria94.bolao.ui.painel.TipoDoResumo
-import io.github.marcosfaria94.bolao.ui.painel.k1DoConcurso
+import io.github.marcosfaria94.bolao.ui.painel.indicesDoConcurso
 import io.github.marcosfaria94.bolao.ui.painel.quantasPendencias
 import io.github.marcosfaria94.bolao.ui.painel.resumoDasPendencias
 import kotlin.random.Random
@@ -330,7 +336,30 @@ class TelasTest {
         assertEquals(SecaoAjuste.NOTIFICACOES, SecaoAjuste.de("apuracao"))
         assertEquals(SecaoAjuste.NOTIFICACOES, SecaoAjuste.de("toque"))
         assertEquals("Notificações", SecaoAjuste.NOTIFICACOES.titulo(false))
-        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.ATUALIZACAO, SecaoAjuste.TESTE), SecaoAjuste.grupos(false).first { it.first == "CELULAR" }.second)
+        // Desde a 0.21 o Modo de teste saiu dos Ajustes (é uma sessão à parte, na tela das sessões).
+        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.ATUALIZACAO), SecaoAjuste.grupos(false).first { it.first == "CELULAR" }.second)
+        assertTrue(SecaoAjuste.grupos(true).none { SecaoAjuste.TESTE in it.second })
+    }
+
+    /** As sessões (desde a 0.21): o nome genérico, a contagem e o resumo de cada uma. */
+    @Test
+    fun sessoes() {
+        assertEquals("Bolão 1", Sessoes.nomeGenerico(emptyList()))
+        assertEquals("Bolão 2", Sessoes.nomeGenerico(listOf("Bolão 1", "Individual")))
+        // O menor número livre (o "Bolão 1" foi apagado ou renomeado).
+        assertEquals("Bolão 1", Sessoes.nomeGenerico(listOf("Bolão 2", "Amigos do trabalho")))
+        assertEquals("Bolão 3", Sessoes.nomeGenerico(listOf("bolão 1", "BOLÃO 2")))
+        assertEquals("1 sessão criada", sessoesCriadas(1))
+        assertEquals("3 sessões criadas", sessoesCriadas(3))
+        val bolao = Sessao("a", "Bolão 1", 0, Modo.BOLAO)
+        val pessoas = listOf(Pessoa("p1", "A", "A", "x", true), Pessoa("p2", "B", "B", "y"), Pessoa("p3", "C", "C", "z"))
+        val e = Estado(cadastroConcluido = true, pessoas = pessoas, lancamentos = listOf(Lancamento("l", hoje, 0, TipoLancamento.SALDO_INICIAL, 1_230)))
+        assertEquals("3 integrantes · saldo R$ 12,30", resumoDaSessao(bolao, e))
+        assertEquals("Cadastro não concluído", resumoDaSessao(Sessao("b"), Estado()))
+        assertEquals("Carregando...", resumoDaSessao(bolao, null))
+        val individual = Sessao("i", "Individual", 0, Modo.INDIVIDUAL)
+        assertEquals("Individual · saldo R$ 12,30", resumoDaSessao(individual, e.copy(modo = Modo.INDIVIDUAL)))
+        assertTrue(individual.individual && !bolao.individual)
     }
 
     @Test
@@ -427,12 +456,41 @@ class TelasTest {
             listOf("Lotofácil", "Quina", "Mega-Sena", "Dia de Sorte"),
             emOrdemDeSorteioEK1(grupos) { if (it.modalidade == Modalidade.QUINA) 0.5 else null }.map { it.modalidade.nome },
         )
-        // O k1 (e o k2) só vale para o concurso dos índices de agora.
+        // Sem os índices guardados na aposta: o k1 (e o k2) só vale para o concurso dos índices de agora.
         val kq = ResultadoK(numero = 7149, especial = false, acumuladoPrincipal = 0.0, reserva = 0, herancaFaixas = emptyMap(), nAnterior = 0.0, k1 = 0.7, k2 = 0.1)
         val item = Indices.Item(Modalidade.QUINA, null, kq, 34.0)
-        assertEquals(0.7, k1DoConcurso(item, 7149)!!, 1e-9)
-        assertNull(k1DoConcurso(item, 7150))
-        assertNull(k1DoConcurso(null, 7149))
+        fun grupo(a: Aposta) = jogosEmAndamento(Estado(apostas = listOf(a)), hoje).single()
+        val gq = grupo(q)
+        assertEquals(0.7, indicesDoConcurso(item, gq)!!.k1!!, 1e-9)
+        assertNull(indicesDoConcurso(item, grupo(q.copy(concurso = 7150)))!!.k1)
+        assertEquals(34.0, indicesDoConcurso(item, grupo(q.copy(concurso = 7150)))!!.odds!!, 1e-9)
+        assertNull(indicesDoConcurso(null, gq))
+        // Desde a 0.21, os guardados na aposta (de quando foi registrada) valem mesmo com os Jogos em outro concurso.
+        val guardada = q.copy(concurso = 7150, indices = IndicesDaAposta(k1 = 0.81, k2 = 0.12, odds = 34.0))
+        val gg = grupo(guardada)
+        assertEquals(0.81, indicesDoConcurso(item, gg)!!.k1!!, 1e-9)
+        assertEquals(0.12, indicesDoConcurso(item, gg)!!.k2!!, 1e-9)
+        assertEquals(0.81, indicesDoConcurso(null, gg)!!.k1!!, 1e-9)
+        assertEquals(34.0, indicesDoConcurso(null, gg)!!.odds!!, 1e-9)
+    }
+
+    /** Desde a 0.21: o k1, o k2 e as odds do concurso ficam guardados na aposta registrada. */
+    @Test
+    fun indicesGuardadosNaAposta() {
+        val kq = ResultadoK(numero = 7149, especial = false, acumuladoPrincipal = 0.0, reserva = 0, herancaFaixas = emptyMap(), nAnterior = 0.0, k1 = 0.7, k2 = 0.1)
+        val itens = mapOf(Modalidade.QUINA to Indices.Item(Modalidade.QUINA, null, kq, 34.0))
+        val registrada = aposta(Modalidade.QUINA, 1, 7149).copy(id = "r", registrada = true)
+        val outroConcurso = registrada.copy(id = "o", concurso = 7150)
+        val rascunho = registrada.copy(id = "x", registrada = false)
+        val e = Estado(apostas = listOf(registrada, outroConcurso, rascunho))
+        val g = Operacoes.guardarIndices(e, itens)
+        assertEquals(IndicesDaAposta(k1 = 0.7, k2 = 0.1, odds = 34.0), g.apostas[0].indices)
+        assertNull(g.apostas[1].indices)
+        assertNull(g.apostas[2].indices)
+        // Já guardados: não mudam (nem com os índices de agora diferentes); sem nada a guardar, o mesmo estado.
+        val outros = mapOf(Modalidade.QUINA to Indices.Item(Modalidade.QUINA, null, kq.copy(k1 = 0.5), 34.0))
+        assertEquals(g.apostas[0].indices, Operacoes.guardarIndices(g, outros).apostas[0].indices)
+        assertTrue(Operacoes.guardarIndices(g, outros) === g)
     }
 
     @Test

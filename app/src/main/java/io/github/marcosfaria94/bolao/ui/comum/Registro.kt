@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Comprovante
 import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.data.Repositorio
 import io.github.marcosfaria94.bolao.imagem.Recibos
 
 /** Aviso que vai em toda confirmação de registro (o registro só cresce). */
@@ -59,13 +60,13 @@ suspend fun registrarComprovante(
     context: Context,
     mudanca: (Estado) -> Estado,
     enviar: Boolean = true,
+    repo: Repositorio = context.bolao.repo,
 ): Comprovante {
-    val repo = context.bolao.repo
     val antes = repo.atual().comprovantes.size
     val novo = repo.atualizar(mudanca)
     check(novo.comprovantes.size > antes) { "O registro não criou o comprovante." }
     val c = novo.comprovantes.last()
-    Recibos.arquivo(context, novo, c)
+    Recibos.arquivo(context, novo, c, repo)
     if (enviar) Compartilhar.comprovante(context, novo, c)
     return c
 }

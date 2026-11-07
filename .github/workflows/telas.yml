@@ -1,0 +1,38 @@
+name: Telas temporario
+
+on:
+  push:
+    branches: [temp-telas]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  telas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Fotos
+        continue-on-error: true
+        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest --tests 'io.github.marcosfaria94.bolao.telas.*' 2>&1 | tee build.log
+      - name: Pacote
+        run: |
+          mkdir -p saida
+          cp -r app/build/telas saida/ 2>/dev/null || true
+          cp -r app/build/test-results saida/ 2>/dev/null || true
+          cp build.log saida/ 2>/dev/null || true
+          tar -czf telas.tgz -C saida .
+          ls -la telas.tgz
+      - name: Publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete telas-temp --yes --cleanup-tag || true
+          gh release create telas-temp telas.tgz --prerelease --target "$GITHUB_SHA" --title "telas-temp" --notes "Temporario: fotos das telas."

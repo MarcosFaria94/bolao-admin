@@ -22,62 +22,50 @@ import java.security.MessageDigest
 import java.util.UUID
 
 /**
- * Guarda todos os dados do bolão num único arquivo JSON dentro do celular,
- * e os anexos (comprovantes, termo) na pasta "arquivos". Nada sai do aparelho
- * a não ser pelo backup.
- *
- * O modo de teste usa um espaço separado (pasta "teste"), com dados de exemplo:
- * enquanto ele está ligado, os dados reais não são lidos nem alterados.
+ * Guarda todos os dados de uma sessão (um bolão, o Individual ou o modo de teste) num único arquivo
+ * JSON dentro do celular, e os anexos (comprovantes, termo) na pasta "arquivos" da sessão. Nada sai
+ * do aparelho a não ser pelo backup. Desde a 0.21 há um repositório por sessão (ver [Sessoes]); até a
+ * 0.20 o modo de teste era um "espaço" dentro deste mesmo repositório.
  *
  * Todas as mudanças passam por uma fila única, na ordem em que foram pedidas,
  * e são gravadas no disco antes de aparecerem na tela.
  */
-class Repositorio(private val context: Context) {
-
-    enum class Espaco { REAL, TESTE }
+class Repositorio(private val context: Context, val sessao: String) {
 
     val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
 
-    private val prefs = context.getSharedPreferences("app", Context.MODE_PRIVATE)
+    /** Os dados de exemplo do modo de teste (a sessão à parte). */
+    val emTeste: Boolean = sessao == Sessoes.TESTE
 
-    /** Espaço em uso. Só muda dentro da fila. */
+    /** true na sessão do modo de teste (os dados de exemplo). */
+    val modoTeste: StateFlow<Boolean> = MutableStateFlow(emTeste).asStateFlow()
+
+    private val raiz: File = Sessoes.pasta(context, sessao)
+    private fun pastaDados(): File = File(raiz, "dados").apply { mkdirs() }
+    private fun arquivoEstado() = AtomicFile(File(pastaDados(), "estado.json"))
+    private fun pastaDeArquivos(): File = File(raiz, "arquivos").apply { mkdirs() }
+
+    /** Pasta dos anexos da sessão. */
+    val pastaArquivos: File get() = pastaDeArquivos()
+
+    /** A sessão foi apagada: nada mais é gravado. */
     @Volatile
-    private var espaco: Espaco = if (prefs.getBoolean(CHAVE_MODO_TESTE, false)) Espaco.TESTE else Espaco.REAL
-
-    private val _modoTeste = MutableStateFlow(espaco == Espaco.TESTE)
-    /** true enquanto o app mostra os dados de exemplo do modo de teste. */
-    val modoTeste: StateFlow<Boolean> = _modoTeste.asStateFlow()
-    val emTeste: Boolean get() = espaco == Espaco.TESTE
-
-    private fun raiz(e: Espaco): File = if (e == Espaco.TESTE) File(context.filesDir, PASTA_TESTE) else context.filesDir
-    private fun pastaDados(e: Espaco): File = File(raiz(e), "dados").apply { mkdirs() }
-    private fun arquivoEstado(e: Espaco) = AtomicFile(File(pastaDados(e), "estado.json"))
-    private fun pastaDeArquivos(e: Espaco): File = File(raiz(e), "arquivos").apply { mkdirs() }
-
-    /** Pasta dos anexos do espaço em uso. */
-    val pastaArquivos: File get() = pastaDeArquivos(espaco)
+    private var apagada = false
 
     private val _estado = MutableStateFlow<Estado?>(null)
     /** null enquanto carrega. */
     val estado: StateFlow<Estado?> = _estado.asStateFlow()
-
-    private val _recomecos = MutableStateFlow(0)
-    /**
-     * Quantas vezes os dados reais foram apagados nesta abertura do app ("Apagar tudo", fim da
-     * extinção, formatação). O cadastro que vem depois começa do zero, no "Como vai usar o app?".
-     */
-    val recomecos: StateFlow<Int> = _recomecos.asStateFlow()
 
     /** Aviso para mostrar na tela (arquivo de dados ilegível, modo de teste...). */
     private val _aviso = MutableStateFlow<String?>(null)
     val aviso: StateFlow<String?> = _aviso.asStateFlow()
 
     private sealed interface Pedido {
-        /** Mudança nos dados do espaço que estava em uso quando foi pedida. */
-        class Mudanca(val espaco: Espaco, val mudanca: (Estado) -> Estado, val resposta: CompletableDeferred<Estado>?) : Pedido
+        /** Mudança nos dados da sessão. */
+        class Mudanca(val mudanca: (Estado) -> Estado, val resposta: CompletableDeferred<Estado>?) : Pedido
 
         /** Tarefa que mexe com os espaços ou com os anexos, na mesma ordem das mudanças. */
         class Tarefa(val acao: suspend () -> Any?, val resposta: CompletableDeferred<Any?>) : Pedido
@@ -88,15 +76,14 @@ class Repositorio(private val context: Context) {
 
     init {
         escopo.launch {
-            _estado.value = lerDoDisco(espaco)
+            _estado.value = lerDoDisco()
             for (p in fila) {
                 when (p) {
                     is Pedido.Mudanca -> try {
-                        // Uma mudança pedida antes de trocar entre teste e dados reais não vale para o outro espaço.
-                        check(p.espaco == espaco) { "O app trocou entre o modo de teste e os dados reais. Tente de novo." }
-                        val atual = _estado.value ?: lerDoDisco(espaco)
+                        check(!apagada) { "Esta sessão foi apagada." }
+                        val atual = _estado.value ?: lerDoDisco()
                         val novo = p.mudanca(atual)
-                        if (novo != atual) gravar(espaco, novo)
+                        if (novo != atual) gravar(novo)
                         _estado.value = novo
                         p.resposta?.complete(novo)
                     } catch (t: Throwable) {
@@ -120,29 +107,29 @@ class Repositorio(private val context: Context) {
         return resposta.await() as T
     }
 
-    private fun lerDoDisco(e: Espaco): Estado {
+    private fun lerDoDisco(): Estado {
         val bytes = try {
-            arquivoEstado(e).readFully()
+            arquivoEstado().readFully()
         } catch (x: java.io.FileNotFoundException) {
             return Estado()
         }
         return try {
             val lido = json.decodeFromString(Estado.serializer(), bytes.decodeToString())
-            if (e == Espaco.TESTE && lido.versao < Migracao.VERSAO) {
+            if (emTeste && lido.versao < 2) {
                 _aviso.value = "Os dados de exemplo são de uma versão antiga do app. Em Ajustes, toque em \"Recomeçar com um exemplo novo\"."
             }
             Migracao.migrar(lido, java.time.LocalDate.now())
         } catch (t: Throwable) {
             // Não sobrescreve: guarda uma cópia do arquivo ilegível e começa vazio.
-            val copia = File(pastaDados(e), "estado-ilegivel-${System.currentTimeMillis()}.json")
+            val copia = File(pastaDados(), "estado-ilegivel-${System.currentTimeMillis()}.json")
             runCatching { copia.writeBytes(bytes) }
             _aviso.value = "O arquivo de dados não pôde ser lido. Uma cópia foi guardada e é possível restaurar um backup."
             Estado()
         }
     }
 
-    private fun gravar(e: Espaco, estado: Estado) {
-        val arquivo = arquivoEstado(e)
+    private fun gravar(estado: Estado) {
+        val arquivo = arquivoEstado()
         val saida = arquivo.startWrite()
         try {
             saida.write(json.encodeToString(Estado.serializer(), estado).encodeToByteArray())
@@ -156,17 +143,17 @@ class Repositorio(private val context: Context) {
     /** Aplica uma mudança (na ordem da fila), grava no disco e devolve o novo estado. */
     suspend fun atualizar(mudanca: (Estado) -> Estado): Estado {
         val resposta = CompletableDeferred<Estado>()
-        fila.send(Pedido.Mudanca(espaco, mudanca, resposta))
+        fila.send(Pedido.Mudanca(mudanca, resposta))
         return resposta.await()
     }
 
     /** Mesma fila, sem esperar (para gravar o rascunho a cada toque). Erros são ignorados. */
     fun enfileirar(mudanca: (Estado) -> Estado) {
-        fila.trySend(Pedido.Mudanca(espaco, mudanca, null))
+        fila.trySend(Pedido.Mudanca(mudanca, null))
     }
 
     /** Estado atual, depois de tudo o que já estava na fila. */
-    suspend fun atual(): Estado = naFila { _estado.value ?: lerDoDisco(espaco) }
+    suspend fun atual(): Estado = naFila { _estado.value ?: lerDoDisco() }
 
     fun avisar(texto: String) {
         _aviso.value = texto
@@ -258,11 +245,11 @@ class Repositorio(private val context: Context) {
     /** Apaga anexos que nenhum registro usa mais (só no espaço em uso). */
     suspend fun limparArquivosSoltos() {
         naFila {
-            val e = _estado.value ?: lerDoDisco(espaco)
+            val e = _estado.value ?: lerDoDisco()
             val usados = usados(e)
             // Anexos recentes podem ser de um registro ainda em andamento: só apaga os antigos.
             val limite = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
-            pastaDeArquivos(espaco).listFiles()
+            pastaDeArquivos().listFiles()
                 ?.filter { it.isFile && it.name !in usados && it.lastModified() < limite }
                 ?.forEach { it.delete() }
         }
@@ -277,7 +264,7 @@ class Repositorio(private val context: Context) {
         escopo.launch {
             runCatching {
                 naFila {
-                    val e = _estado.value ?: lerDoDisco(espaco)
+                    val e = _estado.value ?: lerDoDisco()
                     if (a.nome !in usados(e)) File(pastaArquivos, a.nome).delete()
                 }
             }
@@ -285,111 +272,54 @@ class Repositorio(private val context: Context) {
     }
 
     /**
-     * Fim da extinção: apaga todos os dados e anexos do bolão (o app volta ao cadastro).
-     * No modo de teste, apaga só os dados de exemplo e volta aos dados reais.
+     * Apaga os dados e os anexos desta sessão (fim da extinção, "Apagar tudo", extinção forçada, sair do
+     * modo de teste): quem chama é o [Sessoes.excluir], que tira a sessão da lista. Depois disso nada
+     * mais é gravado aqui. Os backups e PDFs salvos em Downloads/Bolao ficam (estão fora do app).
      */
-    suspend fun apagarTudo() {
+    suspend fun apagarDados() {
         naFila {
-            if (espaco == Espaco.TESTE) {
-                mudarPara(Espaco.REAL, lerDoDisco(Espaco.REAL))
-                apagarTeste()
+            apagada = true
+            if (sessao == Sessoes.PRINCIPAL) {
+                File(raiz, "dados").deleteRecursively()
+                File(raiz, "arquivos").deleteRecursively()
             } else {
-                File(context.filesDir, "dados").deleteRecursively()
-                File(context.filesDir, "arquivos").deleteRecursively()
-                _recomecos.value++
-                _estado.value = Estado()
-                _aviso.value = null
+                raiz.deleteRecursively()
             }
+            _estado.value = Estado()
+            _aviso.value = null
         }
     }
 
-    /**
-     * Extinção forçada = formatação do app: apaga todos os dados do bolão, os anexos, o modo de
-     * teste e os arquivos temporários, sem divisão do saldo e sem auditoria. O app volta ao cadastro
-     * inicial, como recém-instalado. No modo de teste, apaga só os dados de exemplo e volta aos reais.
-     * Os backups e PDFs salvos em Downloads/Bolao ficam (estão fora do app).
-     */
-    suspend fun formatar() {
-        naFila {
-            if (espaco == Espaco.TESTE) {
-                mudarPara(Espaco.REAL, lerDoDisco(Espaco.REAL))
-                apagarTeste()
-            } else {
-                File(context.filesDir, "dados").deleteRecursively()
-                File(context.filesDir, "arquivos").deleteRecursively()
-                apagarTeste()
-                context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
-                _recomecos.value++
-                _estado.value = Estado()
-                _aviso.value = null
-            }
-        }
-    }
-
-    /** Dados e pasta de anexos do mesmo espaço, lidos juntos (para o backup). */
+    /** Dados e pasta de anexos da sessão, lidos juntos (para o backup). */
     class Retrato(val estado: Estado, val pastaArquivos: File, val teste: Boolean)
 
-    suspend fun retrato(): Retrato = naFila { Retrato(_estado.value ?: lerDoDisco(espaco), pastaDeArquivos(espaco), espaco == Espaco.TESTE) }
+    suspend fun retrato(): Retrato = naFila { Retrato(_estado.value ?: lerDoDisco(), pastaDeArquivos(), emTeste) }
 
-    /** Troca todos os dados do espaço em uso pelos de um backup; [anexos] é a pasta com os anexos extraídos. */
+    /** Troca todos os dados da sessão pelos de um backup; [anexos] é a pasta com os anexos extraídos. */
     suspend fun restaurar(novo: Estado, anexos: File) {
         naFila {
-            require(espaco == Espaco.TESTE || !novo.exemplo) {
+            require(emTeste || !novo.exemplo) {
                 "Este backup é do modo de teste (dados de exemplo). Para não misturar com os dados reais, restaure-o com o modo de teste ligado."
             }
-            val destino = pastaDeArquivos(espaco)
+            val destino = pastaDeArquivos()
             anexos.listFiles()?.filter { it.isFile }?.forEach { it.copyTo(File(destino, it.name), overwrite = true) }
-            gravar(espaco, novo)
+            gravar(novo)
             _estado.value = novo
             _aviso.value = null
         }
     }
 
-    // ---------- modo de teste ----------
-
-    /** Dados reais, mesmo com o modo de teste ligado (só leitura). */
-    suspend fun estadoReal(): Estado = naFila {
-        if (espaco == Espaco.REAL) _estado.value ?: lerDoDisco(Espaco.REAL) else lerDoDisco(Espaco.REAL)
-    }
-
-    /**
-     * Liga o modo de teste com o [exemplo] (um teste anterior é apagado antes).
-     * [prepararAnexos] grava os anexos fictícios na pasta recebida, antes da troca, e
-     * devolve o estado final (com as impressões digitais dos anexos).
-     */
-    suspend fun entrarNoTeste(exemplo: Estado, prepararAnexos: (File, Estado) -> Estado) {
-        require(exemplo.exemplo) { "Só dados de exemplo podem ir para o modo de teste." }
+    /** Troca os dados da sessão pelo que [preparar] devolve (ele recebe a pasta dos anexos): o exemplo do modo de teste. */
+    suspend fun substituir(preparar: (File) -> Estado) {
         naFila {
-            apagarTeste()
-            val final = prepararAnexos(pastaDeArquivos(Espaco.TESTE), exemplo)
-            require(final.exemplo) { "Só dados de exemplo podem ir para o modo de teste." }
-            gravar(Espaco.TESTE, final)
-            mudarPara(Espaco.TESTE, final)
+            val novo = preparar(pastaDeArquivos())
+            gravar(novo)
+            _estado.value = novo
         }
-    }
-
-    /** Desliga o modo de teste: volta aos dados reais e apaga os dados de exemplo. */
-    suspend fun sairDoTeste() {
-        naFila {
-            mudarPara(Espaco.REAL, lerDoDisco(Espaco.REAL))
-            apagarTeste()
-        }
-    }
-
-    private fun mudarPara(e: Espaco, estado: Estado) {
-        prefs.edit().putBoolean(CHAVE_MODO_TESTE, e == Espaco.TESTE).commit()
-        espaco = e
-        _estado.value = estado
-        _modoTeste.value = e == Espaco.TESTE
-    }
-
-    private fun apagarTeste() {
-        File(context.filesDir, PASTA_TESTE).deleteRecursively()
     }
 
     companion object {
         const val PASTA_TESTE = "teste"
-        private const val CHAVE_MODO_TESTE = "modo_teste"
 
         fun novoId(): String = io.github.marcosfaria94.bolao.data.novoId()
     }

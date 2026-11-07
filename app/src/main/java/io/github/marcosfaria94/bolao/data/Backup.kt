@@ -17,8 +17,12 @@ import java.util.zip.ZipOutputStream
 /**
  * Backup completo num .zip: estado.json + todos os anexos (comprovantes, termo).
  * O arquivo vai para Downloads/Bolao e pode ser enviado para o Drive, e-mail etc.
+ * Desde a 0.21 o backup é da sessão em uso (e a restauração também vai para ela).
  */
-class Backup(private val context: Context, private val repo: Repositorio) {
+class Backup(private val context: Context) {
+
+    private val sessoes: Sessoes get() = (context.applicationContext as io.github.marcosfaria94.bolao.BolaoApp).sessoes
+    private val repo: Repositorio get() = sessoes.repoAtivo
 
     private companion object {
         const val ESTADO = "estado.json"
@@ -51,7 +55,12 @@ class Backup(private val context: Context, private val repo: Repositorio) {
     /** Grava o backup em Downloads/Bolao e devolve o endereço do arquivo. */
     suspend fun salvarEmDownloads(): Uri {
         val agora = LocalDateTime.now()
-        val nome = (if (repo.emTeste) "bolao-teste-backup-" else "bolao-backup-") + "%04d-%02d-%02d-%02d%02d.zip".format(
+        // Com o nome da sessão (desde a 0.21): "bolao-backup-bolao-2-2026-11-07-1300.zip".
+        val sessao = if (repo.emTeste) "teste-" else sessoes.nome(repo.sessao).let { n ->
+            java.text.Normalizer.normalize(n, java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase()
+                .replace(Regex("[^a-z0-9]+"), "-").trim('-').take(30).let { if (it.isBlank()) "" else "$it-" }
+        }
+        val nome = "bolao-backup-$sessao" + "%04d-%02d-%02d-%02d%02d.zip".format(
             agora.year, agora.monthValue, agora.dayOfMonth, agora.hour, agora.minute,
         )
         return Downloads.salvar(context, nome, "application/zip") { gerar(it) }
@@ -81,8 +90,18 @@ class Backup(private val context: Context, private val repo: Repositorio) {
                 }
             }
             val e = estado ?: throw IllegalArgumentException("Este arquivo não é um backup do Bolão.")
-            repo.restaurar(e, temp)
-            repo.limparArquivosSoltos()
+            val r = repo
+            // Só pode haver uma sessão Individual (desde a 0.21).
+            require(!e.individual || r.emTeste || !sessoes.temIndividual(exceto = r.sessao)) {
+                "Este backup é do modo Individual e já existe a sessão Individual. Restaure-o nela."
+            }
+            r.restaurar(e, temp)
+            r.limparArquivosSoltos()
+            if (e.cadastroConcluido) {
+                val atual = sessoes.sessao(r.sessao)
+                // O nome da sessão continua (ou, num cadastro novo, vira o genérico).
+                sessoes.nomear(r.sessao, if (atual?.individual == false) atual.nome else "", e.modo)
+            }
             Restaurado(e, anexos)
         } finally {
             temp.deleteRecursively()

@@ -64,4 +64,22 @@ object Icones {
             }
         }.build()
     }
+
+    /**
+     * As setas das sessões (o botão "Alternar sessão", desde a 0.21): o "switch-horizontal" dos Tabler
+     * Icons (MIT, (c) Paweł Kuna), em traço de 2 numa grade de 24.
+     */
+    val Sessoes: ImageVector by lazy {
+        ImageVector.Builder("Sessoes", 24.dp, 24.dp, 24f, 24f).apply {
+            listOf("M16,3l4,4l-4,4", "M10,7l10,0", "M8,13l-4,4l4,4", "M4,17l9,0").forEach { d ->
+                addPath(
+                    pathData = addPathNodes(d),
+                    stroke = SolidColor(Color.Black),
+                    strokeLineWidth = 2f,
+                    strokeLineCap = StrokeCap.Round,
+                    strokeLineJoin = StrokeJoin.Round,
+                )
+            }
+        }.build()
+    }
 }

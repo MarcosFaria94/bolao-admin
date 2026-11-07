@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -44,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Downloads
@@ -54,7 +57,6 @@ import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Mensagens
 import io.github.marcosfaria94.bolao.imagem.Recibos
-import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.pdf.PdfsDoApp
 import io.github.marcosfaria94.bolao.seguranca.Biometria
 import io.github.marcosfaria94.bolao.seguranca.atividade
@@ -70,6 +72,9 @@ import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.copiar
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
+import io.github.marcosfaria94.bolao.ui.sessoes.DialogoTrocarSessao
+import io.github.marcosfaria94.bolao.ui.sessoes.IconeDaSessao
+import io.github.marcosfaria94.bolao.ui.sessoes.apagarSessao
 import io.github.marcosfaria94.bolao.ui.teste.ModoTeste
 import kotlinx.coroutines.launch
 import java.io.File
@@ -106,6 +111,10 @@ fun ExtincaoTela(estado: Estado) {
 
     // Não há como voltar: a extinção vai até o fim.
     BackHandler(enabled = true) {}
+    val listaDeSessoes by ctx.bolao.sessoes.lista.collectAsStateWithLifecycle()
+    val outrasSessoes = !estado.exemplo && listaDeSessoes.count { it.id != repo.sessao } > 0
+    var trocarSessao by remember { mutableStateOf(false) }
+    if (trocarSessao) DialogoTrocarSessao(aoFechar = { trocarSessao = false })
 
     val escolher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val pessoa = paraQuem
@@ -160,6 +169,14 @@ fun ExtincaoTela(estado: Estado) {
                 "Iniciada ${Datas.quandoHora(x.iniciadaEm, hoje)}. Esta tela só fecha quando a divisão final for registrada e o PDF da auditoria for enviado ao grupo.",
                 style = MaterialTheme.typography.bodyMedium,
             )
+            // Com outras sessões, dá para usar outra enquanto esta extinção espera (desde a 0.21).
+            if (outrasSessoes) {
+                OutlinedButton(onClick = { trocarSessao = true }, modifier = Modifier.fillMaxWidth()) {
+                    IconeDaSessao(24.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("Alternar sessão")
+                }
+            }
 
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                 Column(Modifier.padding(12.dp)) {
@@ -300,7 +317,7 @@ fun ExtincaoTela(estado: Estado) {
     if (perguntarSeEnviou && !confirmarApagar) {
         DialogoConfirmar(
             titulo = "O PDF foi enviado ao grupo?",
-            texto = "Se sim, o app apaga todos os dados deste bolão e volta ao cadastro de um novo grupo. " +
+            texto = "Se sim, o app apaga todos os dados deste bolão (a sessão dele). " +
                 "O PDF da auditoria continua em Downloads/Bolao.",
             confirmar = "Confirmar",
             aoConfirmar = {
@@ -327,11 +344,14 @@ fun ExtincaoTela(estado: Estado) {
                         return@launch
                     }
                     val teste = estado.exemplo
-                    repo.apagarTudo()
-                    repo.avisar(
-                        if (teste) "Extinção de teste concluída: os dados de exemplo foram apagados."
-                        else "Bolão extinto. O PDF da auditoria está em Downloads/Bolao. Cadastre o novo grupo.",
-                    )
+                    // Desde a 0.21, a sessão do bolão é apagada e o app vai para outra (ou para um cadastro novo).
+                    apagarSessao(ctx, repo.sessao) { outra ->
+                        when {
+                            teste -> "Extinção de teste concluída: os dados de exemplo foram apagados."
+                            outra != null -> "Bolão extinto. O PDF da auditoria está em Downloads/Bolao. Agora em uso: $outra."
+                            else -> "Bolão extinto. O PDF da auditoria está em Downloads/Bolao. Cadastre o novo grupo."
+                        }
+                    }
                 }
             },
             aoFechar = { confirmarApagar = false },
@@ -386,9 +406,13 @@ private fun FormatacaoPendente(estado: Estado) {
                         return@launch
                     }
                     val teste = estado.exemplo
-                    ctx.bolao.repo.formatar()
-                    if (teste) Vigia.esquecerAvisosDeTeste(ctx) else Vigia.esquecerTodosOsAvisos(ctx)
-                    ctx.bolao.repo.avisar(if (teste) "Os dados de exemplo foram apagados." else "App formatado. Cadastre o grupo de novo.")
+                    apagarSessao(ctx, ctx.bolao.repo.sessao) { outra ->
+                        when {
+                            teste -> "Os dados de exemplo foram apagados."
+                            outra != null -> "Sessão apagada. Agora em uso: $outra."
+                            else -> "Sessão apagada. Cadastre o grupo de novo."
+                        }
+                    }
                 }
             },
             aoFechar = { confirmar = false },

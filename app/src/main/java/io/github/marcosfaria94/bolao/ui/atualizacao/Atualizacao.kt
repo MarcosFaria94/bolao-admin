@@ -57,6 +57,7 @@ class AtualizacaoViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Na abertura do app a conferência é silenciosa: só aparece algo se houver versão nova. */
     fun verificar(manual: Boolean) {
+        if (android.os.Build.FINGERPRINT == "robolectric") return
         if (_etapa.value is EtapaAtualizacao.Baixando) return
         if (manual) _etapa.value = EtapaAtualizacao.Verificando
         viewModelScope.launch {
