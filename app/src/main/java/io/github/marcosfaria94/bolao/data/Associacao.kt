@@ -69,6 +69,10 @@ object Associacao {
         val concursoMudado: List<String> = emptyList(),
     )
 
+    /** Nota da conferência quando o número lido como concurso está longe demais do da aposta (desde a 0.21). */
+    fun notaConcursoDuvidoso(lido: Int, daAposta: Int): String =
+        "O concurso lido no comprovante ($lido) não parece certo: ficou o da aposta ($daAposta). Confira."
+
     /** "Aposta Nº6 · Mega-Sena 3076". */
     fun nomeDaAposta(a: Aposta): String = "Aposta Nº${a.numero} · ${a.modalidade.nome}" + if (a.concurso > 0) " ${a.concurso}" else ""
 
@@ -113,9 +117,15 @@ object Associacao {
         fun aposta(id: String) = est.apostas.first { it.id == id }
 
         /** Tenta pôr a leitura [l] (da modalidade [m]) numa aposta. true = usou o arquivo. */
-        fun anexarLeitura(en: Entrada, m: Modalidade, l: LeituraComprovante.Lida): Boolean {
+        fun anexarLeitura(en: Entrada, m: Modalidade, lida: LeituraComprovante.Lida): Boolean {
             val nome = en.arquivo.nomeOriginal
             val candidatas = livres.map { aposta(it) }.filter { it.modalidade == m }
+            // O concurso que bate com uma aposta; um número muito longe do de todas (ex.: um telefone) não muda a aposta.
+            val esperados = candidatas.map { it.concurso }.ifEmpty {
+                est.apostas.filter { it.registrada && it.modalidade == m && it.comprovante != null }.map { it.concurso }
+            }
+            val escolha = LeituraComprovante.escolherConcurso(lida, esperados)
+            val l = escolha.lida
             val exata = candidatas.firstOrNull { mesmoJogo(it, l) && (l.concurso == null || l.concurso == it.concurso) }
                 ?: candidatas.firstOrNull { mesmoJogo(it, l) }
             val alvo = exata ?: run {
@@ -142,7 +152,10 @@ object Associacao {
             val notas = buildList {
                 diferencas.forEach { d -> add("${d.campo}: no app ${d.noApp}; no comprovante ${d.naCaixa}.") }
                 if (!temJogo(m, l)) add("Não deu para ler o jogo no comprovante: confira os números.")
-                if (l.concurso == null) add("Não deu para ler o concurso no comprovante: confira.")
+                when {
+                    escolha.duvidoso != null -> add(notaConcursoDuvidoso(escolha.duvidoso, alvo.concurso))
+                    l.concurso == null -> add("Não deu para ler o concurso no comprovante: confira.")
+                }
             }
             est = Operacoes.anexarNaAposta(est, alvo.id, en.arquivo, ajustada, notas)
             livres.remove(alvo.id)

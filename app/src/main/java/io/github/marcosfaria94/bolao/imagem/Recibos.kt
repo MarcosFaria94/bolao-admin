@@ -7,6 +7,7 @@ import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Apuracao
 import io.github.marcosfaria94.bolao.data.Comprovante
 import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.data.Repositorio
 import io.github.marcosfaria94.bolao.data.TipoComprovante
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -38,16 +39,16 @@ object Recibos {
     }
 
     /** Arquivo PNG do comprovante, desenhado agora se ainda não existir (fora da tela principal). */
-    fun arquivoAgora(context: Context, e: Estado, c: Comprovante): File {
-        val destino = context.bolao.repo.arquivo(c.imagem)
+    fun arquivoAgora(context: Context, e: Estado, c: Comprovante, repo: Repositorio = context.bolao.repo): File {
+        val destino = repo.arquivo(c.imagem)
         synchronized(trava) {
             if (!destino.isFile || destino.length() == 0L) RenderTermico.salvar(context, linhas(e, c), destino)
         }
         return destino
     }
 
-    suspend fun arquivo(context: Context, e: Estado, c: Comprovante): File =
-        withContext(Dispatchers.Default) { arquivoAgora(context, e, c) }
+    suspend fun arquivo(context: Context, e: Estado, c: Comprovante, repo: Repositorio = context.bolao.repo): File =
+        withContext(Dispatchers.Default) { arquivoAgora(context, e, c, repo) }
 
     /** Imagem para mostrar na tela. */
     suspend fun bitmap(context: Context, linhas: List<LayoutTermico.Linha>): Bitmap =

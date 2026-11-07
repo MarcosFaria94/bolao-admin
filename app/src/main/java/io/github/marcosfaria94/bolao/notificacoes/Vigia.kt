@@ -12,8 +12,12 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Comprovante
+import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.Pendencias
+import io.github.marcosfaria94.bolao.data.Premiada
+import io.github.marcosfaria94.bolao.data.Repositorio
+import io.github.marcosfaria94.bolao.data.Sessoes
 import io.github.marcosfaria94.bolao.data.palpite
 import io.github.marcosfaria94.bolao.domain.Conferencia
 import io.github.marcosfaria94.bolao.imagem.ImagemConferencia
@@ -33,20 +37,86 @@ import java.util.concurrent.TimeUnit
  * 3. mostra os dois avisos do celular: "Aposta premiada" e "Ação necessária" (no prêmio principal,
  *    toca o toque dos Ajustes, como uma chamada);
  * 4. marca o próximo despertar.
- * No modo de teste faz o mesmo com os dados de exemplo e marca os avisos com "Teste".
+ * Desde a 0.21 faz isso em todas as sessões (cada bolão, o Individual e o modo de teste, se existir),
+ * e não só na que está em uso: os avisos levam o nome da sessão (com mais de uma) e abrem nela. Os do
+ * modo de teste levam "Teste" (e não tocam o toque do prêmio).
  */
 class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(contexto, parametros) {
 
     override suspend fun doWork(): Result {
         val ctx = applicationContext
-        val repo = ctx.bolao.repo
-        val teste = repo.emTeste
-        var e = repo.atual()
+        val app = ctx.bolao
         val agora = LocalDateTime.now()
 
         // 0. Os dados dos Jogos (desde a 0.20): só os jogos cujo sorteio já passou e o resultado não chegou.
-        runCatching { ctx.bolao.indices.consultar() }
+        runCatching { app.indices.consultar() }
 
+        val sessoes = app.sessoes.todasComDados().map { it.first }
+        val estados = mutableListOf<Estado>()
+        val premiadasPorSessao = mutableListOf<Pair<String, List<Premiada>>>()
+        val permitido = Notificador.permitido(ctx)
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val avisados = prefs.getString(CHAVES, "").orEmpty().split('\n').filter { it.isNotBlank() }
+        val novasChaves = mutableListOf<String>()
+        val varias = app.sessoes.varias
+        var algumaPendencia = false
+
+        for (id in sessoes) {
+            val repo = app.sessoes.repo(id)
+            val teste = repo.emTeste
+            var e = runCatching { vigiar(ctx, repo, agora) }.getOrElse { runCatching { repo.atual() }.getOrNull() } ?: continue
+            // O k1, o k2 e as odds do concurso das apostas registradas (desde a 0.21).
+            runCatching { e = repo.atualizar { Operacoes.guardarIndices(it, app.indices.itens.value) } }
+            estados += e
+
+            // 3. Avisos. Sem permissão, ficam para a próxima vez (não contam como avisados).
+            if (!permitido) continue
+            val marca = marcaDaSessao(id)
+            val doEspaco = avisados.filter { daSessao(it, id) }.map { it.removePrefix(marca) }.toSet()
+            val prefixo = when {
+                teste -> "Teste · "
+                varias -> "${app.sessoes.nome(id)} · "
+                else -> ""
+            }
+            val pendencias = Pendencias.de(e, agora)
+            if (pendencias.isNotEmpty()) algumaPendencia = true
+            if (pendencias.isEmpty()) Notificador.limparAcoes(ctx, id)
+            // Com o app aberto na sessão, a lista já está na tela: o aviso fica para depois, se continuar pendente.
+            val naTela = app.visivel && app.sessoes.ativa.value == id
+            val novas = if (naTela) emptyList() else Pendencias.paraAvisar(pendencias, agora, doEspaco)
+            Notificador.acaoNecessaria(ctx, novas, pendencias, prefixo, id)
+            val premiadas = Pendencias.premiadas(e, agora, doEspaco)
+            premiadasPorSessao += id to premiadas
+            novasChaves += novas.map { marca + it.chave } + premiadas.map { marca + it.chave }
+        }
+
+        // 4. O próximo despertar (resultado que ainda não saiu, apuração da manhã seguinte), de todas as sessões.
+        Despertador.agendar(ctx, estados)
+        if (!permitido) return Result.success()
+
+        // Prêmio principal (fora do modo de teste): o toque dos Ajustes, como uma chamada.
+        val tocar = premiadasPorSessao.any { (id, p) -> id != Sessoes.TESTE && p.any { it.principal } } && Toque.config(ctx).ligado
+        for ((id, premiadas) in premiadasPorSessao) {
+            val prefixo = when {
+                id == Sessoes.TESTE -> "Teste · "
+                varias -> "${app.sessoes.nome(id)} · "
+                else -> ""
+            }
+            premiadas.forEach { Notificador.apostaPremiada(ctx, it, prefixo, comToque = tocar && id != Sessoes.TESTE && it.principal, sessao = id) }
+        }
+        if (!algumaPendencia) Notificador.limparAcoes(ctx)
+        if (novasChaves.isNotEmpty()) {
+            val todas = (avisados + novasChaves).takeLast(MAX_CHAVES)
+            prefs.edit().putString(CHAVES, todas.joinToString("\n")).apply()
+        }
+        // Já marcado como avisado (não toca de novo); o trabalho segue até o fim do toque.
+        if (tocar) Toque.tocarEEsperar(ctx, Toque.Origem.PREMIO)
+        return Result.success()
+    }
+
+    /** Os passos 1 e 2 numa sessão: a conferência na Caixa e a apuração automática. Devolve o estado depois deles. */
+    private suspend fun vigiar(ctx: Context, repo: Repositorio, agora: LocalDateTime): Estado {
+        var e = repo.atual()
         // 1. Conferência automática depois do horário do sorteio.
         for (a in Pendencias.aguardandoResultado(e, agora)) {
             try {
@@ -64,44 +134,12 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
         // 2. Apuração automática.
         for (a in Pendencias.prontasParaApurar(e, agora)) {
             try {
-                apurar(ctx, a.id)
+                apurar(ctx, a.id, repo)
             } catch (t: Throwable) {
                 // Fica para a próxima vez (ou para o Administrador, depois de dois dias).
             }
         }
-        e = repo.atual()
-
-        // 4. O próximo despertar (resultado que ainda não saiu, apuração da manhã seguinte).
-        Despertador.agendar(ctx, e)
-
-        // 3. Avisos. Sem permissão, ficam para a próxima vez (não contam como avisados).
-        if (!Notificador.permitido(ctx)) return Result.success()
-        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val avisados = prefs.getString(CHAVES, "").orEmpty().split('\n').filter { it.isNotBlank() }
-        // Os avisos do modo de teste são guardados à parte (com prefixo), para não calar os reais.
-        val doEspaco = avisados.filter { it.startsWith(PREFIXO_TESTE) == teste }.map { it.removePrefix(PREFIXO_TESTE) }.toSet()
-        val prefixo = if (teste) "Teste · " else ""
-        val dados = if (teste) PREFIXO_TESTE else ""
-
-        val pendencias = Pendencias.de(e, agora)
-        if (pendencias.isEmpty()) Notificador.limparAcoes(ctx)
-        // Com o app aberto, a lista já está na tela: o aviso fica para depois, se continuar pendente.
-        val novas = if (ctx.bolao.visivel) emptyList() else Pendencias.paraAvisar(pendencias, agora, doEspaco)
-        Notificador.acaoNecessaria(ctx, novas, pendencias, prefixo)
-
-        val premiadas = Pendencias.premiadas(e, agora, doEspaco)
-        // Prêmio principal (fora do modo de teste): o toque dos Ajustes, como uma chamada.
-        val tocar = !teste && premiadas.any { it.principal } && Toque.config(ctx).ligado
-        premiadas.forEach { Notificador.apostaPremiada(ctx, it, prefixo, comToque = tocar && it.principal) }
-
-        val chaves = novas.map { dados + it.chave } + premiadas.map { dados + it.chave }
-        if (chaves.isNotEmpty()) {
-            val todas = (avisados + chaves).takeLast(MAX_CHAVES)
-            prefs.edit().putString(CHAVES, todas.joinToString("\n")).apply()
-        }
-        // Já marcado como avisado (não toca de novo); o trabalho segue até o fim do toque.
-        if (tocar) Toque.tocarEEsperar(ctx, Toque.Origem.PREMIO)
-        return Result.success()
+        return repo.atual()
     }
 
     companion object {
@@ -110,7 +148,23 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
         private const val PREFS = "lembretes"
         private const val CHAVES = "avisados"
         private const val PREFIXO_TESTE = "teste:"
+
+        /** As chaves dos avisos das sessões novas (desde a 0.21): "s:<id>:". A principal fica sem marca, como antes. */
+        private const val PREFIXO_SESSAO = "s:"
         private const val MAX_CHAVES = 600
+
+        /** A marca das chaves dos avisos da sessão [id]. */
+        private fun marcaDaSessao(id: String): String = when (id) {
+            Sessoes.PRINCIPAL -> ""
+            Sessoes.TESTE -> PREFIXO_TESTE
+            else -> "$PREFIXO_SESSAO$id:"
+        }
+
+        /** A chave [chave] (com a marca) é de um aviso da sessão [id]? */
+        private fun daSessao(chave: String, id: String): Boolean = when (id) {
+            Sessoes.PRINCIPAL -> !chave.startsWith(PREFIXO_TESTE) && !chave.startsWith(PREFIXO_SESSAO)
+            else -> chave.startsWith(marcaDaSessao(id))
+        }
 
         fun agendar(context: Context) {
             val pedido = PeriodicWorkRequestBuilder<Vigia>(1, TimeUnit.HOURS).build()
@@ -122,6 +176,7 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
          * diante vai como trabalho urgente (roda na hora, mesmo com o celular em repouso).
          */
         fun rodarAgora(context: Context) {
+            if (android.os.Build.FINGERPRINT == "robolectric") return
             val pedido = OneTimeWorkRequestBuilder<Vigia>().apply {
                 if (Build.VERSION.SDK_INT >= 31) setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             }.build()
@@ -132,8 +187,7 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
          * Apuração automática de uma aposta já conferida: guarda a imagem dos acertos, registra
          * a apuração (o prêmio entra no saldo) e desenha o comprovante, sem abrir o WhatsApp.
          */
-        suspend fun apurar(context: Context, id: String): Comprovante? {
-            val repo = context.bolao.repo
+        suspend fun apurar(context: Context, id: String, repo: Repositorio = context.bolao.repo): Comprovante? {
             val a = repo.atual().apostas.firstOrNull { it.id == id } ?: return null
             val ap = a.apuracao ?: return null
             if (ap.confirmadaEm != null || ap.precisaConfirmar || a.pendenteDeAnexo) return null
@@ -147,20 +201,18 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             val imagem = repo.guardarGerado("acertos", "acertos-${a.modalidade.sigla}-${a.concurso}.png", "image/png") { f ->
                 ImagemConferencia.salvar(context, a, ap, f)
             }
-            return registrarComprovante(context, { Operacoes.confirmarApuracao(it, id, ap, hoje, agora, imagem) }, enviar = false)
+            return registrarComprovante(context, { Operacoes.confirmarApuracao(it, id, ap, hoje, agora, imagem) }, enviar = false, repo = repo)
         }
 
-        /** Formatação do app: esquece todos os avisos já dados e tira os que estão na tela. */
-        fun esquecerTodosOsAvisos(context: Context) {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
-            Notificador.limparAcoes(context)
+        /** Sessão apagada (extinção, formatação, sair do teste): esquece os avisos já dados nela e tira os que estão na tela. */
+        fun esquecerAvisosDaSessao(context: Context, id: String) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val outros = prefs.getString(CHAVES, "").orEmpty().split('\n').filter { it.isNotBlank() && !daSessao(it, id) }
+            prefs.edit().putString(CHAVES, outros.joinToString("\n")).apply()
+            Notificador.limparAcoes(context, id)
         }
 
         /** Esquece os avisos já dados no modo de teste (um exemplo novo pode avisar de novo). */
-        fun esquecerAvisosDeTeste(context: Context) {
-            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val reais = prefs.getString(CHAVES, "").orEmpty().split('\n').filter { it.isNotBlank() && !it.startsWith(PREFIXO_TESTE) }
-            prefs.edit().putString(CHAVES, reais.joinToString("\n")).apply()
-        }
+        fun esquecerAvisosDeTeste(context: Context) = esquecerAvisosDaSessao(context, Sessoes.TESTE)
     }
 }

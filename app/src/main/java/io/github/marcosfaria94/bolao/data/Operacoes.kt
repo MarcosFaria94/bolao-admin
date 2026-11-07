@@ -466,6 +466,23 @@ object Operacoes {
     }
 
     /**
+     * Guarda nas apostas registradas, ainda sem o resultado, o k1, o k2 e as odds do concurso delas
+     * (desde a 0.21), quando os índices de agora ([itens]) são desse concurso. A aposta que já tem os
+     * seus não muda. Sem nada a guardar, devolve o mesmo estado.
+     */
+    fun guardarIndices(e: Estado, itens: Map<Modalidade, Indices.Item>): Estado {
+        var mudou = false
+        val apostas = e.apostas.map { a ->
+            if (!a.registrada || a.indices != null || a.apuracao != null) return@map a
+            val item = itens[a.modalidade] ?: return@map a
+            val k = item.k?.takeIf { it.numero == a.concurso } ?: return@map a
+            mudou = true
+            a.copy(indices = IndicesDaAposta(k1 = k.k1, k2 = k.k2, odds = item.odds, especial = k.especial))
+        }
+        return if (mudou) e.copy(apostas = apostas) else e
+    }
+
+    /**
      * Registro com o comprovante da Caixa já anexado e conferido na hora (dados de exemplo e testes):
      * registra e aprova de uma vez, como até a 0.9.
      */

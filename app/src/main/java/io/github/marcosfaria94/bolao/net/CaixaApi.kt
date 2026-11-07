@@ -120,6 +120,7 @@ object CaixaApi {
     }
 
     private suspend fun buscar(m: Modalidade, caminho: String): Pair<Concurso, String> {
+        if (android.os.Build.FINGERPRINT == "robolectric") throw IOException("Sem internet no teste.")
         val bases = (listOfNotNull(baseAtual()) + reservas).distinct()
         var erro: IOException? = null
         for (base in bases) {

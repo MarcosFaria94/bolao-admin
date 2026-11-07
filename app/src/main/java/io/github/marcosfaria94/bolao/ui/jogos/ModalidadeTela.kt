@@ -124,7 +124,7 @@ fun ModalidadeTela(
     val escopo = rememberCoroutineScope()
     // Duas páginas lado a lado: a do jogo (0) e os Detalhes (1).
     val inicial = if (detalhes) 1 else 0
-    val paginas = rememberPagerState(initialPage = inicial) { 2 }
+    val paginas = rememberPagerState(initialPage = if (System.getProperty("fotos.detalhes") == "1") 1 else inicial) { 2 }
     val nosDetalhes = paginas.currentPage == 1
     // O "← Aposta" da barra volta à página do volante. O voltar do celular também, menos quando a página
     // foi aberta direto nos Detalhes (segurar a modalidade): aí ele sai da página (volta para os Jogos).

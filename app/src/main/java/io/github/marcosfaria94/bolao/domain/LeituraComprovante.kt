@@ -11,6 +11,11 @@ object LeituraComprovante {
 
     data class Lida(
         val concurso: Int? = null,
+        /**
+         * Os números que podem ser o concurso, do mais provável ao menos provável (desde a 0.21): quem
+         * anexa escolhe o que bate com a aposta (ver [escolherConcurso]). O primeiro é o [concurso].
+         */
+        val concursos: List<Int> = listOfNotNull(concurso),
         val numeros: List<Int>? = null,
         val trevos: List<Int>? = null,
         /** Time do Coração (Timemania) ou Mês de Sorte (Dia de Sorte). */
@@ -52,9 +57,9 @@ object LeituraComprovante {
 
     fun ler(m: Modalidade, texto: String, times: List<String> = TIMES_DO_CORACAO): Lida {
         val linhas = texto.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        return when (m.formato) {
+        val candidatos = concursos(m, texto)
+        val lida = when (m.formato) {
             Formato.NUMEROS -> Lida(
-                concurso = concurso(m, texto),
                 numeros = numeros(m, linhas),
                 trevos = trevos(m, linhas),
                 extra = when (m.extra) {
@@ -63,20 +68,71 @@ object LeituraComprovante {
                     Extra.NENHUM -> null
                 },
             )
-            Formato.COLUNAS -> Lida(concurso = concurso(m, texto), numeros = colunas(linhas))
-            Formato.LOTECA -> Lida(concurso = concurso(m, texto), palpitesLoteca = loteca(linhas))
-            Formato.FEDERAL -> Lida(concurso = concurso(m, texto), bilhete = bilhete(linhas))
+            Formato.COLUNAS -> Lida(numeros = colunas(linhas))
+            Formato.LOTECA -> Lida(palpitesLoteca = loteca(linhas))
+            Formato.FEDERAL -> Lida(bilhete = bilhete(linhas))
         }
+        return lida.copy(concurso = candidatos.firstOrNull(), concursos = candidatos)
     }
 
-    /** "Concurso 3072", "CONCURSO Nº 3072" ou o nome da modalidade seguido do número ("Mega-Sena 3072"). */
-    fun concurso(m: Modalidade, texto: String): Int? {
-        val t = simples(texto)
-        Regex("CONCURSO\\s*(?:N[O°º.]*\\s*)?[:\\-]?\\s*(\\d{3,5})\\b").find(t)?.let { return it.groupValues[1].toInt() }
+    /**
+     * Telefones da Caixa no rodapé do comprovante ("4004 0104", "0800 726 0101"): não são o concurso.
+     * Até a 0.20 o "4004" do telefone virava o concurso quando o leitor separava o rótulo do valor.
+     */
+    private val TELEFONE = Regex("\\b(?:0[38]00[ \\t.\\-]?\\d{3}[ \\t.\\-]?\\d{4}|\\d{4}[ \\t.\\-]\\d{4})\\b")
+
+    /** "CONCURSO 3072", "CONCURSO Nº 3072" ou "CONCURSO: 3072", na mesma linha. */
+    private val CONCURSO_NA_LINHA = Regex("CONCURSO[ \\t]*(?:N[O°º.]*[ \\t]*)?[:\\-]?[ \\t]*(\\d{3,5})\\b")
+    private val SO_O_NUMERO = Regex("^[^\\dA-Z]*(\\d{3,5})[^\\dA-Z]*$")
+
+    /** Quantas linhas depois do rótulo "Concurso:" (sem o número) o valor pode estar. */
+    private const val LINHAS_ATE_O_VALOR = 14
+
+    /** O concurso mais provável (o primeiro de [concursos]). */
+    fun concurso(m: Modalidade, texto: String): Int? = concursos(m, texto).firstOrNull()
+
+    /**
+     * Os números que podem ser o concurso, do mais provável ao menos provável, sem os telefones do
+     * rodapé: (1) "Concurso 3072" na mesma linha; (2) o rótulo "Concurso:" sozinho (o leitor separou a
+     * coluna dos rótulos da dos valores) e os números sozinhos nas linhas seguintes; (3) o nome da
+     * modalidade seguido do número ("Mega-Sena 3072"); (4) qualquer número de 3 a 5 algarismos sozinho
+     * numa linha.
+     */
+    fun concursos(m: Modalidade, texto: String): List<Int> {
+        val linhas = texto.lines().map { simples(it).replace(TELEFONE, " ").trim() }
+        val achados = LinkedHashSet<Int>()
+        linhas.forEach { l -> CONCURSO_NA_LINHA.findAll(l).forEach { achados += it.groupValues[1].toInt() } }
+        linhas.forEachIndexed { i, l ->
+            if (Regex("\\bCONCURSO\\b").containsMatchIn(l) && !CONCURSO_NA_LINHA.containsMatchIn(l)) {
+                linhas.drop(i + 1).take(LINHAS_ATE_O_VALOR).forEach { s -> SO_O_NUMERO.find(s)?.let { achados += it.groupValues[1].toInt() } }
+            }
+        }
         val palavras = simples(m.nome).replace("+", " ").split(Regex("[\\s\\-]+")).filter { it.isNotEmpty() }
-        val nome = palavras.joinToString("[\\s\\-]*") { Regex.escape(it) }
-        return Regex("$nome\\s*[:\\-]?\\s*(\\d{3,5})\\b").find(t)?.groupValues?.get(1)?.toInt()
+        val nome = Regex(palavras.joinToString("[ \\t\\-]*") { Regex.escape(it) } + "[ \\t]*[:\\-]?[ \\t]*(\\d{3,5})\\b")
+        linhas.forEach { l -> nome.findAll(l).forEach { achados += it.groupValues[1].toInt() } }
+        linhas.forEach { l -> SO_O_NUMERO.find(l)?.let { achados += it.groupValues[1].toInt() } }
+        return achados.toList()
     }
+
+    /** Diferença máxima entre o concurso lido e o da aposta para o comprovante mudar a aposta. */
+    const val DIFERENCA_MAXIMA_DO_CONCURSO = 30
+
+    /**
+     * O concurso da leitura [l] diante dos concursos das apostas que esperam o comprovante ([esperados]):
+     * um candidato igual ao de uma aposta ganha; senão, o mais provável, desde que perto do de alguma
+     * aposta (a até [DIFERENCA_MAXIMA_DO_CONCURSO]). Longe de todas, a leitura fica sem o concurso e o
+     * número lido vai em [Escolha.duvidoso] (para a nota da conferência).
+     */
+    fun escolherConcurso(l: Lida, esperados: Collection<Int>): Escolha {
+        if (esperados.isEmpty() || l.concursos.isEmpty()) return Escolha(l, null)
+        l.concursos.firstOrNull { it in esperados }?.let { return Escolha(l.copy(concurso = it), null) }
+        val primeiro = l.concursos.first()
+        val perto = esperados.any { kotlin.math.abs(it - primeiro) <= DIFERENCA_MAXIMA_DO_CONCURSO }
+        return if (perto) Escolha(l.copy(concurso = primeiro), null) else Escolha(l.copy(concurso = null), primeiro)
+    }
+
+    /** O resultado de [escolherConcurso]: a leitura com o concurso escolhido e o número desprezado. */
+    data class Escolha(val lida: Lida, val duvidoso: Int?)
 
     /** Números marcados: depois do rótulo ("Números:", "Dezenas") ou um bloco só de números com a quantidade certa. */
     private fun numeros(m: Modalidade, linhas: List<String>): List<Int>? {
@@ -249,7 +305,7 @@ object LeituraComprovante {
         val varios = todosOsNumeros(m, linhas)
         if (varios.size <= 1) return listOf(if (base.numeros != null) base else base.copy(numeros = varios.firstOrNull()))
         // Com vários jogos, trevos e time/mês não dá para saber de qual é: ficam de fora.
-        return varios.map { Lida(concurso = base.concurso, numeros = it) }
+        return varios.map { Lida(concurso = base.concurso, concursos = base.concursos, numeros = it) }
     }
 
     /** Os conjuntos de números válidos do texto (depois dos rótulos ou em blocos só de números). */

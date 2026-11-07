@@ -130,6 +130,10 @@ import io.github.marcosfaria94.bolao.ui.ajustes.IntegridadeTela
 import io.github.marcosfaria94.bolao.ui.jogos.JogosTela
 import io.github.marcosfaria94.bolao.ui.jogos.ModalidadeTela
 import io.github.marcosfaria94.bolao.ui.rateio.RateioTela
+import io.github.marcosfaria94.bolao.ui.sessoes.BotaoDaSessao
+import io.github.marcosfaria94.bolao.ui.sessoes.ROTA_SESSOES
+import io.github.marcosfaria94.bolao.ui.sessoes.SessoesTela
+import io.github.marcosfaria94.bolao.ui.sessoes.TITULO_SESSOES
 import io.github.marcosfaria94.bolao.ui.teste.DialogoSairDoTeste
 import io.github.marcosfaria94.bolao.ui.teste.FaixaModoTeste
 import io.github.marcosfaria94.bolao.ui.tema.Barra
@@ -168,7 +172,7 @@ private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_PAINEL)
 /** Telas sem a seta de voltar na barra de cima (fecham deslizando o dedo, puxando para baixo ou pelo voltar do celular). */
 private val SEM_SETA = setOf(
     "aporte", "rateio", "extrato", "extrato/{mes}", ROTA_FILTRO, "saldo", ROTA_COMPROVANTES, ROTA_PAINEL, ROTA_SECAO_AJUSTES, "integridade",
-    ROTA_INDICES,
+    ROTA_INDICES, ROTA_SESSOES,
 )
 
 /** A página do jogo (o volante, a aposta aberta ou os Detalhes): o título "← Voltar" também volta. */
@@ -188,7 +192,7 @@ private const val ROTA_COMPROVANTES = Pendencias.ABA_COMPROVANTES
 private val PARA_O_PAINEL = setOf(ROTA_PAINEL, "em-andamento", "nao-sorteados", "notificacoes")
 
 /** Itens dos Ajustes que até a 0.15 tinham tela própria (hoje ficam direto na lista). */
-private val PARA_OS_AJUSTES = setOf("ajustes/teste", "ajustes/atualizacao", "ajustes/creditos")
+private val PARA_OS_AJUSTES = setOf("ajustes/atualizacao", "ajustes/creditos")
 
 /** Endereços antigos (avisos de versões anteriores): "financeiro" e "apostas" eram abas; "apostar", a Nova aposta. */
 private val PARA_A_HOME = setOf("painel", "financeiro", "apostas")
@@ -196,15 +200,32 @@ private val PARA_A_HOME = setOf("painel", "financeiro", "apostas")
 @Composable
 fun AppRaiz() {
     val ctx = LocalContext.current
-    val repo = remember { ctx.bolao.repo }
-    val estado by repo.estado.collectAsStateWithLifecycle()
-    val aviso by repo.aviso.collectAsStateWithLifecycle()
-    val teste by repo.modoTeste.collectAsStateWithLifecycle()
-    val recomeco by repo.recomecos.collectAsStateWithLifecycle()
+    val sessoes = ctx.bolao.sessoes
+    // A sessão em uso (desde a 0.21): trocar de sessão recomeça tudo (os dados, a navegação), na mesma aba.
+    val ativa by sessoes.ativa.collectAsStateWithLifecycle()
     val avisos = remember { SnackbarHostState() }
     val atualizacao: AtualizacaoViewModel = viewModel()
-    // A aba de agora: ao ligar ou desligar o modo de teste (no próprio Ajustes) a navegação recomeça, mas na mesma aba.
+    // A aba de agora: ao trocar de sessão (ou entrar e sair do modo de teste) a navegação recomeça, mas na mesma aba.
     var abaGuardada by rememberSaveable { mutableStateOf(Aba.HOME.name) }
+
+    CompositionLocalProvider(LocalAvisos provides avisos) {
+        key(ativa) {
+            RaizDaSessao(ativa, atualizacao, Aba.entries.firstOrNull { it.name == abaGuardada } ?: Aba.HOME) { abaGuardada = it.name }
+        }
+        DialogosAtualizacao(atualizacao)
+    }
+}
+
+/** O app numa sessão: o carregamento, a extinção em andamento, o cadastro ou as telas. */
+@Composable
+private fun RaizDaSessao(sessao: String, atualizacao: AtualizacaoViewModel, abaInicial: Aba, aoMudarDeAba: (Aba) -> Unit) {
+    val ctx = LocalContext.current
+    val repo = remember(sessao) { ctx.bolao.sessoes.repo(sessao) }
+    val estado by repo.estado.collectAsStateWithLifecycle()
+    val aviso by repo.aviso.collectAsStateWithLifecycle()
+    val teste = repo.emTeste
+    val recomeco by ctx.bolao.sessoes.recomecos.collectAsStateWithLifecycle()
+    val avisos = LocalAvisos.current
 
     LaunchedEffect(aviso) {
         aviso?.let {
@@ -213,23 +234,25 @@ fun AppRaiz() {
         }
     }
 
-    CompositionLocalProvider(LocalAvisos provides avisos) {
-        val e = estado
-        when {
-            e == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            // Extinção em andamento: só a tela da extinção, até o fim.
-            e.extincao != null -> ExtincaoTela(e)
-            !e.cadastroConcluido -> {
-                LaunchedEffect(Unit) { abaGuardada = Aba.HOME.name }
-                CadastroTela(recomeco)
-            }
-            // Ao entrar ou sair do modo de teste (ou trocar de modo), a navegação recomeça (na aba em que estava).
-            else -> key(teste, e.modo) {
-                val aba = Aba.entries.firstOrNull { it.name == abaGuardada } ?: Aba.HOME
-                Principal(e, atualizacao, teste, aba) { abaGuardada = it.name }
-            }
+    val e = estado
+    // A sessão com o cadastro concluído e ainda sem nome (ex.: a das versões anteriores): "Individual" ou "Bolão N".
+    LaunchedEffect(e?.cadastroConcluido) {
+        if (e != null && e.cadastroConcluido && !teste && ctx.bolao.sessoes.sessao(sessao)?.nome.isNullOrBlank()) {
+            ctx.bolao.sessoes.nomear(sessao, "", e.modo)
         }
-        DialogosAtualizacao(atualizacao)
+    }
+    when {
+        e == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        // Extinção em andamento: só a tela da extinção, até o fim.
+        e.extincao != null -> ExtincaoTela(e)
+        !e.cadastroConcluido -> {
+            LaunchedEffect(Unit) { aoMudarDeAba(Aba.HOME) }
+            CadastroTela(sessao, recomeco)
+        }
+        // Ao trocar de modo, a navegação recomeça (na aba em que estava).
+        else -> key(teste, e.modo) {
+            Principal(e, atualizacao, teste, abaInicial, aoMudarDeAba)
+        }
     }
 }
 
@@ -258,7 +281,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         ctx.bolao.indices.atualizar()
     }
     // O despertador da apuração acompanha as apostas (registrar, apurar e descartar mudam a hora de acordar).
-    LaunchedEffect(estado.apostas) { runCatching { Despertador.agendar(ctx, estado) } }
+    LaunchedEffect(estado.apostas) { runCatching { Despertador.agendarTodas(ctx) } }
     // O concurso das apostas que ainda não valem (em andamento ou esperando o comprovante) acompanha a Caixa.
     val itens by ctx.bolao.indices.itens.collectAsStateWithLifecycle()
     LaunchedEffect(itens) { atualizarConcursos(ctx, itens) }
@@ -291,6 +314,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             r == "apostar" -> irParaAba(Aba.JOGOS)
             r in PARA_O_PAINEL -> abrirPainel()
             r in PARA_OS_AJUSTES -> irParaAba(Aba.AJUSTES)
+            // O Modo de teste saiu dos Ajustes (desde a 0.21): fica na tela das sessões.
+            r == "ajustes/teste" -> nav.navigate(ROTA_SESSOES) { launchSingleTop = true }
             else -> nav.navigate(r) { launchSingleTop = true }
         }
     }
@@ -311,6 +336,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     // pedido para a economia de bateria não pausar o app (a apuração e o aviso do prêmio com o app fechado).
     val prefs = remember { ctx.getSharedPreferences("app", Context.MODE_PRIVATE) }
     fun pedirBateria() {
+        if (android.os.Build.FINGERPRINT == "robolectric") return
         if (!prefs.getBoolean("pediu_bateria", false) && !SegundoPlano.bateriaLivre(ctx)) {
             prefs.edit().putBoolean("pediu_bateria", true).apply()
             SegundoPlano.pedirBateriaLivre(ctx)
@@ -341,6 +367,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         ROTA_FILTRO -> "Filtrar"
         ROTA_COMPROVANTES -> "Comprovantes"
         ROTA_PAINEL -> "Painel de Jogos"
+        ROTA_SESSOES -> TITULO_SESSOES
         ROTA_SECAO_AJUSTES -> SecaoAjuste.de(e?.arguments?.getString("secao"))?.titulo(estado.individual) ?: "Ajustes"
         "aporte" -> "Aporte"
         "rateio" -> "Rateio"
@@ -368,7 +395,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
 
     // O filtro do Histórico (tela "Filtrar"): começa no padrão (todos os tipos no mês atual) e volta a
     // ele sozinho ao trocar de tela; só o "Filtrar" e as telas que se abrem puxando para baixo o mantêm.
-    var filtro by rememberSaveable(stateSaver = FiltroHome.Saver) { mutableStateOf(FiltroHome.padrao(LocalDate.now())) }
+    var filtro by rememberSaveable(stateSaver = FiltroHome.Saver) { mutableStateOf(System.getProperty("fotos.filtro")?.let { io.github.marcosfaria94.bolao.ui.comum.FiltroHome(tipos = setOf(io.github.marcosfaria94.bolao.ui.comum.FiltroHistorico.valueOf(it)), meses = if (System.getProperty("fotos.tudo") == "1") emptySet() else setOf(java.time.YearMonth.now())) } ?: FiltroHome.padrao(LocalDate.now())) }
     val naHome = ehAba && abaAssentada == Aba.HOME
     LaunchedEffect(naHome, rota) {
         if (!naHome && rota !in MANTEM_O_FILTRO) filtro = FiltroHome.padrao(LocalDate.now())
@@ -376,6 +403,10 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
 
     // O contador vermelho do ícone do Painel de Jogos: as pendências.
     val noContador = quantasPendencias(resumo)
+    // As sessões: o nome da sessão em uso aparece embaixo do título quando há mais de uma.
+    val listaDeSessoes by ctx.bolao.sessoes.lista.collectAsStateWithLifecycle()
+    val variasSessoes = listaDeSessoes.count { it.nome.isNotBlank() } > 1
+    val nomeDaSessao = ctx.bolao.sessoes.nome(ctx.bolao.repo.sessao)
 
     // O Painel de Jogos abre com as cores próprias (azul-marinho e dourado, como o ícone): o esquema
     // muda só enquanto ele está na tela (a barra do título e o fundo também).
@@ -391,6 +422,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             Column {
                 BarraTitulo(
                     titulo,
+                    // Com mais de uma sessão, o nome da sessão em uso embaixo do título das abas (desde a 0.21).
+                    subtitulo = nomeDaSessao.takeIf { ehAba && variasSessoes && !teste },
                     tituloVolta = rota in ROTAS_DO_JOGO,
                     corTitulo = if (doPainel) MaterialTheme.colorScheme.primary else Color.Unspecified,
                     antesDoTitulo = if (doPainel) {
@@ -406,8 +439,11 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                         }
                     },
                     acoes = {
-                        // Nas abas: o ícone do Painel de Jogos (com as pendências), à direita do título.
-                        if (ehAba) BotaoDoPainel(noContador) { abrirPainel() }
+                        // Nas abas: o "Alternar sessão" (desde a 0.21) e o ícone do Painel de Jogos (com as pendências), à direita do título.
+                        if (ehAba) {
+                            BotaoDaSessao { nav.navigate(ROTA_SESSOES) { launchSingleTop = true } }
+                            BotaoDoPainel(noContador) { abrirPainel() }
+                        }
                         // O "Detalhes →" da página do jogo (nos Detalhes, o "Voltar →"), na mesma cor e letra do título.
                         acao?.botao?.let { rotulo ->
                             val cor = MaterialTheme.colorScheme.onSurface
@@ -533,6 +569,12 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) {
                         PainelDeJogosTela(estado, resumo, abrir = ::abrir, apostar = { irParaAba(Aba.JOGOS) })
                     }
+                }
+            }
+            // As sessões (o "Alternar sessão" da barra de cima, desde a 0.21): puxar para baixo ou deslizar para os lados sai.
+            composable(ROTA_SESSOES) { e ->
+                TelaDeCima(nav, e) {
+                    Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { SessoesTela(abrir = ::abrir) }
                 }
             }
             // O Saldo atual (tocar no quadro do saldo): deslizar o dedo para qualquer lado volta para a Home.

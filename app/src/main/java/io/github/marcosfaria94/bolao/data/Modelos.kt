@@ -146,6 +146,22 @@ data class Aposta(
      * que ficaram de fora desta (como a opção "Aposta espelho" do volante da Caixa).
      */
     val espelho: Boolean = false,
+    /** O k1, o k2 e as odds do concurso, guardados quando a aposta foi registrada (desde a 0.21). */
+    val indices: IndicesDaAposta? = null,
+)
+
+/**
+ * Os índices do concurso da aposta (desde a 0.21), como estavam no app quando ela foi registrada: o
+ * Painel de Jogos mostra estes, mesmo quando os Jogos já passaram para o concurso seguinte.
+ */
+@Serializable
+data class IndicesDaAposta(
+    val k1: Double? = null,
+    val k2: Double? = null,
+    /** X das odds (1:X). */
+    val odds: Double? = null,
+    /** Concurso especial (sem k1 e k2). */
+    val especial: Boolean = false,
 )
 
 @Serializable
@@ -249,7 +265,7 @@ const val MAXIMO_DE_INTEGRANTES = 20
 
 @Serializable
 data class Estado(
-    val versao: Int = 2,
+    val versao: Int = 3,
     val cadastroConcluido: Boolean = false,
     /** Dia do cadastro inicial (o aporte de um mês já começado não é cobrado). */
     val cadastradoEm: Data? = null,

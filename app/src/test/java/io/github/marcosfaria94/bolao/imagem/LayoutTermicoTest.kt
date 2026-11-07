@@ -110,7 +110,9 @@ class LayoutTermicoTest {
         assertNotEquals(autenticacao, LayoutTermico.autenticacaoDoSaldo(Mensagens.saldo(1404, "Fulano de Tal"), agora, codigo))
         // Ainda sem nenhum registro: a autenticação sai do mesmo jeito (sem o último registro).
         assertTrue(LayoutTermico.consultaSaldo("Bolão dos Amigos", texto, agora, null).any { it.texto.startsWith("AUTENTICAÇÃO: ") })
-        assertEquals(LayoutTermico.AVISO_SALDO, linhas.filter { it.estilo == Estilo.PEQUENO }.joinToString(" ") { it.texto })
+        // Desde a 0.21, sem o aviso de "documento informativo" no rodapé: a autenticação é a última linha.
+        assertTrue(linhas.none { it.estilo == Estilo.PEQUENO })
+        assertTrue(linhas.last().texto.startsWith("AUTENTICAÇÃO: "))
     }
 
     @Test

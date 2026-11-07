@@ -80,11 +80,10 @@ private val TECNOLOGIA = listOf(
 
 /**
  * O "Apoie" do rodapé dos Ajustes (desde a 0.18): o texto, o nome e a chave Pix do Administrador; o
- * botão copia a chave. Desde a 0.20 o texto é o do convite para um café e o nome é o curto.
+ * botão copia a chave. Desde a 0.20 o nome é o curto; desde a 0.21, sem título e com o texto do lema.
  */
 internal const val APOIE_TEXTO =
-    "Esse app é gratuito e sem anúncios, sempre. Se você gosta dele e deseja apoiar esse e outros projetos " +
-        "similares, considere fazer uma doação. Qualquer valor é bem-vindo!"
+    "Gratuito e sem anúncios, esse é o nosso lema. Se você é adepto da ideia, considere pagar um café para nós."
 internal const val APOIE_NOME = "Marcos Faria"
 internal const val APOIE_PIX = "pixfacil@aol.com"
 
@@ -199,12 +198,10 @@ fun abrirClaudeNaLoja(ctx: Context) {
     }
 }
 
-/** O título do quadro do "Apoie" (até a 0.19, "Doação"). */
-const val APOIE_TITULO = "Aceita um café?"
-
 /**
- * O "Apoie": o título "Aceita um café?" (desde a 0.20), a xícara de café sorrindo, o texto, o nome e a chave Pix, e o botão dourado que
- * copia a chave (a partir do Android 13 o sistema confirma a cópia; o botão também mostra "Pix copiado").
+ * O "Apoie": a xícara de café sorrindo, o texto, o nome e a chave Pix, e o botão dourado que copia a
+ * chave (a partir do Android 13 o sistema confirma a cópia; o botão também mostra "Pix copiado").
+ * Sem título desde a 0.21 (na 0.19 "Doação"; na 0.20 "Aceita um café?").
  */
 @Composable
 private fun Apoie() {
@@ -225,14 +222,6 @@ private fun Apoie() {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
         ) {
-            // O título em cima da xícara ("Aceita um café?", desde a 0.20).
-            Text(
-                APOIE_TITULO,
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp),
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(6.dp))
             Image(Desenhos.Xicara, contentDescription = "Xícara de café sorrindo", modifier = Modifier.size(84.dp))
             Spacer(Modifier.height(8.dp))
             Text(

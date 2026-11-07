@@ -1,6 +1,7 @@
 package io.github.marcosfaria94.bolao
 
 import android.content.Intent
+import io.github.marcosfaria94.bolao.data.Sessoes
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.activity.compose.setContent
@@ -108,7 +109,20 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun lerDestino(intent: Intent?) {
-        intent?.getStringExtra(Notificador.EXTRA_DESTINO)?.let { bolao.destinoPendente.value = it }
+        val destino = intent?.getStringExtra(Notificador.EXTRA_DESTINO)
+        // O aviso de outra sessão (desde a 0.21): abre o app nela (saindo do modo de teste, o exemplo é apagado).
+        val sessao = intent?.getStringExtra(Notificador.EXTRA_SESSAO)
+        val sessoes = bolao.sessoes
+        if (sessao != null && sessao != sessoes.ativa.value) {
+            val existe = if (sessao == Sessoes.TESTE) sessoes.temTeste else sessoes.sessao(sessao) != null
+            if (!existe) return
+            bolao.escopo.launch {
+                runCatching { if (sessoes.emTeste) sessoes.sairDoTeste(sessao) else sessoes.trocarPara(sessao) }
+                destino?.let { bolao.destinoPendente.value = it }
+            }
+            return
+        }
+        destino?.let { bolao.destinoPendente.value = it }
     }
 
     private companion object {
