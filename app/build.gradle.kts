@@ -97,3 +97,31 @@ dependencies {
 
     testImplementation(libs.junit)
 }
+
+// TEMPORÁRIO (branch temp-pacote): copia o classpath da compilação dos testes, para compilar fora do Gradle.
+afterEvaluate {
+    tasks.register("copiarClasspath") {
+        val compilacao = tasks.named("compileDebugUnitTestKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java)
+        dependsOn(compilacao)
+        doLast {
+            val destino = layout.buildDirectory.dir("pacote/libs").get().asFile
+            destino.deleteRecursively()
+            destino.mkdirs()
+            val lista = StringBuilder()
+            var i = 0
+            fun copiar(f: File, origem: String) {
+                i += 1
+                if (f.isFile && f.name.endsWith(".jar")) {
+                    val nome = "%03d-%s".format(i, f.name)
+                    f.copyTo(File(destino, nome), overwrite = true)
+                    lista.appendLine("$nome <- $origem $f")
+                } else {
+                    lista.appendLine("PULADO <- $origem $f")
+                }
+            }
+            androidComponents.sdkComponents.bootClasspath.get().forEach { copiar(it.asFile, "boot") }
+            compilacao.get().libraries.files.forEach { copiar(it, "libs") }
+            File(destino, "lista.txt").writeText(lista.toString())
+        }
+    }
+}
