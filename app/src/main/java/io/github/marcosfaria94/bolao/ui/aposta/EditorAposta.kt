@@ -361,7 +361,8 @@ fun SecaoVolante(
                         val novo = repo.atualizar { e ->
                             val (x, esp) = Operacoes.registrarComEspelho(Operacoes.salvarRascunho(e, final), final.id, hoje, agora)
                             espelhoRegistrada = esp
-                            x
+                            // O k1, o k2 e as odds do concurso ficam guardados na aposta (desde a 0.21).
+                            Operacoes.guardarIndices(x, ctx.bolao.indices.itens.value)
                         }
                         val n = novo.apostas.firstOrNull { it.id == final.id }?.numero ?: numero
                         val esp = espelhoRegistrada

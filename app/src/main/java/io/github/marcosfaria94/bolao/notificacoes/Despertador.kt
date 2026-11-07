@@ -29,9 +29,19 @@ object Despertador {
     }
 
     /** Marca (ou desmarca) o próximo despertar a partir dos dados [e]. */
-    fun agendar(context: Context, e: Estado, agora: LocalDateTime = LocalDateTime.now(), fuso: ZoneId = ZoneId.systemDefault()) {
+    fun agendar(context: Context, e: Estado, agora: LocalDateTime = LocalDateTime.now(), fuso: ZoneId = ZoneId.systemDefault()) =
+        agendar(context, listOf(e), agora, fuso)
+
+    /** O próximo despertar, lendo os dados de todas as sessões. */
+    suspend fun agendarTodas(context: Context) {
+        val estados = (context.applicationContext as io.github.marcosfaria94.bolao.BolaoApp).sessoes.todasComDados().map { it.second }
+        agendar(context, estados)
+    }
+
+    /** O próximo despertar entre todas as sessões ([estados]; desde a 0.21 o Vigia cuida de todas). */
+    fun agendar(context: Context, estados: List<Estado>, agora: LocalDateTime = LocalDateTime.now(), fuso: ZoneId = ZoneId.systemDefault()) {
         val am = context.getSystemService(AlarmManager::class.java) ?: return
-        val quando = Pendencias.proximoDespertar(e, agora)
+        val quando = estados.mapNotNull { Pendencias.proximoDespertar(it, agora) }.minOrNull()
         if (quando == null) {
             pedido(context, criar = false)?.let { am.cancel(it) }
             return

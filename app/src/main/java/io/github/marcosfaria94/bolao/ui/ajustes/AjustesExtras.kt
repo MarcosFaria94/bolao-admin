@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,7 +29,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,17 +38,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.domain.Dinheiro
-import io.github.marcosfaria94.bolao.notificacoes.Vigia
 import io.github.marcosfaria94.bolao.seguranca.Biometria
 import io.github.marcosfaria94.bolao.seguranca.atividade
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaIcone
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
+import io.github.marcosfaria94.bolao.ui.sessoes.apagarSessao
 import kotlinx.coroutines.launch
 
 /** Toques seguidos para destravar a extinção forçada: 5 até a dica aparecer, mais 5 para destravar. */
@@ -111,7 +108,7 @@ fun CartaoExtincao(estado: Estado, forcadaLiberada: Boolean, aoLiberarForcada: (
                 Text(
                     when {
                         estado.individual -> "Apagar tudo"
-                        forcar -> "Formatar o app"
+                        forcar -> "Apagar a sessão"
                         else -> "Encerrar o bolão"
                     },
                     style = MaterialTheme.typography.titleMedium,
@@ -120,14 +117,14 @@ fun CartaoExtincao(estado: Estado, forcadaLiberada: Boolean, aoLiberarForcada: (
             }
             Text(
                 if (estado.individual) {
-                    "Apaga todas as apostas e prêmios deste celular e volta ao cadastro inicial, a qualquer momento " +
-                        "(pede a confirmação e a digital)."
+                    "Apaga todas as apostas e prêmios da sessão Individual, a qualquer momento (pede a confirmação e a digital). " +
+                        "As outras sessões continuam."
                 } else if (forcar) {
-                    "Extinção forçada: formata o app. Apaga todos os dados deste celular, sem dividir o saldo e sem o PDF " +
-                        "da auditoria, e volta ao cadastro inicial."
+                    "Extinção forçada: apaga todos os dados desta sessão, sem dividir o saldo e sem o PDF da auditoria. " +
+                        "As outras sessões continuam."
                 } else {
                     "Encerra o bolão (Parte 5 do termo): divide o saldo entre os integrantes, gera o PDF da auditoria " +
-                        "completa e, depois de enviado ao grupo, apaga tudo para cadastrar um novo grupo."
+                        "completa e, depois de enviado ao grupo, apaga a sessão do bolão."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onErrorContainer,
@@ -188,16 +185,15 @@ fun DialogoExtincao(estado: Estado, forcada: Boolean, aoFechar: () -> Unit) {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (forcada && estado.individual && !teste) {
                     Text(
-                        "Apaga todas as apostas, prêmios e ajustes deste celular. O app volta ao cadastro inicial, " +
-                            "como recém-instalado (dá para escolher o modo de novo).",
+                        "Apaga todas as apostas, prêmios e ajustes da sessão Individual. As outras sessões continuam.",
                     )
                 } else if (forcada) {
                     Text(
                         if (teste) {
                             "Modo de teste: apaga os dados de exemplo e volta aos dados reais, sem divisão nem auditoria."
                         } else {
-                            "Formatação do app: apaga todos os dados deste celular (registros, comprovantes, anexos e o termo), " +
-                                "sem dividir o saldo e sem o PDF da auditoria. O app volta ao cadastro inicial, como recém-instalado."
+                            "Apaga todos os dados desta sessão (registros, comprovantes, anexos e o termo), sem dividir o saldo " +
+                                "e sem o PDF da auditoria. As outras sessões continuam."
                         },
                     )
                     if (!teste) Text("Os backups e PDFs já salvos em Downloads/Bolao não são apagados.")
@@ -238,15 +234,15 @@ fun DialogoExtincao(estado: Estado, forcada: Boolean, aoFechar: () -> Unit) {
                         try {
                             val repo = ctx.bolao.repo
                             if (forcada) {
-                                repo.formatar()
-                                if (teste) Vigia.esquecerAvisosDeTeste(ctx) else Vigia.esquecerTodosOsAvisos(ctx)
-                                repo.avisar(
+                                // Desde a 0.21, só a sessão em uso é apagada (as outras continuam).
+                                apagarSessao(ctx, repo.sessao) { outra ->
                                     when {
                                         teste -> "Extinção de teste concluída: os dados de exemplo foram apagados."
+                                        outra != null -> "Sessão apagada. Agora em uso: $outra."
                                         estado.individual -> "Tudo apagado. Faça o cadastro de novo."
-                                        else -> "App formatado: todos os dados foram apagados. Cadastre o grupo de novo."
-                                    },
-                                )
+                                        else -> "Sessão apagada: todos os dados dela foram apagados. Cadastre o grupo de novo."
+                                    }
+                                }
                             } else {
                                 repo.atualizar { Operacoes.iniciarExtincao(it, System.currentTimeMillis()) }
                             }

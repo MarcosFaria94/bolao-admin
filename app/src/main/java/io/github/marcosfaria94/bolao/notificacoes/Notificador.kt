@@ -16,6 +16,7 @@ import io.github.marcosfaria94.bolao.MainActivity
 import io.github.marcosfaria94.bolao.R
 import io.github.marcosfaria94.bolao.data.Pendencia
 import io.github.marcosfaria94.bolao.data.Premiada
+import io.github.marcosfaria94.bolao.data.Sessoes
 
 /**
  * Os dois avisos que vão para o celular: "Ação necessária" (há pendência no bolão) e
@@ -27,10 +28,17 @@ object Notificador {
     private const val CANAL_PREMIOS = "premios"
     const val EXTRA_DESTINO = "destino"
 
+    /** A sessão do aviso (desde a 0.21): tocar abre o app nela. */
+    const val EXTRA_SESSAO = "sessao"
+
     /** Um aviso só de "Ação necessária", atualizado com a lista de pendências. */
     private const val ID_ACOES = 1001
 
     private const val COR = 0xFF13294B.toInt()
+
+    /** O "Ação necessária" do modo de teste e o começo dos números das outras sessões (desde a 0.21). */
+    private const val ID_ACOES_TESTE = 1003
+    private const val ID_ACOES_SESSOES = 20_000
 
     /** Código do "Parar o toque" (aviso do prêmio principal). */
     private const val ID_PARAR_TOQUE = 1002
@@ -55,19 +63,30 @@ object Notificador {
         Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    private fun abrir(context: Context, destino: String, codigo: Int): PendingIntent {
+    private fun abrir(context: Context, destino: String, codigo: Int, sessao: String? = null): PendingIntent {
         val intent = Intent(context, MainActivity::class.java)
             .putExtra(EXTRA_DESTINO, destino)
+            .apply { if (sessao != null) putExtra(EXTRA_SESSAO, sessao) }
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         return PendingIntent.getActivity(context, codigo, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
     /**
-     * "Ação necessária": [novas] são as pendências que acabaram de ficar na hora do aviso;
-     * [todas] entram na lista do aviso. Tocar abre as Notificações do app.
+     * O aviso "Ação necessária" de cada sessão (desde a 0.21): a principal com o número de sempre; as
+     * outras, um número próprio.
+     */
+    private fun idDasAcoes(sessao: String): Int = when (sessao) {
+        Sessoes.PRINCIPAL -> ID_ACOES
+        Sessoes.TESTE -> ID_ACOES_TESTE
+        else -> ID_ACOES_SESSOES + (sessao.hashCode() and 0xFFF)
+    }
+
+    /**
+     * "Ação necessária" da sessão [sessao]: [novas] são as pendências que acabaram de ficar na hora do
+     * aviso; [todas] entram na lista do aviso. Tocar abre o Painel de Jogos, na sessão.
      */
     @SuppressLint("MissingPermission")
-    fun acaoNecessaria(context: Context, novas: List<Pendencia>, todas: List<Pendencia>, prefixo: String = "") {
+    fun acaoNecessaria(context: Context, novas: List<Pendencia>, todas: List<Pendencia>, prefixo: String = "", sessao: String = Sessoes.PRINCIPAL) {
         if (!permitido(context) || novas.isEmpty()) return
         val principal = novas.first()
         val texto = if (todas.size <= 1) "${principal.titulo}: ${principal.texto}" else "${principal.titulo} e mais ${todas.size - 1} pendência(s)."
@@ -81,15 +100,28 @@ object Notificador {
             .setContentText(texto)
             .setStyle(if (todas.size <= 1) NotificationCompat.BigTextStyle().bigText(texto) else lista)
             .setNumber(todas.size)
-            .setContentIntent(abrir(context, "meus-jogos", ID_ACOES))
+            .setContentIntent(abrir(context, "meus-jogos", idDasAcoes(sessao), sessao))
             .setAutoCancel(true)
             .build()
-        NotificationManagerCompat.from(context).notify(ID_ACOES, n)
+        NotificationManagerCompat.from(context).notify(idDasAcoes(sessao), n)
     }
 
-    /** Tira o aviso "Ação necessária" (sem pendências, ou o Administrador já está vendo a lista). */
-    fun limparAcoes(context: Context) {
-        NotificationManagerCompat.from(context).cancel(ID_ACOES)
+    /**
+     * Tira o aviso "Ação necessária" da sessão [sessao] (sem pendências, ou o Administrador já está
+     * vendo a lista); sem a sessão, os de todas.
+     */
+    fun limparAcoes(context: Context, sessao: String? = null) {
+        val nm = NotificationManagerCompat.from(context)
+        if (sessao != null) {
+            nm.cancel(idDasAcoes(sessao))
+            return
+        }
+        runCatching {
+            context.getSystemService(NotificationManager::class.java)?.activeNotifications
+                ?.filter { it.notification.channelId == CANAL_ACOES && it.id != 7 }
+                ?.forEach { nm.cancel(it.id) }
+        }
+        nm.cancel(ID_ACOES)
     }
 
     /**
@@ -97,16 +129,16 @@ object Notificador {
      * prêmio principal está tocando (o aviso traz o "Parar o toque"; arrastar o aviso também para).
      */
     @SuppressLint("MissingPermission")
-    fun apostaPremiada(context: Context, p: Premiada, prefixo: String = "", comToque: Boolean = false) {
+    fun apostaPremiada(context: Context, p: Premiada, prefixo: String = "", comToque: Boolean = false, sessao: String? = null) {
         if (!permitido(context)) return
-        val id = p.chave.hashCode()
+        val id = (sessao.orEmpty() + p.chave).hashCode()
         val b = NotificationCompat.Builder(context, CANAL_PREMIOS)
             .setSmallIcon(R.drawable.ic_notificacao)
             .setColor(COR)
             .setContentTitle(prefixo + if (comToque) "Prêmio principal!" else p.titulo)
             .setContentText(p.texto)
             .setStyle(NotificationCompat.BigTextStyle().bigText(p.texto))
-            .setContentIntent(abrir(context, p.destino, id))
+            .setContentIntent(abrir(context, p.destino, id, sessao))
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
         if (comToque) {

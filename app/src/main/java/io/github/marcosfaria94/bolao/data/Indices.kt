@@ -175,7 +175,7 @@ class Indices(private val context: Context) {
         }
         // O preço de Ajustes entra no cálculo: mudou lá, os índices são refeitos na hora.
         escopo.launch {
-            context.bolao.repo.estado
+            context.bolao.sessoes.estado
                 .filterNotNull()
                 .map { e -> Modalidade.entries.associateWith { e.config.preco(it) } }
                 .distinctUntilChanged()

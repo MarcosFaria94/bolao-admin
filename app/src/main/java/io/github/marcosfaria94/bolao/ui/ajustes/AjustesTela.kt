@@ -173,12 +173,14 @@ enum class SecaoAjuste(val id: String) {
         /**
          * Os grupos da lista, em ordem (o individual não tem integrantes, termo, integridade nem
          * auditoria; o "Bolão" dele é o modo e os preços). A extinção (no individual, "Apagar tudo")
-         * fica no fim do primeiro grupo; os Créditos, no rodapé da lista.
+         * fica no fim do primeiro grupo; os Créditos, no rodapé da lista. Desde a 0.21 os grupos Bolão e
+         * Segurança são da sessão em uso, e o Modo de teste saiu daqui: é uma sessão à parte, na tela das
+         * sessões (o "Alternar sessão").
          */
         fun grupos(individual: Boolean): List<Pair<String, List<SecaoAjuste>>> = listOf(
             (if (individual) "APOSTAS" else "BOLÃO") to (if (individual) listOf(MODO, VALORES, EXTINCAO) else listOf(INTEGRANTES, VALORES, TERMO, EXTINCAO)),
             "SEGURANÇA" to (if (individual) listOf(BACKUP) else listOf(INTEGRIDADE, AUDITORIA, BACKUP)),
-            "CELULAR" to listOf(NOTIFICACOES, ATUALIZACAO, TESTE),
+            "CELULAR" to listOf(NOTIFICACOES, ATUALIZACAO),
         )
     }
 }

@@ -84,6 +84,7 @@ import io.github.marcosfaria94.bolao.ui.home.GrupoEmAndamento
 import io.github.marcosfaria94.bolao.ui.home.emOrdemDeSorteioEK1
 import io.github.marcosfaria94.bolao.ui.home.jogosEmAndamento
 import io.github.marcosfaria94.bolao.ui.home.pendenciaDoJogo
+import io.github.marcosfaria94.bolao.domain.indices.ResultadoK
 import io.github.marcosfaria94.bolao.ui.jogos.IndicesNaLinha
 import io.github.marcosfaria94.bolao.ui.jogos.NAO_DIVULGADO
 import io.github.marcosfaria94.bolao.ui.tema.AzulMarinho
@@ -131,10 +132,10 @@ const val ROTA_PAINEL = "meus-jogos"
 fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String) -> Unit, apostar: () -> Unit) {
     val ctx = LocalContext.current
     // Com as pendências na tela, o aviso "Ação necessária" do celular já cumpriu o papel.
-    LaunchedEffect(Unit) { Notificador.limparAcoes(ctx) }
+    LaunchedEffect(Unit) { Notificador.limparAcoes(ctx, ctx.bolao.repo.sessao) }
     val itens by ctx.bolao.indices.itens.collectAsStateWithLifecycle()
     val hoje = LocalDate.now()
-    val grupos = emOrdemDeSorteioEK1(jogosEmAndamento(estado, hoje)) { k1DoConcurso(itens[it.modalidade], it.concurso) }
+    val grupos = emOrdemDeSorteioEK1(jogosEmAndamento(estado, hoje)) { indicesDoConcurso(itens[it.modalidade], it)?.k1 }
     val todas = grupos.flatMap { it.apostas }
     // O "Compartilhar" manda só as apostas registradas (as que falta registrar ainda não valem).
     val registradas = todas.filter { it.registrada }
@@ -219,12 +220,22 @@ private fun TituloDosJogos(compartilhar: (() -> Unit)?) {
 /** O título dos jogos no Painel de Jogos. */
 const val TITULO_DOS_JOGOS = "MEUS JOGOS"
 
-/** O k1 do concurso [concurso] (só se os índices de agora são dele). */
-fun k1DoConcurso(item: Indices.Item?, concurso: Int): Double? = item?.k?.takeIf { it.numero == concurso }?.k1
-
-/** Os índices do concurso [concurso]: os de agora, se são dele; senão, só as odds (o k1 e o k2 com "—"). */
-private fun indicesDoConcurso(item: Indices.Item, concurso: Int): Indices.Item =
-    if (item.k?.numero == concurso) item else item.copy(k = null)
+/**
+ * Os índices do concurso do grupo [g]: os guardados nas apostas quando foram registradas (desde a 0.21);
+ * sem eles, os de agora, se são do concurso; senão, só as odds (o k1 e o k2 com "—").
+ */
+fun indicesDoConcurso(item: Indices.Item?, g: GrupoEmAndamento): Indices.Item? {
+    val guardados = g.apostas.firstNotNullOfOrNull { it.indices }
+    if (guardados != null) {
+        val k = ResultadoK(
+            numero = g.concurso, especial = guardados.especial, acumuladoPrincipal = 0.0, reserva = 0,
+            herancaFaixas = emptyMap(), nAnterior = 0.0, k1 = guardados.k1, k2 = guardados.k2,
+        )
+        return (item ?: Indices.Item(g.modalidade, null, null, null)).copy(k = k, odds = guardados.odds ?: item?.odds)
+    }
+    if (item == null) return null
+    return if (item.k?.numero == g.concurso) item else item.copy(k = null)
+}
 
 /** Verde do OK e âmbar do Pendente. */
 @Composable
@@ -368,7 +379,7 @@ private fun BlocoDoConcurso(estado: Estado, g: GrupoEmAndamento, item: Indices.I
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (item != null) IndicesNaLinha(indicesDoConcurso(item, g.concurso))
+                    indicesDoConcurso(item, g)?.let { IndicesNaLinha(it) }
                 }
             }
             Row(

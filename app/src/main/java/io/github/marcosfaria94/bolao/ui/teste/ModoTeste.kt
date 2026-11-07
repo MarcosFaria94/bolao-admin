@@ -33,8 +33,9 @@ import java.util.UUID
 import kotlin.random.Random
 
 /**
- * Liga e desliga o modo de teste. Os dados de exemplo ficam num espaço separado
- * (ver Repositorio): nada do que se faz no teste chega aos dados reais.
+ * Liga e desliga o modo de teste. Os dados de exemplo ficam numa sessão à parte (desde a 0.21; ver
+ * Sessoes): nada do que se faz no teste chega aos dados reais. Entrar cria um exemplo novo (com os
+ * integrantes e o modo da sessão de onde se entrou); sair apaga o exemplo e volta àquela sessão.
  */
 object ModoTeste {
 
@@ -54,7 +55,7 @@ object ModoTeste {
                 val hoje = LocalDate.now()
                 val agora = System.currentTimeMillis()
                 val reais = concursosRecentes(hoje)
-                val real = app.repo.estadoReal()
+                val real = app.sessoes.repo(app.sessoes.sessaoReal()).atual()
                 val exemplo = withContext(Dispatchers.Default) {
                     DadosDeExemplo.gerar(
                         hoje = hoje,
@@ -66,7 +67,7 @@ object ModoTeste {
                         modo = if (real.cadastroConcluido) real.modo else io.github.marcosfaria94.bolao.data.Modo.BOLAO,
                     )
                 }
-                app.repo.entrarNoTeste(exemplo) { pasta, e ->
+                app.sessoes.entrarNoTeste(exemplo) { pasta, e ->
                     ImagensDeExemplo.desenharTodos(app, pasta, e)
                     // Com os anexos desenhados, as impressões digitais entram e a autenticação é refeita.
                     DadosDeExemplo.comImpressoesDigitais(e) { a ->
@@ -88,14 +89,14 @@ object ModoTeste {
         }
     }
 
-    /** Desliga o modo de teste e apaga os dados de exemplo. */
-    fun sair(context: Context) {
+    /** Desliga o modo de teste, apaga os dados de exemplo e vai para a sessão [para] (sem ela, a de antes do teste). */
+    fun sair(context: Context, para: String? = null) {
         val app = context.bolao
         if (_trabalhando.value) return
         _trabalhando.value = true
         app.escopo.launch {
             try {
-                app.repo.sairDoTeste()
+                app.sessoes.sairDoTeste(para)
                 Vigia.esquecerAvisosDeTeste(app)
                 app.repo.avisar("Modo de teste desligado. Os dados de exemplo foram apagados.")
             } catch (t: Throwable) {
