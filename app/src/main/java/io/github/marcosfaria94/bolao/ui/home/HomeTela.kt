@@ -10,6 +10,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import io.github.marcosfaria94.bolao.ui.comum.FiltroHome
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.HistoryEdu
+import androidx.compose.ui.platform.LocalContext
+import io.github.marcosfaria94.bolao.bolao
+import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
+import io.github.marcosfaria94.bolao.ui.comum.CoresEmblema
+import io.github.marcosfaria94.bolao.ui.comum.EmblemaIcone
+import io.github.marcosfaria94.bolao.ui.tema.CoresAlerta
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,8 +76,9 @@ import java.time.YearMonth
 private val ESPACO = 14.dp
 
 /**
- * Home: o saldo (com o provisionado e o extra à direita), os atalhos de Aporte, Rateio e Extrato,
- * a próxima aposta (o "Apostar" pulsa no dia de aposta) e o Histórico de tudo o que entrou e saiu,
+ * Home: o saldo (com o provisionado e o extra à direita), os atalhos de Aporte, Rateio e Extrato, o
+ * "Ver termos do grupo" (desde a 0.23, só no bolão formal), a próxima aposta (o "Apostar" pulsa no
+ * dia de aposta) e o Histórico de tudo o que entrou e saiu,
  * com o resumo do filtro e o "Filtrar". O ícone do Painel de Jogos (com as pendências) fica na barra de cima. No modo
  * individual: só o saldo (que começa em zero e cai a cada aposta) e o Histórico das apostas e dos
  * prêmios.
@@ -91,6 +100,8 @@ fun HomeTela(
     val provisao = Operacoes.provisao(estado, hoje)
     val saldo = Operacoes.saldo(estado)
     val individual = estado.individual
+    // O termo só existe no bolão formal (o informal e o individual não têm).
+    val comTermo = estado.enviaAoGrupo
     val rolagem = rememberSaveable(visita, saver = LazyListState.Saver, key = "rolagem-$visita") { LazyListState() }
     // Tocar em "Home" na barra de baixo, já na Home: a lista volta ao começo.
     VoltarAoTopo(rolagem, paraOTopo)
@@ -100,7 +111,11 @@ fun HomeTela(
     LaunchedEffect(filtro) {
         if (filtro.resumo() != filtroVisto) {
             filtroVisto = filtro.resumo()
-            val titulo = if (individual) 2 else 3
+            val titulo = when {
+                individual -> 2
+                comTermo -> 4
+                else -> 3
+            }
             if (rolagem.firstVisibleItemIndex > titulo) rolagem.scrollToItem(titulo)
         }
     }
@@ -123,6 +138,9 @@ fun HomeTela(
                     Bloco("Rateio", Desenhos.Moedas, Modifier.weight(1f)) { abrir("rateio") }
                     Bloco("Extrato", Desenhos.Extrato, Modifier.weight(1f)) { abrir("extrato") }
                 }
+            }
+            if (comTermo) {
+                item(key = "termo") { CartaoDoTermo(estado, Modifier.padding(bottom = ESPACO), abrir = abrir) }
             }
             item(key = "proxima") {
                 CartaoProximaAposta(hoje, Operacoes.apostaFeitaEm(estado, hoje), estado.parametros.dias, Modifier.padding(bottom = ESPACO), aoApostar = apostar)
@@ -238,6 +256,45 @@ private fun Bloco(rotulo: String, desenho: ImageVector, modifier: Modifier, aoTo
                 Spacer(Modifier.height(8.dp))
                 Text(rotulo, style = MaterialTheme.typography.titleMedium)
             }
+        }
+    }
+}
+
+/** O texto do botão do termo na Home (desde a 0.23). */
+const val VER_TERMOS_DO_GRUPO = "Ver termos do grupo"
+
+/**
+ * "Ver termos do grupo" (desde a 0.23, entre os atalhos e a próxima aposta): abre o termo assinado
+ * (sem ele, o sem assinaturas) no visualizador do celular. Sem nenhum dos dois anexado, mostra "Falta
+ * anexar" e abre Ajustes > Termo, onde se anexa.
+ */
+@Composable
+private fun CartaoDoTermo(estado: Estado, modifier: Modifier, abrir: (String) -> Unit) {
+    val ctx = LocalContext.current
+    val arquivo = estado.termo ?: estado.termoSemAssinatura
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = modifier.fillMaxWidth().clickable {
+            if (arquivo != null) Compartilhar.abrir(ctx, ctx.bolao.repo.arquivo(arquivo), arquivo.mime) else abrir("ajustes/termo")
+        },
+    ) {
+        Row(Modifier.padding(start = 14.dp, end = 10.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            EmblemaIcone(Icons.Outlined.HistoryEdu, CoresEmblema.EXTRATO, 38.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(VER_TERMOS_DO_GRUPO, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                // Embaixo do nome (com a letra grande, ao lado ele quebrava o nome em duas linhas).
+                if (arquivo == null) {
+                    Text("Falta anexar", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = CoresAlerta.texto(), maxLines = 1)
+                }
+            }
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
         }
     }
 }

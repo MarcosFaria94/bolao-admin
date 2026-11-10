@@ -374,22 +374,26 @@ class TelasTest {
     }
 
     @Test
-    fun ajustesComExtincaoNoBolaoECreditosNoRodape() {
-        // A extinção no fim do primeiro grupo; sem o grupo "Sobre" (os Créditos são o rodapé da lista).
+    fun ajustesComTermoEExtincaoNaSegurancaECreditosNoRodape() {
+        // Desde a 0.23: o "Aporte e preços" dentro dos Parâmetros; o termo e a extinção na Segurança (a
+        // extinção no fim); sem o grupo "Sobre" (os Créditos são o rodapé da lista).
+        assertEquals(listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.PARAMETROS), SecaoAjuste.grupos(false).first { it.first == "BOLÃO" }.second)
         assertEquals(
-            listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.VALORES, SecaoAjuste.PARAMETROS, SecaoAjuste.TERMO, SecaoAjuste.EXTINCAO),
-            SecaoAjuste.grupos(false).first { it.first == "BOLÃO" }.second,
+            listOf(SecaoAjuste.TERMO, SecaoAjuste.INTEGRIDADE, SecaoAjuste.AUDITORIA, SecaoAjuste.BACKUP, SecaoAjuste.EXTINCAO),
+            SecaoAjuste.grupos(false).first { it.first == "SEGURANÇA" }.second,
         )
         // O bolão informal (desde a 0.22) não tem o termo.
+        assertEquals(listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.PARAMETROS), SecaoAjuste.grupos(false, informal = true).first { it.first == "BOLÃO" }.second)
         assertEquals(
-            listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.VALORES, SecaoAjuste.PARAMETROS, SecaoAjuste.EXTINCAO),
-            SecaoAjuste.grupos(false, informal = true).first { it.first == "BOLÃO" }.second,
+            listOf(SecaoAjuste.INTEGRIDADE, SecaoAjuste.AUDITORIA, SecaoAjuste.BACKUP, SecaoAjuste.EXTINCAO),
+            SecaoAjuste.grupos(false, informal = true).first { it.first == "SEGURANÇA" }.second,
         )
-        assertEquals(
-            listOf(SecaoAjuste.MODO, SecaoAjuste.VALORES, SecaoAjuste.PARAMETROS, SecaoAjuste.EXTINCAO),
-            SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second,
-        )
+        assertEquals(listOf(SecaoAjuste.MODO, SecaoAjuste.PARAMETROS), SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second)
+        assertEquals(listOf(SecaoAjuste.BACKUP, SecaoAjuste.EXTINCAO), SecaoAjuste.grupos(true).first { it.first == "SEGURANÇA" }.second)
         assertEquals(listOf("BOLÃO", "SEGURANÇA", "CELULAR"), SecaoAjuste.grupos(false).map { it.first })
+        // O endereço antigo do "Aporte e preços" (avisos de antes da 0.23) abre os Parâmetros.
+        assertEquals(SecaoAjuste.PARAMETROS, SecaoAjuste.de("valores"))
+        assertEquals(SecaoAjuste.PARAMETROS, SecaoAjuste.de("parametros"))
         // A atualização e o modo de teste agem ali mesmo, na lista: não têm tela (os endereços antigos não abrem nada).
         assertNull(SecaoAjuste.de("teste"))
         assertNull(SecaoAjuste.de("atualizacao"))

@@ -61,9 +61,11 @@ fun textoDoCalendario(dias: List<Int>): String = when (dias.size) {
 }
 
 /**
- * Ajustes > Parâmetros (desde a 0.22): as escolhas de como a sessão funciona. Em "Apostas": registrar
- * sem a janela de confirmação, apostas com mais números e a teimosinha. Em "Calendário de apostas": os
- * dias do mês com aposta (tocar marca e desmarca) ou "Sem dia definido". Cada toque já vale.
+ * Ajustes > Parâmetros (desde a 0.22): as escolhas de como a sessão funciona. No alto (desde a 0.23,
+ * quando saiu a tela "Aporte e preços"), o aporte mensal (só no bolão) e o preço da aposta simples de
+ * cada modalidade. Em "Apostas": registrar sem a janela de confirmação, apostas com mais números e a
+ * teimosinha. Em "Calendário de apostas": os dias do mês com aposta (tocar marca e desmarca) ou "Sem
+ * dia definido". Cada toque já vale.
  */
 @Composable
 internal fun ParametrosDaSessao(estado: Estado) {
@@ -74,6 +76,8 @@ internal fun ParametrosDaSessao(estado: Estado) {
     fun mudar(f: (Parametros) -> Parametros) {
         escopo.launch { runCatching { repo.atualizar { it.copy(config = it.config.copy(parametros = f(it.config.parametros))) } } }
     }
+
+    Valores(estado)
 
     Secao("Apostas") {
         Chave(

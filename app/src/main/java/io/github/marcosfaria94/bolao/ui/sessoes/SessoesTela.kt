@@ -95,13 +95,14 @@ fun sessoesCriadas(n: Int): String = if (n == 1) "1 sessão criada" else "$n ses
 
 /**
  * As sessões (desde a 0.21): quantas foram criadas e cada uma (o nome, os integrantes e o saldo, a
- * que está em uso), o modo de teste à parte e o "Criar sessão". Tocar numa sessão passa a usá-la; o
- * menu de cada uma renomeia (só os bolões) e exclui: o "Excluir" é um atalho para a extinção dela (o
- * "Apagar tudo" no Individual; uma sessão sem o cadastro concluído é apagada na hora). A raiz cuida de
- * sair (puxando para baixo ou deslizando para os lados).
+ * que está em uso), o modo de teste à parte e o "Criar sessão". Tocar numa sessão passa a usá-la;
+ * tocar na que já está em uso (desde a 0.23) volta para a tela de antes ([aoVoltar]). O menu de cada
+ * uma renomeia (só os bolões) e exclui: o "Excluir" é um atalho para a extinção dela (o "Apagar tudo"
+ * no Individual; uma sessão sem o cadastro concluído é apagada na hora). A raiz cuida de sair
+ * (puxando para baixo ou deslizando para os lados).
  */
 @Composable
-fun SessoesTela(abrir: (String) -> Unit) {
+fun SessoesTela(abrir: (String) -> Unit, aoVoltar: () -> Unit = {}) {
     val ctx = LocalContext.current
     val sessoes = ctx.bolao.sessoes
     val lista by sessoes.lista.collectAsStateWithLifecycle()
@@ -132,7 +133,7 @@ fun SessoesTela(abrir: (String) -> Unit) {
                     val estado by sessoes.repo(s.id).estado.collectAsStateWithLifecycle()
                     LinhaDaSessao(
                         s, estado, emUso = s.id == ativa,
-                        aoTocar = { if (s.id != ativa) usarSessao(ctx, s.id) },
+                        aoTocar = { if (s.id != ativa) usarSessao(ctx, s.id) else aoVoltar() },
                         aoRenomear = { renomear = s }.takeIf { !s.individual && s.nome.isNotBlank() },
                         aoExcluir = {
                             when {
@@ -171,7 +172,13 @@ fun SessoesTela(abrir: (String) -> Unit) {
                         else -> "Um mês de exemplo, separado das sessões. Ao sair, o exemplo é apagado."
                     },
                     emUso = emTeste,
-                    aoTocar = { if (!emTeste && !preparandoTeste) ModoTeste.entrar(ctx) },
+                    aoTocar = {
+                        when {
+                            // O modo de teste já em uso: volta, como as sessões.
+                            emTeste -> aoVoltar()
+                            !preparandoTeste -> ModoTeste.entrar(ctx)
+                        }
+                    },
                     final = if (preparandoTeste) {
                         { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) }
                     } else {

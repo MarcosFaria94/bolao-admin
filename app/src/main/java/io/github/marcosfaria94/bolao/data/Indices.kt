@@ -415,7 +415,7 @@ class Indices(private val context: Context) {
                         "Os índices já usam o preço de Ajustes, mas o modelo de vendas foi calibrado com o outro: " +
                         "confira o preço ou recalibre o parametros_k.json.",
                     desde = desde,
-                    destino = "ajustes/valores",
+                    destino = "ajustes/parametros",
                 )
             } else {
                 precoDiferenteDesde.remove(m)

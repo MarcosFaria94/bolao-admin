@@ -573,10 +573,13 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     }
                 }
             }
-            // As sessões (o "Alternar sessão" da barra de cima, desde a 0.21): puxar para baixo ou deslizar para os lados sai.
+            // As sessões (o "Alternar sessão" da barra de cima, desde a 0.21): puxar para baixo ou deslizar para os
+            // lados sai; desde a 0.23, tocar na sessão em uso também.
             composable(ROTA_SESSOES) { e ->
                 TelaDeCima(nav, e) {
-                    Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { SessoesTela(abrir = ::abrir) }
+                    Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) {
+                        SessoesTela(abrir = ::abrir, aoVoltar = { fechar(nav, e) })
+                    }
                 }
             }
             // O Saldo atual (tocar no quadro do saldo): deslizar o dedo para qualquer lado volta para a Home.

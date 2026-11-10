@@ -11,12 +11,15 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import io.github.marcosfaria94.bolao.notificacoes.Toque
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -126,13 +129,16 @@ const val ROTA_SECAO_AJUSTES = "ajustes/{secao}"
  * Os itens da lista dos Ajustes: quase todos abrem a sua tela (que fecha deslizando o dedo para os
  * lados ou puxando para baixo). A Integridade abre direto a "Verificar integridade". Desde a 0.16 a
  * Atualização (tocar já verifica) e o Modo de teste (liga e desliga na chave) ficam direto na lista,
- * e os Créditos viraram o rodapé da lista.
+ * e os Créditos viraram o rodapé da lista. Desde a 0.23 os Integrantes abrem e fecham ali mesmo, na
+ * lista (começam abertos), e o "Aporte e preços" está dentro dos Parâmetros.
  */
 enum class SecaoAjuste(val id: String) {
     MODO("modo"),
     INTEGRANTES("integrantes"),
-    VALORES("valores"),
-    /** Os parâmetros da sessão (desde a 0.22): confirmação, mais números, teimosinha e o calendário de apostas. */
+    /**
+     * Os parâmetros da sessão (desde a 0.22): confirmação, mais números, teimosinha e o calendário de
+     * apostas; desde a 0.23, também o aporte mensal e os preços (até a 0.22, a tela "Aporte e preços").
+     */
     PARAMETROS("parametros"),
     TERMO("termo"),
     INTEGRIDADE("integridade"),
@@ -152,7 +158,6 @@ enum class SecaoAjuste(val id: String) {
     fun titulo(individual: Boolean): String = when (this) {
         MODO -> "Modo"
         INTEGRANTES -> "Integrantes"
-        VALORES -> if (individual) "Preços" else "Aporte e preços"
         PARAMETROS -> "Parâmetros"
         TERMO -> "Termo"
         INTEGRIDADE -> "Integridade"
@@ -171,24 +176,26 @@ enum class SecaoAjuste(val id: String) {
         fun de(id: String?): SecaoAjuste? = when (id) {
             // Até a 0.14, a apuração automática e o toque do prêmio eram duas telas.
             "apuracao", "toque" -> NOTIFICACOES
+            // Até a 0.22, o "Aporte e preços" era uma tela (agora fica nos Parâmetros).
+            "valores" -> PARAMETROS
             else -> entries.firstOrNull { it.id == id && it.temTela }
         }
 
         /**
          * Os grupos da lista, em ordem (o individual não tem integrantes, termo, integridade nem
-         * auditoria; o "Bolão" dele é o modo e os preços). A extinção (no individual, "Apagar tudo")
-         * fica no fim do primeiro grupo; os Créditos, no rodapé da lista. Desde a 0.21 os grupos Bolão e
-         * Segurança são da sessão em uso, e o Modo de teste saiu daqui: é uma sessão à parte, na tela das
-         * sessões (o "Alternar sessão").
+         * auditoria; o "Apostas" dele é o modo e os parâmetros). Desde a 0.23 o termo e a extinção (no
+         * individual, "Apagar tudo") ficam na Segurança, a extinção no fim; os Créditos, no rodapé da
+         * lista. Desde a 0.21 os grupos Bolão e Segurança são da sessão em uso, e o Modo de teste saiu
+         * daqui: é uma sessão à parte, na tela das sessões (o "Alternar sessão").
          */
         fun grupos(individual: Boolean, informal: Boolean = false): List<Pair<String, List<SecaoAjuste>>> = listOf(
-            (if (individual) "APOSTAS" else "BOLÃO") to when {
-                individual -> listOf(MODO, VALORES, PARAMETROS, EXTINCAO)
+            (if (individual) "APOSTAS" else "BOLÃO") to (if (individual) listOf(MODO, PARAMETROS) else listOf(INTEGRANTES, PARAMETROS)),
+            "SEGURANÇA" to when {
+                individual -> listOf(BACKUP, EXTINCAO)
                 // O bolão informal (desde a 0.22) não tem termo.
-                informal -> listOf(INTEGRANTES, VALORES, PARAMETROS, EXTINCAO)
-                else -> listOf(INTEGRANTES, VALORES, PARAMETROS, TERMO, EXTINCAO)
+                informal -> listOf(INTEGRIDADE, AUDITORIA, BACKUP, EXTINCAO)
+                else -> listOf(TERMO, INTEGRIDADE, AUDITORIA, BACKUP, EXTINCAO)
             },
-            "SEGURANÇA" to (if (individual) listOf(BACKUP) else listOf(INTEGRIDADE, AUDITORIA, BACKUP)),
             "CELULAR" to listOf(NOTIFICACOES, ATUALIZACAO),
         )
     }
@@ -197,7 +204,6 @@ enum class SecaoAjuste(val id: String) {
 private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
     SecaoAjuste.MODO -> Icons.Outlined.Person
     SecaoAjuste.INTEGRANTES -> Icons.Outlined.Groups
-    SecaoAjuste.VALORES -> Icons.Outlined.Payments
     SecaoAjuste.PARAMETROS -> Icons.Outlined.Tune
     SecaoAjuste.TERMO -> Icons.Outlined.HistoryEdu
     SecaoAjuste.INTEGRIDADE -> Icons.Outlined.VerifiedUser
@@ -214,11 +220,11 @@ private enum class TomItem { NORMAL, ALERTA, DESTAQUE }
 
 /**
  * Ajustes: uma lista em grupos, como os Ajustes do Android (Bolão, Segurança e Celular), com os
- * Créditos no rodapé ("Criado usando o Claude", a versão e o "Tecnologia"). Cada linha tem o ícone,
+ * Créditos no rodapé ("Criado com Claude", a versão e o "Tecnologia"). Cada linha tem o ícone,
  * o nome, a situação à direita (ex.: "3 pessoas", "Falta anexar" em vermelho, "Nova versão" em
- * dourado) e a seta, e abre a sua tela; a Atualização verifica ali mesmo e o Modo de teste tem a
- * chave de ligar e desligar. Tocar em "Ajustes" na barra de baixo, já nos Ajustes ([paraOTopo]),
- * volta a lista ao começo.
+ * dourado) e a seta, e abre a sua tela; a Atualização verifica ali mesmo; os Integrantes (desde a
+ * 0.23) abrem e fecham embaixo da linha, com a seta para baixo, e começam abertos. Tocar em "Ajustes"
+ * na barra de baixo, já nos Ajustes ([paraOTopo]), volta a lista ao começo.
  */
 @Composable
 fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (String) -> Unit, paraOTopo: Int = 0) {
@@ -242,7 +248,6 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         SecaoAjuste.MODO -> "Individual" to TomItem.NORMAL
         SecaoAjuste.INTEGRANTES -> "${estado.pessoas.size} pessoas" + (if (estado.informal) " · informal" else "") to TomItem.NORMAL
         SecaoAjuste.PARAMETROS -> resumoDosParametros(estado.parametros) to TomItem.NORMAL
-        SecaoAjuste.VALORES -> (if (individual) "Das apostas" else "${Dinheiro.rs(estado.config.aporteMensal)}/mês") to TomItem.NORMAL
         SecaoAjuste.TERMO ->
             if (estado.termo != null && estado.termoSemAssinatura != null) "Anexado" to TomItem.NORMAL else "Falta anexar" to TomItem.ALERTA
         SecaoAjuste.INTEGRIDADE -> "Verificar" to TomItem.NORMAL
@@ -263,9 +268,16 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         SecaoAjuste.EXTINCAO -> "" to TomItem.NORMAL
     }
 
-    /** O que tocar na linha faz: abre a tela; a Atualização verifica na hora; o Modo de teste liga ou desliga. */
+    // Os integrantes abrem e fecham ali mesmo, na lista (desde a 0.23); começam abertos.
+    var integrantesAbertos by rememberSaveable { mutableStateOf(true) }
+
+    /**
+     * O que tocar na linha faz: abre a tela; os Integrantes abrem e fecham na lista; a Atualização
+     * verifica na hora; o Modo de teste liga ou desliga.
+     */
     fun tocar(s: SecaoAjuste) {
         when (s) {
+            SecaoAjuste.INTEGRANTES -> integrantesAbertos = !integrantesAbertos
             SecaoAjuste.ATUALIZACAO -> atualizacao.verificar(manual = true)
             SecaoAjuste.TESTE -> if (!preparandoTeste) {
                 if (teste) ModoTeste.sair(ctx) else ModoTeste.entrar(ctx)
@@ -294,7 +306,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     secoes.forEachIndexed { i, s ->
-                        if (i > 0) HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        if (i > 0) HorizontalDivider(Modifier.padding(start = RECUO_DA_LISTA), color = MaterialTheme.colorScheme.outlineVariant)
                         val (texto, tom) = situacao(s)
                         LinhaDaLista(
                             titulo = s.titulo(individual),
@@ -319,7 +331,27 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
                                 SecaoAjuste.ATUALIZACAO -> ({})
                                 else -> null
                             },
+                            // Os integrantes abrem embaixo da linha: a seta para baixo (aberta, para cima).
+                            seta = when {
+                                s != SecaoAjuste.INTEGRANTES -> Icons.AutoMirrored.Outlined.KeyboardArrowRight
+                                integrantesAbertos -> Icons.Outlined.ExpandLess
+                                else -> Icons.Outlined.ExpandMore
+                            },
+                            descricaoDaSeta = when {
+                                s != SecaoAjuste.INTEGRANTES -> null
+                                integrantesAbertos -> "Fechar os integrantes"
+                                else -> "Abrir os integrantes"
+                            },
                         ) { tocar(s) }
+                        if (s == SecaoAjuste.INTEGRANTES && integrantesAbertos) {
+                            // Cada integrante embaixo da linha, alinhado com o nome dela, com o copiar da chave Pix.
+                            estado.pessoas.forEach { p ->
+                                HorizontalDivider(Modifier.padding(start = RECUO_DA_LISTA), color = MaterialTheme.colorScheme.outlineVariant)
+                                Box(Modifier.padding(start = RECUO_DA_LISTA, end = 4.dp)) {
+                                    ItemIntegrante(p) { copiar(ctx, "Chave Pix", p.chavePix) }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -332,7 +364,13 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
 /** Altura da chave do modo de teste na lista (a da linha, para ela não ficar mais alta que as outras). */
 private val ALTURA_DA_CHAVE = 24.dp
 
-/** Uma linha da lista dos Ajustes: o ícone, o nome, a situação à direita e a seta (ou o que vier em [final]). */
+/** Onde começa o nome nas linhas da lista dos Ajustes (depois do ícone): os integrantes abertos ficam alinhados com ele. */
+private val RECUO_DA_LISTA = 54.dp
+
+/**
+ * Uma linha da lista dos Ajustes: o ícone, o nome, a situação à direita e a [seta] (a de abrir a tela;
+ * nos Integrantes, a de abrir e fechar embaixo da linha), ou o que vier em [final].
+ */
 @Composable
 private fun LinhaDaLista(
     titulo: String,
@@ -341,6 +379,8 @@ private fun LinhaDaLista(
     icone: ImageVector,
     vermelho: Boolean,
     final: (@Composable () -> Unit)? = null,
+    seta: ImageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+    descricaoDaSeta: String? = null,
     aoTocar: () -> Unit,
 ) {
     val corSituacao = when (tom) {
@@ -383,8 +423,8 @@ private fun LinhaDaLista(
         } else {
             Spacer(Modifier.width(2.dp))
             Icon(
-                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                contentDescription = null,
+                seta,
+                contentDescription = descricaoDaSeta,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(22.dp),
             )
@@ -433,7 +473,6 @@ fun AjustesSecaoTela(estado: Estado, secao: SecaoAjuste, atualizacao: Atualizaca
                         )
                     }
                     SecaoAjuste.INTEGRANTES -> Integrantes(estado)
-                    SecaoAjuste.VALORES -> Valores(estado)
                     SecaoAjuste.PARAMETROS -> ParametrosDaSessao(estado)
                     SecaoAjuste.TERMO -> Termo(estado)
                     SecaoAjuste.INTEGRIDADE -> QuadroAjuste {
@@ -473,9 +512,12 @@ private fun Integrantes(estado: Estado) {
     }
 }
 
-/** O aporte mensal (só no bolão) e o preço da aposta simples de cada modalidade. */
+/**
+ * O aporte mensal (só no bolão) e o preço da aposta simples de cada modalidade: desde a 0.23, no alto
+ * dos Parâmetros (até a 0.22, a tela "Aporte e preços").
+ */
 @Composable
-private fun Valores(estado: Estado) {
+internal fun Valores(estado: Estado) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
     val escopo = rememberCoroutineScope()

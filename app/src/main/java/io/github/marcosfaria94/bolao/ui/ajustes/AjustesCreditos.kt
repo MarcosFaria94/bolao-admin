@@ -5,8 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -65,7 +63,7 @@ import androidx.compose.material3.Button
 /** O app do Claude na Google Play. */
 private const val PACOTE_CLAUDE = "com.anthropic.claude"
 
-/** A cor do Claude (o contorno da pílula dos créditos e o ícone genérico, sem o app instalado). */
+/** A cor do Claude (o ícone genérico dos créditos, sem o app do Claude instalado). */
 private val LARANJA_CLAUDE = Color(0xFFC15F3C)
 
 /** A tecnologia usada no app (o "Tecnologia" do rodapé dos Ajustes): o nome e para que serve. */
@@ -80,7 +78,8 @@ private val TECNOLOGIA = listOf(
 
 /**
  * O "Apoie" do rodapé dos Ajustes (desde a 0.18): o texto, o nome e a chave Pix do Administrador; o
- * botão copia a chave. Desde a 0.20 o nome é o curto; desde a 0.21, sem título e com o texto do lema.
+ * botão copia a chave. Desde a 0.20 o nome é o curto; desde a 0.21, sem título e com o texto do lema;
+ * desde a 0.23, o texto justificado e o nome e a chave dentro do botão.
  */
 internal const val APOIE_TEXTO =
     "Gratuito e sem anúncios, esse é o nosso lema. Se você é adepto da ideia, considere pagar um café para nós."
@@ -92,11 +91,11 @@ private const val COPIADO_MS = 2500L
 
 /**
  * Os Créditos, no rodapé da lista dos Ajustes (até a 0.15 eram uma tela). Primeiro o "Apoie" (desde a
- * 0.18): a xícara de café sorrindo, o texto, o nome e a chave Pix, e o botão que copia a chave. Depois,
- * "Criado com" e, embaixo, "Claude", em destaque e no centro (numa pílula com o contorno na cor do
- * Claude; com o ícone do app do Claude, quando ele está instalado; tocar abre a página dele na Google
- * Play), o nome do app com a versão instalada e o botão discreto "Tecnologia", que mostra (ou esconde)
- * a tecnologia ali mesmo.
+ * 0.18): a xícara de café sorrindo, o texto e o botão com o nome e a chave Pix, que copia a chave.
+ * Depois, "Criado com" e, embaixo, "Claude", em destaque e no centro (com o ícone do app do Claude,
+ * quando ele está instalado; tocar abre a página dele na Google Play; desde a 0.23 na cor do fundo e
+ * sem o contorno), o nome do app com a versão instalada e o botão discreto "Tecnologia", que mostra
+ * (ou esconde) a tecnologia ali mesmo.
  */
 @Composable
 internal fun CreditosNoRodape() {
@@ -111,12 +110,11 @@ internal fun CreditosNoRodape() {
         Apoie()
         Spacer(Modifier.height(22.dp))
         val pilula = RoundedCornerShape(28.dp)
+        // Na cor do fundo e sem contorno (desde a 0.23): a pílula só aparece no toque.
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .clip(pilula)
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .border(1.5.dp, LARANJA_CLAUDE.copy(alpha = 0.55f), pilula)
                 .clickable(onClickLabel = "Abrir o Claude na Google Play") { abrirClaudeNaLoja(ctx) }
                 .padding(start = 30.dp, end = 32.dp, top = 12.dp, bottom = 14.dp),
         ) {
@@ -199,8 +197,9 @@ fun abrirClaudeNaLoja(ctx: Context) {
 }
 
 /**
- * O "Apoie": a xícara de café sorrindo, o texto, o nome e a chave Pix, e o botão dourado que copia a
- * chave (a partir do Android 13 o sistema confirma a cópia; o botão também mostra "Pix copiado").
+ * O "Apoie": a xícara de café sorrindo, o texto (justificado desde a 0.23) e o botão dourado "Apoie",
+ * com o nome e a chave Pix dentro dele (desde a 0.23; antes ficavam soltos, acima do botão), que copia
+ * a chave (a partir do Android 13 o sistema confirma a cópia; o botão também mostra "Pix copiado").
  * Sem título desde a 0.21 (na 0.19 "Doação"; na 0.20 "Aceita um café?").
  */
 @Composable
@@ -227,28 +226,41 @@ private fun Apoie() {
             Text(
                 APOIE_TEXTO,
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 21.sp),
-                textAlign = TextAlign.Center,
+                textAlign = TextAlign.Justify,
+                modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(12.dp))
-            Text(APOIE_NOME, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp), fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-            Text(APOIE_PIX, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(16.dp))
+            // Um botão só: "Apoie" e, embaixo, o nome e a chave Pix; tocar copia a chave.
             Button(
                 onClick = {
                     copiar(ctx, "Chave Pix", APOIE_PIX)
                     copiado = true
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Dourado, contentColor = AzulMarinho),
-                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
-                modifier = Modifier.height(52.dp),
+                shape = RoundedCornerShape(18.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Icon(
-                    if (copiado) Icons.Outlined.Check else Icons.Outlined.VolunteerActivism,
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(if (copiado) "Pix copiado" else "Apoie", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (copiado) Icons.Outlined.Check else Icons.Outlined.VolunteerActivism,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(if (copiado) "Pix copiado" else "Apoie", fontSize = 18.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(APOIE_NOME, fontSize = 15.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                    Text(
+                        APOIE_PIX,
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp,
+                        color = AzulMarinho.copy(alpha = 0.78f),
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }
