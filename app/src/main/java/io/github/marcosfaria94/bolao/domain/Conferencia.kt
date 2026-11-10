@@ -66,7 +66,109 @@ object Conferencia {
         Formato.FEDERAL -> federal(bilheteFederal.orEmpty(), fracoesFederal ?: 10, concurso)
     }
 
+    // ---------- apostas com mais números (desde a 0.22) ----------
+
+    /** O aviso da apuração de uma aposta com mais números premiada: o Administrador confere o valor. */
+    const val AVISO_MAIS_NUMEROS = "Aposta com mais números: o prêmio soma as apostas simples premiadas dentro dela. Confira o valor no app da Caixa."
+
+    /**
+     * Numa aposta com [marcados] números, dos quais [acertados] saíram: quantas das apostas simples (de
+     * [k] números) que cabem nela acertam exatamente [t]. Ex.: 7 números na Mega-Sena com os 6
+     * sorteados = 1 sena e 6 quinas.
+     */
+    fun simplesCom(acertados: Int, marcados: Int, k: Int, t: Int): Long =
+        Volante.combinacoes(acertados, t) * Volante.combinacoes(marcados - acertados, k - t)
+
+    /** As faixas premiadas com a quantidade de apostas simples em cada uma, da maior para a menor. */
+    private fun comQuantidade(linhas: List<Pair<FaixaPremio, Long>>): List<FaixaPremio> =
+        linhas.sortedBy { it.first.faixa }.map { (f, q) -> if (q > 1) f.copy(descricao = "${f.descricao} (${q}x)") else f }
+
+    private fun resultadoComMais(
+        acertos: String,
+        linhas: List<Pair<FaixaPremio, Long>>,
+        base: Resultado,
+        faltaDado: Boolean = false,
+        observacoes: List<String> = emptyList(),
+    ): Resultado = base.copy(
+        acertos = acertos,
+        faixas = comQuantidade(linhas),
+        premio = linhas.sumOf { (f, q) -> f.valor * q },
+        // Premiada com mais números: o valor é uma soma de várias apostas simples; o Administrador confirma.
+        precisaConfirmarValor = faltaDado || linhas.isNotEmpty(),
+        observacoes = observacoes + if (linhas.isNotEmpty()) listOf(AVISO_MAIS_NUMEROS) else emptyList(),
+    )
+
+    private fun numerosComMais(m: Modalidade, p: Palpite, c: Concurso): Resultado {
+        val acertados = p.numeros.toSet() intersect c.dezenas.toSet()
+        val h = acertados.size
+        val linhas = mutableListOf<Pair<FaixaPremio, Long>>()
+        FAIXAS_POR_ACERTOS[m].orEmpty().forEach { (t, faixa) ->
+            val q = if (t > 0) simplesCom(h, p.numeros.size, m.qtdAposta, t) else 0
+            if (q > 0) linhas += c.faixaOuVazia(faixa, "$t acertos") to q
+        }
+        var texto = "$h/${m.qtdSorteada}"
+        var extraAcertado = false
+        if (m.extra == Extra.MES_DE_SORTE) {
+            extraAcertado = mesmoNome(p.extra, c.timeOuMes)
+            if (extraAcertado) {
+                texto += " + Mês de Sorte"
+                // O Mês de Sorte vale para cada aposta simples dentro da aposta.
+                linhas += c.faixaOuVazia(5, "Mês de Sorte") to Volante.combinacoes(p.numeros.size, m.qtdAposta)
+            }
+        }
+        val semExtra = m.extra != Extra.NENHUM && c.timeOuMes.isNullOrBlank()
+        return resultadoComMais(
+            texto, linhas, Resultado("", emptyList(), 0, acertados = acertados, extraAcertado = extraAcertado),
+            faltaDado = semExtra || linhas.any { it.first.valor == 0L },
+            observacoes = if (semExtra) listOf("A Caixa não informou o Time do Coração/Mês de Sorte: informe o resultado à mão.") else emptyList(),
+        )
+    }
+
+    private fun duplaSenaComMais(p: Palpite, c: Concurso): Resultado {
+        val primeiro = p.numeros.toSet() intersect c.dezenas.toSet()
+        val segundo = p.numeros.toSet() intersect c.segundoSorteio.toSet()
+        val linhas = mutableListOf<Pair<FaixaPremio, Long>>()
+        FAIXAS_POR_ACERTOS.getValue(Modalidade.DUPLA_SENA).forEach { (t, faixa) ->
+            simplesCom(primeiro.size, p.numeros.size, 6, t).takeIf { it > 0 }?.let { linhas += c.faixaOuVazia(faixa, "$t acertos (1º sorteio)") to it }
+            simplesCom(segundo.size, p.numeros.size, 6, t).takeIf { it > 0 }?.let { linhas += c.faixaOuVazia(faixa + 4, "$t acertos (2º sorteio)") to it }
+        }
+        return resultadoComMais(
+            "${primeiro.size}/6 (1º sorteio) e ${segundo.size}/6 (2º sorteio)", linhas,
+            Resultado("", emptyList(), 0, acertados = primeiro, acertadosSegundo = segundo),
+            faltaDado = linhas.any { it.first.valor == 0L },
+        )
+    }
+
+    /** +Milionária: as faixas pelos números e trevos acertados (6+2, 6+1 ou 0, 5+2...). */
+    private val FAIXAS_MAIS_MILIONARIA: List<Triple<Int, Int, IntRange>> = listOf(
+        Triple(1, 6, 2..2), Triple(2, 6, 0..1), Triple(3, 5, 2..2), Triple(4, 5, 0..1), Triple(5, 4, 2..2), Triple(6, 4, 0..1),
+        Triple(7, 3, 2..2), Triple(8, 3, 1..1), Triple(9, 2, 2..2), Triple(10, 2, 1..1),
+    )
+
+    private fun maisMilionariaComMais(p: Palpite, c: Concurso): Resultado {
+        val acertados = p.numeros.toSet() intersect c.dezenas.toSet()
+        val trevos = p.trevos.toSet() intersect c.trevos.toSet()
+        val linhas = mutableListOf<Pair<FaixaPremio, Long>>()
+        FAIXAS_MAIS_MILIONARIA.forEach { (faixa, n, ts) ->
+            val q = simplesCom(acertados.size, p.numeros.size, 6, n) * ts.sumOf { t -> simplesCom(trevos.size, p.trevos.size, 2, t) }
+            if (q > 0) linhas += c.faixaOuVazia(faixa, "$n números + ${if (ts.first == ts.last) "${ts.first}" else "1 ou nenhum"} trevo(s)") to q
+        }
+        val textoTrevos = when (trevos.size) {
+            0 -> ""
+            1 -> " + 1 trevo"
+            else -> " + ${trevos.size} trevos"
+        }
+        val semTrevos = c.trevos.isEmpty()
+        return resultadoComMais(
+            "${acertados.size}/6$textoTrevos", linhas,
+            Resultado("", emptyList(), 0, acertados = acertados, trevosAcertados = trevos),
+            faltaDado = semTrevos || linhas.any { it.first.valor == 0L },
+            observacoes = if (semTrevos) listOf("A Caixa não informou os trevos: informe o resultado à mão.") else emptyList(),
+        )
+    }
+
     private fun numeros(m: Modalidade, p: Palpite, c: Concurso): Resultado {
+        if (Volante.temMais(m, p)) return numerosComMais(m, p, c)
         val acertados = p.numeros.toSet() intersect c.dezenas.toSet()
         val n = acertados.size
         val faixas = mutableListOf<FaixaPremio>()
@@ -103,6 +205,7 @@ object Conferencia {
     }
 
     private fun duplaSena(p: Palpite, c: Concurso): Resultado {
+        if (Volante.temMais(Modalidade.DUPLA_SENA, p)) return duplaSenaComMais(p, c)
         val primeiro = p.numeros.toSet() intersect c.dezenas.toSet()
         val segundo = p.numeros.toSet() intersect c.segundoSorteio.toSet()
         val mapa = FAIXAS_POR_ACERTOS.getValue(Modalidade.DUPLA_SENA)
@@ -122,6 +225,7 @@ object Conferencia {
     }
 
     private fun maisMilionaria(p: Palpite, c: Concurso): Resultado {
+        if (Volante.temMais(Modalidade.MAIS_MILIONARIA, p)) return maisMilionariaComMais(p, c)
         val acertados = p.numeros.toSet() intersect c.dezenas.toSet()
         val trevos = p.trevos.toSet() intersect c.trevos.toSet()
         val n = acertados.size

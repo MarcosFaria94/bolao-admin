@@ -166,7 +166,8 @@ fun ExtincaoTela(estado: Estado) {
         ) {
             Text("Extinção do Bolão", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
             Text(
-                "Iniciada ${Datas.quandoHora(x.iniciadaEm, hoje)}. Esta tela só fecha quando a divisão final for registrada e o PDF da auditoria for enviado ao grupo.",
+                "Iniciada ${Datas.quandoHora(x.iniciadaEm, hoje)}. Esta tela só fecha quando a divisão final for registrada e o PDF da auditoria for " +
+                    (if (estado.enviaAoGrupo) "enviado ao grupo." else "gerado."),
                 style = MaterialTheme.typography.bodyMedium,
             )
             // Com outras sessões, dá para usar outra enquanto esta extinção espera (desde a 0.21).
@@ -251,7 +252,8 @@ fun ExtincaoTela(estado: Estado) {
                     }
                 } else {
                     Text(
-                        "O PDF da auditoria completa está pronto (uma cópia ficou em Downloads/Bolao). Envie ao grupo para encerrar.",
+                        "O PDF da auditoria completa está pronto (uma cópia ficou em Downloads/Bolao). " +
+                            if (estado.enviaAoGrupo) "Envie ao grupo para encerrar." else "Se quiser, mande aos integrantes antes de concluir.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     OutlinedButton(onClick = { Compartilhar.abrir(ctx, repo.arquivo(pdf), pdf.mime) }, modifier = Modifier.fillMaxWidth()) {
@@ -266,7 +268,8 @@ fun ExtincaoTela(estado: Estado) {
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Enviar o PDF ao grupo") }
-                    if (x.auditoriaEnviadaEm != null) {
+                    // No bolão informal (desde a 0.22) nada precisa ir ao grupo: dá para concluir sem enviar.
+                    if (x.auditoriaEnviadaEm != null || !estado.enviaAoGrupo) {
                         Button(
                             onClick = { confirmarApagar = true },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),

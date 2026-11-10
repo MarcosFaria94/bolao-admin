@@ -10,6 +10,7 @@ import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Comprovante
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Operacoes
+import io.github.marcosfaria94.bolao.data.TipoComprovante
 import io.github.marcosfaria94.bolao.imagem.Recibos
 import java.io.File
 
@@ -110,6 +111,43 @@ object Compartilhar {
             runCatching { context.bolao.repo.atualizar { Operacoes.registrarEnvio(it, c.id, System.currentTimeMillis()) } }
         }
         return ok
+    }
+
+    /** Quantos arquivos, no máximo, vão num envio em lote (o WhatsApp recusa compartilhamentos muito grandes). */
+    const val ARQUIVOS_POR_LOTE = 30
+
+    /**
+     * Os comprovantes que entram no envio em lote (desde a 0.22): os de aposta e de apuração que ainda
+     * não foram ao grupo, do mais antigo para o mais novo.
+     */
+    fun paraOLote(e: Estado): List<Comprovante> = Operacoes.comprovantesPendentesDeEnvio(e)
+        .filter { it.tipo == TipoComprovante.APOSTA || it.tipo == TipoComprovante.APURACAO }
+        .sortedBy { it.criadoEm }
+
+    /** O texto do envio em lote: o título de cada comprovante, um por linha. */
+    fun textoDoLote(comprovantes: List<Comprovante>): String = comprovantes.joinToString("\n") { it.titulo }
+
+    /**
+     * Envia vários comprovantes de uma vez (desde a 0.22): na mensagem, os títulos (um por linha); junto,
+     * a imagem de cada comprovante com os anexos dele, na ordem. Cabem até [ARQUIVOS_POR_LOTE] arquivos:
+     * os comprovantes que passarem disso ficam para o lote seguinte. Fica registrado o envio dos que
+     * foram. Devolve quantos foram (0 = não deu para abrir o WhatsApp).
+     */
+    suspend fun lote(context: Context, e: Estado, comprovantes: List<Comprovante>): Int {
+        val escolhidos = mutableListOf<Comprovante>()
+        val anexos = mutableListOf<Anexo>()
+        for (c in comprovantes) {
+            val dele = anexosDo(context, e, c)
+            if (escolhidos.isNotEmpty() && anexos.size + dele.size > ARQUIVOS_POR_LOTE) break
+            escolhidos += c
+            anexos += dele
+        }
+        if (escolhidos.isEmpty() || !whatsapp(context, textoDoLote(escolhidos), anexos)) return 0
+        val agora = System.currentTimeMillis()
+        runCatching {
+            context.bolao.repo.atualizar { est -> escolhidos.fold(est) { x, c -> Operacoes.registrarEnvio(x, c.id, agora) } }
+        }
+        return escolhidos.size
     }
 
     /** Abre um anexo guardado (comprovante, termo, PDF) no visualizador do celular. */

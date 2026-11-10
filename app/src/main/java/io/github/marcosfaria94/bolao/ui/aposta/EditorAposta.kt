@@ -7,7 +7,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,7 +23,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Casino
-import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
@@ -83,11 +81,9 @@ import io.github.marcosfaria94.bolao.imagem.Recibos
 import io.github.marcosfaria94.bolao.net.CaixaApi
 import io.github.marcosfaria94.bolao.ui.comum.Animacoes
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
-import io.github.marcosfaria94.bolao.ui.comum.BotoesDeRegistro
 import io.github.marcosfaria94.bolao.ui.comum.CampoData
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.CampoInteiro
-import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoSimNao
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
@@ -96,17 +92,27 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
- * Título do volante: "Aposta Nº1" (o número que a aposta vai receber no mês) e, no lugar do
- * contador de dezenas, o lápis discreto ([aoEditar]) que abre os dados do concurso.
+ * Título do volante: "Aposta Nº1" (o número que a aposta vai receber no mês) com o lápis discreto
+ * ([aoEditar]) que abre os dados do concurso e, embaixo (desde a 0.22), o que falta marcar
+ * ([textoDoVolante]: "Marque 5 números", "Aposta completa"...), em verde quando o volante está pronto.
  */
 @Composable
-private fun TituloDoVolante(numero: Int, aoEditar: () -> Unit, carregando: Boolean) {
+private fun TituloDoVolante(numero: Int, texto: String, pronto: Boolean, aoEditar: () -> Unit, carregando: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            "Aposta Nº$numero",
-            style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp),
-            modifier = Modifier.weight(1f),
-        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Aposta Nº$numero",
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp),
+            )
+            if (texto.isNotEmpty()) {
+                Text(
+                    texto,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 21.sp),
+                    fontWeight = if (pronto) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (pronto) corEntrada() else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         if (carregando) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
         }
@@ -118,6 +124,35 @@ private fun TituloDoVolante(numero: Int, aoEditar: () -> Unit, carregando: Boole
                 modifier = Modifier.size(20.dp),
             )
         }
+    }
+}
+
+/** "1 número" ou "5 números". */
+private fun quantos(n: Int, um: String, varios: String): String = if (n == 1) "1 $um" else "$n $varios"
+
+/** O volante pronto, sem mais números. */
+const val APOSTA_COMPLETA = "Aposta completa"
+
+/**
+ * O texto embaixo de "Aposta Nº X" (desde a 0.22): o que falta marcar e, com tudo marcado, que a
+ * aposta está pronta. Faltando números: "Marque 2 números" (o mínimo da modalidade menos os já
+ * marcados); com as apostas com mais números ligadas ([mais]), "Marque no mínimo 2 números". Depois
+ * dos números, os trevos, o Time do Coração ou o Mês de Sorte. Pronta: "Aposta completa" ou, com
+ * [mais], "Aposta com 7 números". A Federal não tem volante: vazio.
+ */
+fun textoDoVolante(m: Modalidade, p: Palpite, mais: Boolean): String {
+    val marque = if (mais) "Marque no mínimo " else "Marque "
+    val faltam = Volante.faltam(m, p)
+    return when {
+        m.formato == Formato.FEDERAL -> ""
+        faltam > 0 && m.formato == Formato.LOTECA -> "Marque " + quantos(faltam, "palpite", "palpites")
+        faltam > 0 -> marque + quantos(faltam, "número", "números")
+        m.trevos > 0 && p.trevos.size < m.trevos -> marque + quantos(m.trevos - p.trevos.size, "trevo", "trevos")
+        m.extra == Extra.TIME_DO_CORACAO && p.extra.isNullOrBlank() -> "Escolha o Time do Coração"
+        m.extra == Extra.MES_DE_SORTE && p.extra.isNullOrBlank() -> "Escolha o Mês de Sorte"
+        mais && m.formato == Formato.NUMEROS -> "Aposta com ${p.numeros.size} números" +
+            if (m.trevos > 0 && p.trevos.size > m.trevos) " e ${p.trevos.size} trevos" else ""
+        else -> APOSTA_COMPLETA
     }
 }
 
@@ -174,21 +209,31 @@ private fun Aposta.com(d: DadosConcurso): Aposta = copy(
 
 /**
  * O volante da página da modalidade, da aposta nova ou em andamento: "Aposta Nº1" com o lápis dos
- * dados do concurso, o volante com "Completar" e "Limpar", o registro e, no fim, "Descartar
- * rascunho". Vai dentro da coluna da página (não tem rolagem própria). Ao sair da página, a aposta
- * só fica em andamento com o volante completo ([ficaEmAndamento]).
+ * dados do concurso e o que falta marcar, o volante e, no mesmo lugar, o "Completar" (enquanto falta
+ * marcar) e o "Registrar aposta" (com o volante pronto), ao lado do "Limpar". Vai dentro da coluna da
+ * página (não tem rolagem própria). Ao sair da página, a aposta só fica em andamento com o volante
+ * completo ([ficaEmAndamento]); senão é descartada (o aviso fica logo abaixo do "Completar"). Desde a
+ * 0.22 não há mais o "Descartar rascunho": para descartar, é limpar o volante e sair.
  *
  * Desde a 0.10 o registro não pede o comprovante da Caixa: ele é anexado depois, na aba
  * Comprovantes (até a conferência, a aposta ainda pode ser descartada). Antes de registrar, o app
  * confere na Caixa se o concurso da aposta ainda é o que está recebendo apostas; se já foi
  * sorteado, a aposta passa para o próximo.
+ *
+ * Os Parâmetros da sessão (desde a 0.22): sem a janela de confirmação, o registro sai direto; com as
+ * apostas com mais números, o volante aceita até o máximo da modalidade e o preço acompanha; com a
+ * teimosinha, a opção de repetir a aposta em vários concursos. [bloqueio]: o concurso do volante já foi
+ * sorteado e o resultado ainda não chegou ao app; até os dados serem atualizados ([aoAtualizar]), não
+ * dá para registrar.
  */
 @Composable
 fun SecaoVolante(
     estado: Estado,
     r: Aposta,
     mudar: (Aposta) -> Unit,
-    aoDescartar: () -> Unit,
+    bloqueio: String? = null,
+    atualizando: Boolean = false,
+    aoAtualizar: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
@@ -197,17 +242,26 @@ fun SecaoVolante(
     val m = r.modalidade
     val federal = m.formato == Formato.FEDERAL
     val individual = estado.individual
+    val parametros = estado.parametros
+    val mais = parametros.maisNumeros && Volante.aceitaMais(m)
+    val comTeimosinha = parametros.teimosinha && Operacoes.temTeimosinha(m)
     val hoje = LocalDate.now()
     // Nas respostas que chegam depois (Caixa, arquivo escolhido), vale a aposta como está agora.
     val atual by rememberUpdatedState(r)
     val mudarAtual by rememberUpdatedState(mudar)
-    fun mudarPalpite(p: Palpite) = mudarAtual(atual.copy(numeros = p.numeros, trevos = p.trevos, extra = p.extra, palpitesLoteca = p.loteca))
+    val precoSimples = estado.config.preco(m)
+    fun mudarPalpite(p: Palpite) {
+        // Com mais (ou menos) números, o preço acompanha as apostas simples que cabem no palpite.
+        val antes = Volante.apostasSimples(m, atual.numeros.size, atual.trevos.size)
+        val depois = Volante.apostasSimples(m, p.numeros.size, p.trevos.size)
+        val valor = if (m.formato == Formato.NUMEROS && antes != depois) precoSimples * depois else atual.valor
+        mudarAtual(atual.copy(numeros = p.numeros, trevos = p.trevos, extra = p.extra, palpitesLoteca = p.loteca, valor = valor))
+    }
 
     var consulta by remember { mutableStateOf<Consulta>(Consulta.Nada) }
     var editando by remember { mutableStateOf(false) }
     var confirmar by remember { mutableStateOf<String?>(null) }
     var conferindo by remember { mutableStateOf(false) }
-    var confirmarExclusao by remember { mutableStateOf(false) }
     var registrando by remember { mutableStateOf(false) }
     var vendo by remember { mutableStateOf(false) }
 
@@ -231,70 +285,169 @@ fun SecaoVolante(
         }
     }
 
+    // O volante (os números, os trevos, o time ou o mês): o que falta aparece embaixo do título.
+    val doVolante = if (federal) emptyList() else Volante.pendencias(m, r.palpite)
+    val completo = doVolante.isEmpty()
+    // O resto: o que o volante não mostra sozinho.
     val pendencias = buildList {
         if (federal) {
             if (r.bilheteFederal.isNullOrBlank()) add("Informe o número do bilhete.")
             if ((r.fracoesFederal ?: 0) !in 1..10) add("Informe de 1 a 10 frações.")
-        } else {
-            addAll(Volante.pendencias(m, r.palpite))
         }
         if (r.concurso <= 0) add("Informe o número do concurso (no lápis do volante).")
         if (r.valor <= 0) add(if (federal) "Informe o valor pago." else "Informe o preço da aposta (no lápis do volante).")
+        if (comTeimosinha && r.teimosinha != 0 && r.teimosinha !in 2..Operacoes.MAXIMO_DA_TEIMOSINHA) {
+            add("Teimosinha: informe de 2 a ${Operacoes.MAXIMO_DA_TEIMOSINHA} concursos.")
+        }
     }
+    val pronta = completo && pendencias.isEmpty()
     val numero = Operacoes.proximoNumero(estado, hoje)
     val titulo = Operacoes.tituloAposta(estado, r, hoje)
+    val comEspelho = r.espelho && Volante.temEspelho(m)
+    // Quantas apostas o registro faz: uma por concurso da teimosinha (vezes 2 com a aposta espelho).
+    val concursos = if (comTeimosinha) Operacoes.concursosDaTeimosinha(r) else 1
+    val apostas = concursos * (if (comEspelho) 2 else 1)
+    val total = r.valor * apostas
+    // O que as outras apostas do mesmo concurso já têm: o "Completar" não repete o mês nem o time dentro do conjunto.
+    val ja = remember(estado.apostas, r.id, r.concurso) {
+        val outras = estado.apostas.filter {
+            it.id != r.id && it.modalidade == m && it.apuracao?.confirmadaEm == null && (r.concurso == 0 || it.concurso == r.concurso)
+        }
+        Volante.JaApostado(extras = outras.mapNotNull { it.extra?.takeIf { x -> x.isNotBlank() } }, jogos = outras.map { it.numeros })
+    }
+
+    /** Registra (a aposta, a espelho e os concursos da teimosinha) e avisa. [nota]: o que mudou na conferência do concurso. */
+    fun registrar(nota: String) {
+        registrando = true
+        escopo.launch {
+            try {
+                val agora = System.currentTimeMillis()
+                // Com a teimosinha desligada nos Parâmetros, a aposta vale só no concurso dela.
+                val final = if (comTeimosinha) atual else atual.copy(teimosinha = 0)
+                var feitas: List<Aposta> = emptyList()
+                repo.atualizar { e ->
+                    val (x, lista) = Operacoes.registrarTudo(Operacoes.salvarRascunho(e, final), final.id, hoje, agora)
+                    feitas = lista
+                    // O k1, o k2 e as odds do concurso ficam guardados na aposta (desde a 0.21).
+                    Operacoes.guardarIndices(x, ctx.bolao.indices.itens.value)
+                }
+                avisos.showSnackbar(listOf(nota, mensagemDoRegistro(feitas, individual)).filter { it.isNotBlank() }.joinToString(" "))
+            } catch (t: Throwable) {
+                avisos.showSnackbar("Não foi possível registrar: ${t.message}")
+            } finally {
+                registrando = false
+            }
+        }
+    }
+
+    /** Antes de registrar: o concurso ainda é o que está recebendo apostas? Depois, a confirmação (ou o registro direto). */
+    fun conferirERegistrar() {
+        conferindo = true
+        escopo.launch {
+            val antes = atual
+            val d = runCatching { dadosNaCaixa(m) }.getOrNull()
+            val mudou = d != null && m.formato != Formato.LOTECA && m.formato != Formato.FEDERAL && d.numero > antes.concurso
+            if (mudou) mudarAtual(antes.com(d!!))
+            conferindo = false
+            val nota = when {
+                mudou -> "O concurso ${antes.concurso} da ${m.nome} já foi sorteado: a aposta vai para o concurso ${d!!.numero}."
+                d == null -> "Não deu para conferir o concurso na Caixa agora: confira se o ${antes.concurso} ainda recebe apostas."
+                else -> ""
+            }
+            // Parâmetro "Registrar sem confirmação" (desde a 0.22): direto, sem a janela.
+            if (parametros.semConfirmacao) registrar(nota) else confirmar = nota
+        }
+    }
 
     (consulta as? Consulta.Erro)?.let { Aviso(it.texto, alerta = true) }
 
     // Volante
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            TituloDoVolante(numero, aoEditar = { editando = true }, carregando = consulta == Consulta.Carregando)
+            TituloDoVolante(
+                numero,
+                texto = textoDoVolante(m, r.palpite, mais),
+                pronto = completo,
+                aoEditar = { editando = true },
+                carregando = consulta == Consulta.Carregando,
+            )
             Column(Modifier.padding(end = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                VolanteEditavel(m, r, { mudarAtual(it) }, ::mudarPalpite)
+                VolanteEditavel(m, r, mais, ja, { mudarAtual(it) }, ::mudarPalpite)
+                if (comTeimosinha) OpcaoTeimosinha(r, total) { mudarAtual(it) }
+                // "Completar" enquanto falta marcar; com o volante pronto, no mesmo lugar, o "Registrar aposta".
+                var usouCompletar by rememberSaveable(r.id) { mutableStateOf(false) }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (!completo) {
+                        BotaoCompletar(destacar = !usouCompletar, modifier = Modifier.weight(1f)) {
+                            usouCompletar = true
+                            mudarPalpite(Volante.completar(m, r.palpite, ja = ja))
+                        }
+                    } else {
+                        Button(
+                            onClick = { conferirERegistrar() },
+                            enabled = pronta && bloqueio == null && !registrando && !conferindo,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            if (registrando || conferindo) {
+                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text(textoRegistrar(apostas), maxLines = 1)
+                            }
+                        }
+                    }
+                    if (!federal) {
+                        OutlinedButton(
+                            enabled = !registrando && !conferindo,
+                            onClick = {
+                                val vazio = Palpite(
+                                    numeros = if (m.formato == Formato.COLUNAS) List(Volante.COLUNAS_SUPER_SETE) { -1 } else emptyList(),
+                                    extra = if (m.extra == Extra.TIME_DO_CORACAO) r.extra else null,
+                                )
+                                mudarPalpite(vazio)
+                            },
+                        ) { Text("Limpar") }
+                    }
+                }
             }
         }
     }
 
-    pendencias.firstOrNull()?.let { Aviso(it, alerta = true) }
-    val comEspelho = r.espelho && Volante.temEspelho(m)
-    if (pendencias.isEmpty() && !individual) {
+    // Logo abaixo do "Completar": o que acontece ao sair com o volante incompleto.
+    if (!ficaEmAndamento(r)) {
+        Aviso("Se sair agora, a aposta é descartada: complete o " + (if (federal) "bilhete." else "volante."))
+    }
+    // O concurso do volante já foi sorteado e o resultado ainda não chegou: sem registro até os dados chegarem.
+    if (bloqueio != null) {
+        Aviso(bloqueio, alerta = true)
+        OutlinedButton(onClick = aoAtualizar, enabled = !atualizando, modifier = Modifier.fillMaxWidth()) {
+            if (atualizando) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("Consultando a Caixa...")
+            } else {
+                Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(ATUALIZAR_AGORA)
+            }
+        }
+    }
+    if (completo) pendencias.firstOrNull()?.let { Aviso(it, alerta = true) }
+    if (pronta && !individual && bloqueio == null) {
         Aviso(
-            if (comEspelho) {
-                "Registre as apostas e faça o jogo no app Loterias CAIXA com estes números, marcando a Aposta espelho. " +
-                    "Depois, anexe os comprovantes da Caixa na aba Comprovantes."
+            if (apostas > 1) {
+                "Registre as apostas e faça o jogo no app Loterias CAIXA com estes números" +
+                    (if (comEspelho) ", marcando a Aposta espelho" else "") +
+                    (if (concursos > 1) ", com a teimosinha de $concursos concursos" else "") +
+                    ". Depois, anexe " + (if (comEspelho) "os comprovantes" else "o comprovante") + " da Caixa na aba Comprovantes."
             } else {
                 "Registre a aposta e faça o jogo no app Loterias CAIXA com estes números. Depois, anexe o comprovante da Caixa na aba Comprovantes."
             },
         )
     }
-    if (!ficaEmAndamento(r)) {
-        Aviso("Se sair agora, a aposta é descartada: complete o " + (if (federal) "bilhete." else "volante."))
-    }
-
-    BotoesDeRegistro(
-        habilitado = pendencias.isEmpty(),
-        trabalhando = registrando || conferindo,
-        aoVisualizar = { vendo = true },
-        mostrarVisualizar = !individual,
-        textoRegistrar = if (comEspelho) "Registrar apostas" else "Registrar aposta",
-        aoRegistrar = {
-            // Antes de registrar: o concurso ainda é o que está recebendo apostas?
-            conferindo = true
-            escopo.launch {
-                val antes = atual
-                val d = runCatching { dadosNaCaixa(m) }.getOrNull()
-                val mudou = d != null && m.formato != Formato.LOTECA && m.formato != Formato.FEDERAL && d.numero > antes.concurso
-                if (mudou) mudarAtual(antes.com(d!!))
-                conferindo = false
-                confirmar = when {
-                    mudou -> "O concurso ${antes.concurso} da ${m.nome} já foi sorteado: a aposta vai para o concurso ${d!!.numero}."
-                    d == null -> "Não deu para conferir o concurso na Caixa agora: confira se o ${antes.concurso} ainda recebe apostas."
-                    else -> ""
-                }
-            }
-        },
-    )
     if (conferindo) {
         Text(
             "Conferindo o concurso na Caixa...",
@@ -302,14 +455,16 @@ fun SecaoVolante(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    TextButton(onClick = { confirmarExclusao = true }, modifier = Modifier.fillMaxWidth()) {
-        Text("Descartar rascunho", color = MaterialTheme.colorScheme.error)
+    if (!individual && completo) {
+        OutlinedButton(onClick = { vendo = true }, enabled = pronta && !registrando && !conferindo, modifier = Modifier.fillMaxWidth()) {
+            Text("Visualizar comprovante")
+        }
     }
 
     if (editando) {
         DialogoConcurso(
             a = r,
-            precoAjustes = estado.config.preco(m),
+            precoAjustes = precoSimples,
             aoSalvar = { novo ->
                 editando = false
                 mudarAtual(novo)
@@ -331,70 +486,67 @@ fun SecaoVolante(
 
     confirmar?.let { antes ->
         // Lotomania com a aposta espelho (desde a 0.20): duas apostas, a segunda com os 50 números que ficaram de fora.
-        val total = if (comEspelho) r.valor * 2 else r.valor
         val espelho = if (comEspelho) {
-            "Com a aposta espelho: são duas apostas de ${Dinheiro.rs(r.valor)}, a segunda com os 50 números que ficaram de fora."
+            "Com a aposta espelho: são duas apostas de ${Dinheiro.rs(r.valor)}" + (if (concursos > 1) " em cada concurso" else "") +
+                ", a segunda com os 50 números que ficaram de fora."
         } else {
             ""
         }
+        // Teimosinha (desde a 0.22): uma aposta em cada concurso.
+        val teimosinha = if (concursos > 1) {
+            "Teimosinha: a mesma aposta em $concursos concursos seguidos (do ${r.concurso} ao ${r.concurso + concursos - 1}), " +
+                "${Dinheiro.rs(r.valor)} em cada um."
+        } else {
+            ""
+        }
+        val varias = apostas > 1
         val explicacao = if (individual) {
-            "Desconta ${Dinheiro.rs(total)} do saldo. Dá para excluir " + (if (comEspelho) "as apostas" else "a aposta") + " depois."
-        } else if (comEspelho) {
-            "Desconta ${Dinheiro.rs(total)} do saldo. Depois, anexe os comprovantes da Caixa na aba Comprovantes: " +
-                "até a conferência deles, as apostas ainda podem ser descartadas."
+            "Desconta ${Dinheiro.rs(total)} do saldo. Dá para excluir " + (if (varias) "as apostas" else "a aposta") + " depois."
+        } else if (varias) {
+            "Desconta ${Dinheiro.rs(total)} do saldo. Depois, anexe " + (if (comEspelho) "os comprovantes" else "o comprovante") +
+                " da Caixa na aba Comprovantes: até a conferência, as apostas ainda podem ser descartadas."
         } else {
             "Desconta ${Dinheiro.rs(r.valor)} do saldo. Depois, anexe o comprovante da Caixa na aba Comprovantes: " +
                 "até a conferência dele, a aposta ainda pode ser descartada."
         }
         DialogoSimNao(
-            titulo = if (comEspelho) "Deseja registrar as apostas?" else "Deseja registrar aposta?",
-            texto = listOf(antes, espelho, explicacao).filter { it.isNotBlank() }.joinToString("\n\n"),
+            titulo = if (varias) "Deseja registrar as apostas?" else "Deseja registrar aposta?",
+            texto = listOf(antes, espelho, teimosinha, explicacao).filter { it.isNotBlank() }.joinToString("\n\n"),
             aoNao = { confirmar = null },
             aoSim = {
                 confirmar = null
-                registrando = true
-                escopo.launch {
-                    try {
-                        val agora = System.currentTimeMillis()
-                        val final = atual
-                        var espelhoRegistrada: Aposta? = null
-                        val novo = repo.atualizar { e ->
-                            val (x, esp) = Operacoes.registrarComEspelho(Operacoes.salvarRascunho(e, final), final.id, hoje, agora)
-                            espelhoRegistrada = esp
-                            // O k1, o k2 e as odds do concurso ficam guardados na aposta (desde a 0.21).
-                            Operacoes.guardarIndices(x, ctx.bolao.indices.itens.value)
-                        }
-                        val n = novo.apostas.firstOrNull { it.id == final.id }?.numero ?: numero
-                        val esp = espelhoRegistrada
-                        avisos.showSnackbar(
-                            when {
-                                esp != null && individual -> "Apostas Nº$n e Nº${esp.numero} (espelho) registradas."
-                                esp != null -> "Apostas Nº$n e Nº${esp.numero} (espelho) registradas. Anexe os comprovantes da Caixa na aba Comprovantes."
-                                individual -> "Aposta Nº$n registrada."
-                                else -> "Aposta Nº$n registrada. Anexe o comprovante da Caixa na aba Comprovantes."
-                            },
-                        )
-                    } catch (t: Throwable) {
-                        avisos.showSnackbar("Não foi possível registrar: ${t.message}")
-                    } finally {
-                        registrando = false
-                    }
-                }
+                registrar("")
             },
         )
     }
-    if (confirmarExclusao) {
-        DialogoConfirmar(
-            titulo = "Descartar este rascunho?",
-            texto = "Os números desta aposta serão apagados do app. A aposta ainda não foi registrada.",
-            confirmar = "Confirmar",
-            aoConfirmar = {
-                confirmarExclusao = false
-                aoDescartar()
-            },
-            aoFechar = { confirmarExclusao = false },
-        )
+}
+
+/** O botão do volante pronto: "Registrar aposta" ou, com a espelho ou a teimosinha, "Registrar 4 apostas". */
+fun textoRegistrar(apostas: Int): String = if (apostas > 1) "Registrar $apostas apostas" else "Registrar aposta"
+
+/** O botão do volante bloqueado (o concurso já foi sorteado e o resultado não chegou): consulta a Caixa na hora. */
+const val ATUALIZAR_AGORA = "Atualizar agora"
+
+/**
+ * O aviso depois do registro: "Aposta Nº3 registrada.", "Apostas Nº3 e Nº4 (espelho) registradas.",
+ * "Apostas Nº3 a Nº6 registradas (teimosinha de 4 concursos)."; no bolão, com o lembrete do comprovante.
+ */
+fun mensagemDoRegistro(feitas: List<Aposta>, individual: Boolean): String {
+    val primeira = feitas.firstOrNull() ?: return "Aposta registrada."
+    val teimosinha = primeira.ehTeimosinha
+    val espelho = feitas.size == 2 && !teimosinha
+    val texto = when {
+        feitas.size == 1 -> "Aposta Nº${primeira.numero} registrada."
+        espelho -> "Apostas Nº${primeira.numero} e Nº${feitas[1].numero} (espelho) registradas."
+        else -> "Apostas Nº${feitas.minOf { it.numero }} a Nº${feitas.maxOf { it.numero }} registradas" +
+            (if (teimosinha) " (teimosinha de ${primeira.teimosinha} concursos)" else "") + "."
     }
+    val lembrete = when {
+        individual -> ""
+        feitas.size == 2 && espelho -> " Anexe os comprovantes da Caixa na aba Comprovantes."
+        else -> " Anexe o comprovante da Caixa na aba Comprovantes."
+    }
+    return texto + lembrete
 }
 
 /**
@@ -476,7 +628,8 @@ private fun DialogoConcurso(a: Aposta, precoAjustes: Long, aoSalvar: (Aposta) ->
                         centavos = preco,
                         aoMudar = { preco = it },
                         rotulo = "Preço da aposta",
-                        ajuda = "Aposta simples (Ajustes): ${Dinheiro.rs(precoAjustes)}",
+                        ajuda = "Aposta simples (Ajustes): ${Dinheiro.rs(precoAjustes)}" +
+                            Volante.apostasSimples(m, a.numeros.size, a.trevos.size).takeIf { it > 1 }?.let { " × $it apostas simples" }.orEmpty(),
                         imeAction = ImeAction.Done,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -548,28 +701,12 @@ private fun BotaoCompletar(destacar: Boolean, modifier: Modifier, aoTocar: () ->
     ) { conteudo() }
 }
 
-/** Volante completo: no lugar do "Completar", a marca verde. */
-@Composable
-private fun MarcaCompleto(modifier: Modifier) {
-    val verde = corEntrada()
-    Row(
-        modifier = modifier
-            .height(40.dp)
-            .background(verde.copy(alpha = 0.14f), RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = verde, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text("Volante completo", style = MaterialTheme.typography.labelLarge, color = verde, maxLines = 1)
-    }
-}
-
 @Composable
 private fun VolanteEditavel(
     m: Modalidade,
     r: Aposta,
+    mais: Boolean,
+    ja: Volante.JaApostado,
     mudar: (Aposta) -> Unit,
     mudarPalpite: (Palpite) -> Unit,
 ) {
@@ -578,22 +715,36 @@ private fun VolanteEditavel(
             GradeNumeros(
                 m,
                 situacao = { if (it in r.numeros) SituacaoNumero.MARCADO else SituacaoNumero.LIVRE },
-                aoTocar = { n -> mudarPalpite(Volante.alternar(m, r.palpite, n)) },
+                aoTocar = { n -> mudarPalpite(Volante.alternar(m, r.palpite, n, mais)) },
             )
+            if (mais && Volante.maximo(m) > m.qtdAposta) {
+                // Apostas com mais números: até onde dá para ir e quanto custa o que está marcado.
+                val simples = Volante.apostasSimples(m, r.numeros.size, r.trevos.size)
+                Text(
+                    "De ${m.qtdAposta} a ${Volante.maximo(m)} números" +
+                        (if (simples > 1 && r.valor > 0) " · $simples apostas simples: ${valorSemQuebra(Dinheiro.rs(r.valor))}" else ""),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (m.trevos > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Trevos", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    Text("${r.trevos.size} de ${m.trevos}", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        if (mais) "${r.trevos.size} (de ${m.trevos} a ${Volante.maximoTrevos(m)})" else "${r.trevos.size} de ${m.trevos}",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
                 }
                 GradeTrevos(
                     m,
                     situacao = { if (it in r.trevos) SituacaoNumero.MARCADO else SituacaoNumero.LIVRE },
-                    aoTocar = { t -> mudarPalpite(Volante.alternarTrevo(m, r.palpite, t)) },
+                    aoTocar = { t -> mudarPalpite(Volante.alternarTrevo(m, r.palpite, t, mais)) },
                 )
             }
             when (m.extra) {
                 Extra.TIME_DO_CORACAO -> BotaoTimeDoCoracao(r.extra) { mudar(r.copy(extra = it)) }
-                Extra.MES_DE_SORTE -> BotaoMesDeSorte(r.extra) { mudar(r.copy(extra = it)) }
+                // O "Sortear" do mês prefere os meses que as outras apostas do concurso ainda não têm.
+                Extra.MES_DE_SORTE -> BotaoMesDeSorte(r.extra, ja.extras) { mudar(r.copy(extra = it)) }
                 Extra.NENHUM -> Unit
             }
             if (Volante.temEspelho(m)) OpcaoEspelho(r.espelho, r.valor) { mudar(r.copy(espelho = it)) }
@@ -647,30 +798,66 @@ private fun VolanteEditavel(
             )
         }
     }
-    if (m.formato != Formato.FEDERAL) {
-        // "Completar" enquanto faltam números; com o volante cheio, a marca "Volante completo".
-        val completo = Volante.pendencias(m, r.palpite).isEmpty()
-        var usouCompletar by rememberSaveable(r.id) { mutableStateOf(false) }
+}
+
+/** O nome da opção da teimosinha no volante (com o parâmetro ligado). */
+const val TITULO_TEIMOSINHA = "Teimosinha"
+
+/** O campo da quantidade de concursos da teimosinha. */
+const val CAMPO_DA_TEIMOSINHA = "Nº de concursos"
+
+/**
+ * A teimosinha no volante (desde a 0.22, com o parâmetro ligado): a chave e, ligada, o campo com o
+ * número de concursos seguidos em que a aposta se repete (de 2 a 24). No registro vira uma aposta por
+ * concurso. [total]: quanto o registro desconta (todas as apostas).
+ */
+@Composable
+private fun OpcaoTeimosinha(r: Aposta, total: Long, aoMudar: (Aposta) -> Unit) {
+    val ligada = r.teimosinha != 0
+    // O que está digitado (a aposta guarda 1 enquanto o campo está vazio ou com um número que não vale).
+    var texto by rememberSaveable(r.id) { mutableStateOf(if (r.teimosinha >= 2) r.teimosinha.toString() else "") }
+    Column {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            if (!completo) {
-                BotaoCompletar(destacar = !usouCompletar, modifier = Modifier.weight(1f)) {
-                    usouCompletar = true
-                    mudarPalpite(Volante.completar(m, r.palpite))
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .toggleable(value = ligada, role = Role.Switch) { v ->
+                    texto = if (v) "2" else ""
+                    aoMudar(r.copy(teimosinha = if (v) 2 else 0))
                 }
-            } else {
-                MarcaCompleto(Modifier.weight(1f))
-            }
-            OutlinedButton(onClick = {
-                val vazio = Palpite(
-                    numeros = if (m.formato == Formato.COLUNAS) List(Volante.COLUNAS_SUPER_SETE) { -1 } else emptyList(),
-                    extra = if (m.extra == Extra.TIME_DO_CORACAO) r.extra else null,
+                .padding(vertical = 6.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(TITULO_TEIMOSINHA, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (ligada && r.teimosinha in 2..Operacoes.MAXIMO_DA_TEIMOSINHA) {
+                        "A mesma aposta em ${r.teimosinha} concursos seguidos: ${valorSemQuebra(Dinheiro.rs(total))}."
+                    } else {
+                        "Repete a mesma aposta nos concursos seguintes."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                mudarPalpite(vazio)
-            }) { Text("Limpar") }
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(checked = ligada, onCheckedChange = null)
+        }
+        if (ligada) {
+            OutlinedTextField(
+                value = texto,
+                onValueChange = { novo ->
+                    texto = novo.filter(Char::isDigit).take(2)
+                    val n = texto.toIntOrNull() ?: 0
+                    aoMudar(r.copy(teimosinha = if (n >= 2) n else 1))
+                },
+                label = { Text(CAMPO_DA_TEIMOSINHA) },
+                supportingText = { Text("De 2 a ${Operacoes.MAXIMO_DA_TEIMOSINHA} concursos seguidos.") },
+                isError = r.teimosinha !in 2..Operacoes.MAXIMO_DA_TEIMOSINHA,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

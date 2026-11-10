@@ -21,6 +21,13 @@ import io.github.marcosfaria94.bolao.imagem.Recibos
 /** Aviso que vai em toda confirmação de registro (o registro só cresce). */
 const val AVISO_DEFINITIVO = "Depois de registrado, nada pode ser alterado nem desfeito."
 
+/** O botão de registrar: "Registrar e enviar" (o WhatsApp abre em seguida) ou, no bolão informal, só "Registrar". */
+fun textoDeRegistrar(e: Estado): String = if (e.enviaAoGrupo) "Registrar e enviar" else "Registrar"
+
+/** O fim das confirmações de registro: o WhatsApp abre com o comprovante (no bolão informal, ele fica só no app). */
+fun depoisDoRegistro(e: Estado, comOQue: String = "o comprovante"): String =
+    if (e.enviaAoGrupo) "Em seguida o WhatsApp abre com $comOQue." else "O comprovante fica guardado no app."
+
 /** Pé das telas de registro: "Visualizar comprovante" e "Registrar e enviar". */
 @Composable
 fun BotoesDeRegistro(
@@ -67,6 +74,7 @@ suspend fun registrarComprovante(
     check(novo.comprovantes.size > antes) { "O registro não criou o comprovante." }
     val c = novo.comprovantes.last()
     Recibos.arquivo(context, novo, c, repo)
-    if (enviar) Compartilhar.comprovante(context, novo, c)
+    // No bolão informal (desde a 0.22) nada vai ao grupo: o comprovante fica só no app.
+    if (enviar && novo.enviaAoGrupo) Compartilhar.comprovante(context, novo, c)
     return c
 }

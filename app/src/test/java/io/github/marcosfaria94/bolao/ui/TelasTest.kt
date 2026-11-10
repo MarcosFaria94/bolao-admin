@@ -72,6 +72,17 @@ import io.github.marcosfaria94.bolao.ui.painel.TipoDoResumo
 import io.github.marcosfaria94.bolao.ui.painel.indicesDoConcurso
 import io.github.marcosfaria94.bolao.ui.painel.quantasPendencias
 import io.github.marcosfaria94.bolao.ui.painel.resumoDasPendencias
+import io.github.marcosfaria94.bolao.data.Parametros
+import io.github.marcosfaria94.bolao.domain.Calendario
+import io.github.marcosfaria94.bolao.domain.Palpite
+import io.github.marcosfaria94.bolao.ui.ajustes.resumoDosParametros
+import io.github.marcosfaria94.bolao.ui.ajustes.textoDoCalendario
+import io.github.marcosfaria94.bolao.ui.aposta.mensagemDoRegistro
+import io.github.marcosfaria94.bolao.ui.aposta.textoDoVolante
+import io.github.marcosfaria94.bolao.ui.aposta.textoRegistrar
+import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
+import io.github.marcosfaria94.bolao.ui.home.textoDaProximaAposta
+import io.github.marcosfaria94.bolao.ui.jogos.bloqueioDaAposta
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -366,10 +377,18 @@ class TelasTest {
     fun ajustesComExtincaoNoBolaoECreditosNoRodape() {
         // A extinção no fim do primeiro grupo; sem o grupo "Sobre" (os Créditos são o rodapé da lista).
         assertEquals(
-            listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.VALORES, SecaoAjuste.TERMO, SecaoAjuste.EXTINCAO),
+            listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.VALORES, SecaoAjuste.PARAMETROS, SecaoAjuste.TERMO, SecaoAjuste.EXTINCAO),
             SecaoAjuste.grupos(false).first { it.first == "BOLÃO" }.second,
         )
-        assertEquals(listOf(SecaoAjuste.MODO, SecaoAjuste.VALORES, SecaoAjuste.EXTINCAO), SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second)
+        // O bolão informal (desde a 0.22) não tem o termo.
+        assertEquals(
+            listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.VALORES, SecaoAjuste.PARAMETROS, SecaoAjuste.EXTINCAO),
+            SecaoAjuste.grupos(false, informal = true).first { it.first == "BOLÃO" }.second,
+        )
+        assertEquals(
+            listOf(SecaoAjuste.MODO, SecaoAjuste.VALORES, SecaoAjuste.PARAMETROS, SecaoAjuste.EXTINCAO),
+            SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second,
+        )
         assertEquals(listOf("BOLÃO", "SEGURANÇA", "CELULAR"), SecaoAjuste.grupos(false).map { it.first })
         // A atualização e o modo de teste agem ali mesmo, na lista: não têm tela (os endereços antigos não abrem nada).
         assertNull(SecaoAjuste.de("teste"))
@@ -611,5 +630,108 @@ class TelasTest {
             Saida.Descartada("Aposta descartada: o bilhete ficou incompleto."),
             saidaDaTela(federal, null, nova = true),
         )
+    }
+
+    // ---------- 0.22 ----------
+
+    @Test
+    fun textoEmbaixoDoTituloDoVolante() {
+        val quina = Modalidade.QUINA
+        // Parâmetro desligado: "Marque N números" (o mínimo menos os já marcados) e, pronta, "Aposta completa".
+        assertEquals("Marque 5 números", textoDoVolante(quina, Palpite(), mais = false))
+        assertEquals("Marque 2 números", textoDoVolante(quina, Palpite(numeros = listOf(1, 2, 3)), mais = false))
+        assertEquals("Marque 1 número", textoDoVolante(quina, Palpite(numeros = listOf(1, 2, 3, 4)), mais = false))
+        assertEquals("Aposta completa", textoDoVolante(quina, Palpite(numeros = listOf(1, 2, 3, 4, 5)), mais = false))
+        // Ligado: "Marque no mínimo N números" e, pronta, "Aposta com n números".
+        assertEquals("Marque no mínimo 5 números", textoDoVolante(quina, Palpite(), mais = true))
+        assertEquals("Marque no mínimo 1 número", textoDoVolante(quina, Palpite(numeros = listOf(1, 2, 3, 4)), mais = true))
+        assertEquals("Aposta com 5 números", textoDoVolante(quina, Palpite(numeros = listOf(1, 2, 3, 4, 5)), mais = true))
+        assertEquals("Aposta com 7 números", textoDoVolante(quina, Palpite(numeros = (1..7).toList()), mais = true))
+        // Depois dos números: os trevos, o time e o mês.
+        val mi = Modalidade.MAIS_MILIONARIA
+        assertEquals("Marque 2 trevos", textoDoVolante(mi, Palpite(numeros = (1..6).toList()), mais = false))
+        assertEquals("Marque no mínimo 1 trevo", textoDoVolante(mi, Palpite(numeros = (1..6).toList(), trevos = listOf(1)), mais = true))
+        assertEquals("Aposta com 7 números e 3 trevos", textoDoVolante(mi, Palpite(numeros = (1..7).toList(), trevos = listOf(1, 2, 3)), mais = true))
+        assertEquals("Escolha o Mês de Sorte", textoDoVolante(Modalidade.DIA_DE_SORTE, Palpite(numeros = (1..7).toList()), mais = false))
+        assertEquals("Escolha o Time do Coração", textoDoVolante(Modalidade.TIMEMANIA, Palpite(numeros = (1..10).toList()), mais = false))
+        // Super Sete (as colunas sem número), Loteca (os palpites) e Federal (sem volante).
+        assertEquals("Marque 7 números", textoDoVolante(Modalidade.SUPER_SETE, Palpite(numeros = List(7) { -1 }), mais = false))
+        assertEquals("Aposta completa", textoDoVolante(Modalidade.SUPER_SETE, Palpite(numeros = List(7) { 3 }), mais = true))
+        assertEquals("Marque 14 palpites", textoDoVolante(Modalidade.LOTECA, Palpite(), mais = false))
+        assertEquals("", textoDoVolante(Modalidade.FEDERAL, Palpite(), mais = false))
+    }
+
+    @Test
+    fun botaoEAvisosDoRegistro() {
+        assertEquals("Registrar aposta", textoRegistrar(1))
+        assertEquals("Registrar 4 apostas", textoRegistrar(4))
+        fun a(n: Int, teimosinha: Int = 0) = Aposta(
+            id = "a$n", numero = n, modalidade = Modalidade.QUINA, concurso = 7000 + n, dataAposta = LocalDate.of(2026, 11, 10),
+            valor = 300, criadaEm = 0, registrada = true, teimosinha = teimosinha, teimosinhaOrdem = if (teimosinha > 0) n else 0,
+            teimosinhaDe = if (teimosinha > 0) "a1" else null,
+        )
+        assertEquals("Aposta Nº3 registrada. Anexe o comprovante da Caixa na aba Comprovantes.", mensagemDoRegistro(listOf(a(3)), individual = false))
+        assertEquals("Aposta Nº3 registrada.", mensagemDoRegistro(listOf(a(3)), individual = true))
+        assertEquals(
+            "Apostas Nº1 e Nº2 (espelho) registradas. Anexe os comprovantes da Caixa na aba Comprovantes.",
+            mensagemDoRegistro(listOf(a(1), a(2)), individual = false),
+        )
+        assertEquals(
+            "Apostas Nº1 a Nº4 registradas (teimosinha de 4 concursos). Anexe o comprovante da Caixa na aba Comprovantes.",
+            mensagemDoRegistro((1..4).map { a(it, 4) }, individual = false),
+        )
+        assertTrue(bloqueioDaAposta(7149).startsWith("Aposta bloqueada: o concurso 7149 já foi sorteado"))
+        assertTrue(bloqueioDaAposta(null).startsWith("Aposta bloqueada: o concurso já foi sorteado"))
+    }
+
+    @Test
+    fun proximaApostaEParametrosNaTela() {
+        val dia10 = LocalDate.of(2026, 11, 10)
+        val termo = Calendario.DIAS_PROGRAMADOS
+        assertEquals("Hoje", textoDaProximaAposta(dia10, apostaDeHojeFeita = false, dias = termo))
+        assertEquals(Datas.relativa(LocalDate.of(2026, 11, 13), dia10), textoDaProximaAposta(dia10, apostaDeHojeFeita = true, dias = termo))
+        assertEquals("Amanhã", textoDaProximaAposta(dia10, apostaDeHojeFeita = false, dias = listOf(11)))
+        assertEquals("Sem dia definido", textoDaProximaAposta(dia10, apostaDeHojeFeita = false, dias = emptyList()))
+        assertEquals("10 dias por mês", resumoDosParametros(Parametros()))
+        assertEquals("1 dia por mês", resumoDosParametros(Parametros(diasDeAposta = listOf(15))))
+        assertEquals("Sem dia definido", resumoDosParametros(Parametros(diasDeAposta = emptyList())))
+        assertEquals("3 apostas por mês: dias 1, 15 e 30.", textoDoCalendario(listOf(1, 15, 30)))
+        assertEquals("1 aposta por mês: dia 5.", textoDoCalendario(listOf(5)))
+        assertEquals("Parâmetros", SecaoAjuste.PARAMETROS.titulo(individual = false))
+        assertEquals(SecaoAjuste.PARAMETROS, SecaoAjuste.de("parametros"))
+    }
+
+    @Test
+    fun mesSorteadoPrefereOsQueOConjuntoNaoTem() {
+        val sorteio = Random(5)
+        // As outras apostas do concurso já têm todos menos Julho e Agosto: sai um dos dois.
+        val usados = MESES_DE_SORTE - "Julho" - "Agosto"
+        repeat(30) { assertTrue(mesAleatorio(null, sorteio, usados) in listOf("Julho", "Agosto")) }
+        // Sem repetir o de agora: com Julho no botão, sai Agosto.
+        repeat(10) { assertEquals("Agosto", mesAleatorio("Julho", sorteio, usados)) }
+        // Todos usados uma vez e Março duas: qualquer um, menos Março.
+        repeat(30) { assertTrue(mesAleatorio(null, sorteio, MESES_DE_SORTE + "MARÇO") != "Março") }
+    }
+
+    @Test
+    fun envioEmLoteDeApostasEApuracoes() {
+        fun c(id: String, tipo: TipoComprovante, em: Long, dispensado: Boolean = false) = Comprovante(
+            id = id, tipo = tipo, titulo = "TÍTULO $id", texto = "", data = LocalDate.of(2026, 11, 10), criadoEm = em,
+            imagem = Arquivo("$id.png", "$id.png", "image/png", em), autenticacao = "x", envioDispensado = dispensado,
+        )
+        val e = Estado(
+            cadastroConcluido = true,
+            comprovantes = listOf(
+                c("apuracao", TipoComprovante.APURACAO, 30), c("aposta", TipoComprovante.APOSTA, 10), c("rateio", TipoComprovante.RATEIO, 20),
+                c("enviada", TipoComprovante.APOSTA, 5), c("mensal", TipoComprovante.APORTE, 1, dispensado = true),
+            ),
+            envios = listOf(Envio("enviada", 6)),
+        )
+        // Só as apostas e as apurações que ainda não foram ao grupo, da mais antiga para a mais nova.
+        val lote = Compartilhar.paraOLote(e)
+        assertEquals(listOf("aposta", "apuracao"), lote.map { it.id })
+        assertEquals("TÍTULO aposta\nTÍTULO apuracao", Compartilhar.textoDoLote(lote))
+        // No bolão informal nada espera envio: não há lote.
+        assertTrue(Compartilhar.paraOLote(e.copy(comprovantes = e.comprovantes.map { it.copy(envioDispensado = true) })).isEmpty())
     }
 }

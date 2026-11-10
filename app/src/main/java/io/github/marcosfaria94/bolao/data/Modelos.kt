@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.data
 
+import io.github.marcosfaria94.bolao.domain.Calendario
 import io.github.marcosfaria94.bolao.domain.FaixaPremio
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import kotlinx.serialization.KSerializer
@@ -38,8 +39,34 @@ data class Config(
     val aporteMensal: Long = 1000,
     /** Preço da aposta simples por modalidade (nome do enum -> centavos). Ausente = preço padrão. */
     val precos: Map<String, Long> = emptyMap(),
+    /** Os parâmetros da sessão (Ajustes > Parâmetros, desde a 0.22). */
+    val parametros: Parametros = Parametros(),
 ) {
     fun preco(m: Modalidade): Long = precos[m.name] ?: m.precoPadrao
+}
+
+/**
+ * Parâmetros (Ajustes > Parâmetros, desde a 0.22): escolhas de como a sessão funciona. Todos começam
+ * desligados (o app fica como era até a 0.21).
+ */
+@Serializable
+data class Parametros(
+    /** Registrar a aposta direto, sem a janela "Deseja registrar aposta?". */
+    val semConfirmacao: Boolean = false,
+    /** Deixar marcar mais números que a aposta simples (o preço acompanha as combinações). */
+    val maisNumeros: Boolean = false,
+    /** Mostrar a teimosinha no volante (a mesma aposta em vários concursos seguidos). */
+    val teimosinha: Boolean = false,
+    /**
+     * O calendário de apostas: os dias do mês com aposta. null = os do termo (1, 4, 7... 28);
+     * vazio = sem dia definido.
+     */
+    val diasDeAposta: List<Int>? = null,
+) {
+    /** Os dias de aposta que valem, em ordem (vazio = sem dia definido). */
+    val dias: List<Int> get() = (diasDeAposta ?: Calendario.DIAS_PROGRAMADOS).filter { it in 1..31 }.distinct().sorted()
+
+    val semDiaDefinido: Boolean get() = dias.isEmpty()
 }
 
 /** Arquivo guardado na pasta interna do app (comprovantes, termo, imagens). */
@@ -148,6 +175,37 @@ data class Aposta(
     val espelho: Boolean = false,
     /** O k1, o k2 e as odds do concurso, guardados quando a aposta foi registrada (desde a 0.21). */
     val indices: IndicesDaAposta? = null,
+    /**
+     * Teimosinha (desde a 0.22): em quantos concursos seguidos a aposta se repete (0 ou 1 = só neste).
+     * No registro vira uma aposta por concurso, todas com este total.
+     */
+    val teimosinha: Int = 0,
+    /** Teimosinha registrada: a posição desta aposta (1 = a do primeiro concurso). 0 = não é teimosinha. */
+    val teimosinhaOrdem: Int = 0,
+    /** Teimosinha registrada: o id da aposta do primeiro concurso (o grupo). */
+    val teimosinhaDe: String? = null,
+    /**
+     * Como a aposta estava antes de o comprovante da Caixa mudá-la (desde a 0.22): tirar o comprovante,
+     * na conferência, devolve a aposta a isto. Some na aprovação.
+     */
+    val antesDoAnexo: JogoDaAposta? = null,
+) {
+    /** Faz parte de uma teimosinha já registrada. */
+    val ehTeimosinha: Boolean get() = teimosinhaDe != null && teimosinha > 1
+}
+
+/** O jogo de uma aposta (o que o comprovante da Caixa pode mudar), para desfazer a mudança. */
+@Serializable
+data class JogoDaAposta(
+    val concurso: Int,
+    val dataSorteio: Data? = null,
+    val premioEstimado: Long? = null,
+    val numeros: List<Int> = emptyList(),
+    val trevos: List<Int> = emptyList(),
+    val extra: String? = null,
+    val palpitesLoteca: List<String> = emptyList(),
+    val bilheteFederal: String? = null,
+    val valor: Long = 0,
 )
 
 /**
@@ -299,8 +357,16 @@ data class Estado(
     val inicioAportes: String? = null,
     /** Bolão (o grupo) ou Individual. */
     val modo: Modo = Modo.BOLAO,
+    /**
+     * Bolão informal (desde a 0.22, escolhido no cadastro): sem o termo e sem nada para enviar ao grupo
+     * (os comprovantes do bolão ficam só no app). O comprovante da Caixa de cada aposta continua.
+     */
+    val informal: Boolean = false,
 ) {
     val individual: Boolean get() = modo == Modo.INDIVIDUAL
+    /** O bolão formal: com o termo e os comprovantes enviados ao grupo do WhatsApp. */
+    val enviaAoGrupo: Boolean get() = !individual && !informal
+    val parametros: Parametros get() = config.parametros
     val saldo: Long get() = lancamentos.sumOf { it.valor }
     val administrador: Pessoa? get() = pessoas.firstOrNull { it.administrador } ?: pessoas.firstOrNull()
     fun pessoa(id: String?): Pessoa? = pessoas.firstOrNull { it.id == id }

@@ -43,6 +43,8 @@ import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.SeletorMes
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
+import io.github.marcosfaria94.bolao.ui.comum.depoisDoRegistro
+import io.github.marcosfaria94.bolao.ui.comum.textoDeRegistrar
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -139,6 +141,7 @@ fun ExtratoTela(estado: Estado, mesInicial: YearMonth? = null) {
                         trabalhando = trabalhando,
                         aoVisualizar = { vendo = true },
                         aoRegistrar = { confirmar = true },
+                        textoRegistrar = textoDeRegistrar(estado),
                     )
                     impedimento?.let { Aviso(it, alerta = true) }
                 }
@@ -162,7 +165,7 @@ fun ExtratoTela(estado: Estado, mesInicial: YearMonth? = null) {
     if (confirmar) {
         DialogoConfirmar(
             titulo = "Registrar o extrato de ${Datas.mesAno(mes)}?",
-            texto = "Lança o rendimento de ${Dinheiro.rs(conferido.rendimento)} e fecha o mês. Em seguida o WhatsApp abre com o comprovante." +
+            texto = "Lança o rendimento de ${Dinheiro.rs(conferido.rendimento)} e fecha o mês. " + depoisDoRegistro(estado) +
                 (conferido.alerta?.let { "\n\nAtenção: $it" } ?: "") + "\n\n" + AVISO_DEFINITIVO,
             confirmar = "Confirmar",
             aoConfirmar = {

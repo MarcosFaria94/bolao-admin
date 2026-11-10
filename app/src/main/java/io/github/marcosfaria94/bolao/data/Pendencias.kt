@@ -167,12 +167,13 @@ object Pendencias {
             )
         }
 
-        // Dia de aposta (se não houver uma aposta em andamento, que já é pendência). Não no modo individual.
-        if (!e.individual && Calendario.ehDiaProgramado(hoje) && !Operacoes.apostaFeitaEm(e, hoje) && rascunhos.isEmpty()) {
+        // Dia de aposta, pelo calendário da sessão (se não houver uma aposta em andamento, que já é
+        // pendência). Desde a 0.22 vale também no modo individual; sem dia definido, não há.
+        if (Calendario.ehDiaProgramado(hoje, e.parametros.dias) && !Operacoes.apostaFeitaEm(e, hoje) && rascunhos.isEmpty()) {
             lista += Pendencia(
                 "aposta-$hoje", Pendencia.Tipo.APOSTA_DO_DIA,
                 "Fazer a aposta de hoje",
-                "Hoje é dia de aposta do bolão. Saldo: ${Dinheiro.rs(Operacoes.saldo(e))}.",
+                if (e.individual) "Hoje é dia de aposta." else "Hoje é dia de aposta do bolão. Saldo: ${Dinheiro.rs(Operacoes.saldo(e))}.",
                 hoje.atStartOfDay(), hoje.atTime(HORA_JOGO, 0), "jogos",
             )
         }

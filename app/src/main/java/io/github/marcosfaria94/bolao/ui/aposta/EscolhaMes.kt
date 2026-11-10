@@ -48,11 +48,16 @@ fun mesDaLista(texto: String?): String? {
 fun siglaDoMes(mes: String): String = mes.take(3).uppercase()
 
 /**
- * Um mês sorteado para o "Sortear" do Mês de Sorte (Dia de Sorte): um dos 12, sem repetir o [atual].
+ * Um mês sorteado para o "Sortear" do Mês de Sorte (Dia de Sorte): um dos 12, sem repetir o [atual] e,
+ * desde a 0.22, de preferência um que as outras apostas do mesmo concurso ainda não têm ([usados]): com
+ * 12 meses, repetir por acaso dentro de um conjunto de apostas é comum.
  */
-fun mesAleatorio(atual: String?, sorteio: Random = Random.Default): String {
+fun mesAleatorio(atual: String?, sorteio: Random = Random.Default, usados: List<String> = emptyList()): String {
     val escolhido = mesDaLista(atual)
-    return MESES_DE_SORTE.filter { it != escolhido }.random(sorteio)
+    val opcoes = MESES_DE_SORTE.filter { it != escolhido }
+    val vezes = usados.mapNotNull { mesDaLista(it) }.groupingBy { it }.eachCount()
+    val menor = opcoes.minOf { vezes[it] ?: 0 }
+    return opcoes.filter { (vezes[it] ?: 0) == menor }.random(sorteio)
 }
 
 /**
@@ -60,7 +65,7 @@ fun mesAleatorio(atual: String?, sorteio: Random = Random.Default): String {
  * mês e o nome; abre a lista dos meses, que funciona como a dos times da Timemania.
  */
 @Composable
-fun BotaoMesDeSorte(atual: String?, aoEscolher: (String) -> Unit) {
+fun BotaoMesDeSorte(atual: String?, usados: List<String> = emptyList(), aoEscolher: (String) -> Unit) {
     var aberto by remember { mutableStateOf(false) }
     val mes = mesDaLista(atual)
     val cor = corModalidade(Modalidade.DIA_DE_SORTE.cor)
@@ -89,6 +94,7 @@ fun BotaoMesDeSorte(atual: String?, aoEscolher: (String) -> Unit) {
                 aberto = false
             },
             aoFechar = { aberto = false },
+            usados = usados,
         )
     }
 }
@@ -122,14 +128,14 @@ private val SELO = 40.dp
  * voltar do celular) fecha, com o mês que já estava.
  */
 @Composable
-fun DialogoMeses(atual: String?, aoEscolher: (String) -> Unit, aoFechar: () -> Unit) {
+fun DialogoMeses(atual: String?, aoEscolher: (String) -> Unit, aoFechar: () -> Unit, usados: List<String> = emptyList()) {
     val repo = LocalContext.current.bolao.repo
     val cor = corModalidade(Modalidade.DIA_DE_SORTE.cor)
     val escolhido = mesDaLista(atual)
 
     /** Um mês ao acaso: escolhe, fecha e avisa qual saiu. */
     fun sortear() {
-        val m = mesAleatorio(atual)
+        val m = mesAleatorio(atual, usados = usados)
         aoEscolher(m)
         repo.avisar("Mês sorteado: $m")
     }

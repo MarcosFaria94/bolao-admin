@@ -175,7 +175,7 @@ private val SEM_SETA = setOf(
     ROTA_INDICES, ROTA_SESSOES,
 )
 
-/** A página do jogo (o volante, a aposta aberta ou os Detalhes): o título "← Voltar" também volta. */
+/** A página do jogo (o volante, a aposta aberta ou os Detalhes): nos Detalhes, o título "← Aposta" também volta. */
 private val ROTAS_DO_JOGO = setOf("modalidade/{nome}", "nova/{nome}", "detalhes/{nome}", "aposta/{id}", "apuracao/{id}")
 
 /** A tela das abas (as páginas que se trocam deslizando o dedo para os lados). */
@@ -372,11 +372,12 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         "rateio" -> "Rateio"
         "extrato", "extrato/{mes}" -> "Extrato"
         "comprovante/{id}" -> "Comprovante"
-        // A página do jogo, com o volante ou a aposta aberta: "← Voltar" (volta para onde ela foi aberta).
-        in ROTAS_DO_JOGO -> "Voltar"
+        // A página do jogo, com o volante ou a aposta aberta: sem título (até a 0.21, "← Voltar"); sai-se
+        // deslizando o dedo, puxando para baixo ou pelo voltar do celular.
+        in ROTAS_DO_JOGO -> ""
         "saldo" -> "Saldo"
         "integridade" -> "Verificar integridade"
-        ROTA_INDICES -> "k1 e k2"
+        ROTA_INDICES -> "Indicadores"
         else -> ""
     }
 
@@ -433,6 +434,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     aoVoltar = when {
                         ehAba || rota in SEM_SETA -> null
                         acao?.aoVoltar != null -> acao.aoVoltar
+                        // A página do jogo não tem mais o "← Voltar" (desde a 0.22): só o "← Aposta" dos Detalhes.
+                        rota in ROTAS_DO_JOGO -> null
                         else -> {
                             { nav.popBackStack(); Unit }
                         }
@@ -670,11 +673,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
  * sorteio do concurso delas) passam para o concurso que a Caixa está recebendo agora.
  */
 private suspend fun atualizarConcursos(ctx: Context, itens: Map<Modalidade, Indices.Item>) {
-    val proximos = itens.mapNotNull { (m, item) ->
-        val numero = item.proximoNumero ?: return@mapNotNull null
-        val u = item.ultimo
-        m to Operacoes.ProximoConcurso(numero, u?.proximaData?.takeIf { u.proximoNumero == numero }, u?.premioEstimadoProximo?.takeIf { u.proximoNumero == numero })
-    }.toMap()
+    val proximos = Operacoes.proximosConcursos(itens)
     if (proximos.isEmpty()) return
     val repo = ctx.bolao.repo
     var mudadas: List<Pair<Aposta, Aposta>> = emptyList()

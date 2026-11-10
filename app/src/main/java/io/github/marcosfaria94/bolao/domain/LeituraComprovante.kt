@@ -55,12 +55,17 @@ object LeituraComprovante {
 
     private fun numerosDe(trecho: String): List<Int> = NUMERO.findAll(limpa(trecho)).map { it.value.toInt() }.toList()
 
-    fun ler(m: Modalidade, texto: String, times: List<String> = TIMES_DO_CORACAO): Lida {
+    /**
+     * [esperados]: os números das apostas do app que esperam o comprovante desta modalidade (em ordem).
+     * Servem para a leitura aceitar uma aposta com mais números que a simples (desde a 0.22) e, entre duas
+     * leituras possíveis, ficar com a que bate com uma aposta.
+     */
+    fun ler(m: Modalidade, texto: String, times: List<String> = TIMES_DO_CORACAO, esperados: List<List<Int>> = emptyList()): Lida {
         val linhas = texto.lines().map { it.trim() }.filter { it.isNotEmpty() }
         val candidatos = concursos(m, texto)
         val lida = when (m.formato) {
             Formato.NUMEROS -> Lida(
-                numeros = numeros(m, linhas),
+                numeros = numeros(m, linhas, esperados),
                 trevos = trevos(m, linhas),
                 extra = when (m.extra) {
                     Extra.TIME_DO_CORACAO -> time(linhas, times)
@@ -134,22 +139,58 @@ object LeituraComprovante {
     /** O resultado de [escolherConcurso]: a leitura com o concurso escolhido e o número desprezado. */
     data class Escolha(val lida: Lida, val duvidoso: Int?)
 
-    /** Números marcados: depois do rótulo ("Números:", "Dezenas") ou um bloco só de números com a quantidade certa. */
-    private fun numeros(m: Modalidade, linhas: List<String>): List<Int>? {
-        val alvo = m.qtdAposta
+    /**
+     * As quantidades de números que valem numa leitura da modalidade [m]: a da aposta simples e as das
+     * apostas [esperados] com mais números (até o máximo da modalidade).
+     */
+    private fun quantidades(m: Modalidade, esperados: List<List<Int>>): Set<Int> =
+        (esperados.map { it.size } + m.qtdAposta).filter { it in m.qtdAposta..Volante.maximo(m) }.toSet()
+
+    private val ROTULO_DOS_NUMEROS = Regex("\\b(NUMEROS|DEZENAS|APOSTADOS)\\b")
+
+    /**
+     * Os números depois do rótulo da linha [i] ([inicio] = o resto dessa linha), juntando as linhas
+     * seguintes que só têm números. Entre os conjuntos válidos que vão se formando, fica o que é igual a
+     * uma aposta esperada; senão, o do tamanho de uma aposta esperada (o maior); senão, o da aposta
+     * simples. Devolve os números (em ordem) e a linha onde a leitura parou.
+     */
+    private fun depoisDoRotuloDosNumeros(m: Modalidade, linhas: List<String>, i: Int, inicio: String, esperados: List<List<Int>>): Pair<List<Int>?, Int> {
+        val qtds = quantidades(m, esperados)
+        val maior = qtds.max()
         val faixa = m.menor..m.maior
-        fun valida(l: List<Int>) = l.size == alvo && l.distinct().size == alvo && l.all { it in faixa }
+        val tamanhos = esperados.map { it.size }.toSet()
+        fun valida(l: List<Int>) = l.size in qtds && l.distinct().size == l.size && l.all { it in faixa }
+        fun nota(l: List<Int>) = when {
+            l.sorted() in esperados -> 3
+            l.size in tamanhos -> 2
+            else -> 1
+        }
+        val juntos = numerosDe(inicio).toMutableList()
+        var melhor: List<Int>? = juntos.toList().takeIf { valida(it) }
+        var fim = i + 1
+        var k = i + 1
+        while (juntos.size < maior && k < linhas.size && soNumeros(linhas[k])) {
+            juntos += numerosDe(linhas[k])
+            k++
+            val antes = melhor
+            if (valida(juntos) && (antes == null || nota(juntos) >= nota(antes))) {
+                melhor = juntos.toList()
+                fim = k
+            }
+        }
+        return melhor?.sorted() to if (melhor == null) k else fim
+    }
+
+    /** Números marcados: depois do rótulo ("Números:", "Dezenas") ou um bloco só de números com a quantidade certa. */
+    private fun numeros(m: Modalidade, linhas: List<String>, esperados: List<List<Int>> = emptyList()): List<Int>? {
+        val qtds = quantidades(m, esperados)
+        val faixa = m.menor..m.maior
+        fun valida(l: List<Int>) = l.size in qtds && l.distinct().size == l.size && l.all { it in faixa }
 
         for ((i, linha) in linhas.withIndex()) {
             val s = simples(linha).substringBefore("TREVO")
-            val rotulo = Regex("\\b(NUMEROS|DEZENAS|APOSTADOS)\\b").find(s) ?: continue
-            val juntos = numerosDe(s.substring(rotulo.range.last + 1)).toMutableList()
-            var k = i + 1
-            while (juntos.size < alvo && k < linhas.size && soNumeros(linhas[k])) {
-                juntos += numerosDe(linhas[k])
-                k++
-            }
-            if (valida(juntos)) return juntos.sorted()
+            val rotulo = ROTULO_DOS_NUMEROS.find(s) ?: continue
+            depoisDoRotuloDosNumeros(m, linhas, i, s.substring(rotulo.range.last + 1), esperados).first?.let { return it }
         }
 
         val candidatos = mutableListOf<List<Int>>()
@@ -298,53 +339,67 @@ object LeituraComprovante {
      * Todas as apostas de uma modalidade no texto (um comprovante pode ter mais de um jogo): uma
      * leitura para cada conjunto de números com a quantidade certa. Com um jogo só, é a [ler].
      */
-    fun lerApostas(m: Modalidade, texto: String): List<Lida> {
-        val base = ler(m, texto)
+    fun lerApostas(m: Modalidade, texto: String, esperados: List<List<Int>> = emptyList()): List<Lida> {
+        val base = ler(m, texto, esperados = esperados)
         if (m.formato != Formato.NUMEROS) return listOf(base)
         val linhas = texto.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        val varios = todosOsNumeros(m, linhas)
+        val varios = todosOsNumeros(m, linhas, esperados).distinct()
         if (varios.size <= 1) return listOf(if (base.numeros != null) base else base.copy(numeros = varios.firstOrNull()))
         // Com vários jogos, trevos e time/mês não dá para saber de qual é: ficam de fora.
         return varios.map { Lida(concurso = base.concurso, concursos = base.concursos, numeros = it) }
     }
 
     /** Os conjuntos de números válidos do texto (depois dos rótulos ou em blocos só de números). */
-    private fun todosOsNumeros(m: Modalidade, linhas: List<String>): List<List<Int>> {
+    private fun todosOsNumeros(m: Modalidade, linhas: List<String>, esperados: List<List<Int>> = emptyList()): List<List<Int>> {
         val alvo = m.qtdAposta
         val faixa = m.menor..m.maior
+        val qtds = quantidades(m, esperados)
         fun valida(l: List<Int>) = l.size == alvo && l.distinct().size == alvo && l.all { it in faixa }
+        fun validaComMais(l: List<Int>) = l.size in qtds && l.distinct().size == l.size && l.all { it in faixa }
         val rotulados = mutableListOf<List<Int>>()
         var i = 0
         while (i < linhas.size) {
             val s = simples(linhas[i]).substringBefore("TREVO")
-            val rotulo = Regex("\\b(NUMEROS|DEZENAS|APOSTADOS)\\b").find(s)
+            val rotulo = ROTULO_DOS_NUMEROS.find(s)
             if (rotulo == null) {
                 i++
                 continue
             }
-            val juntos = numerosDe(s.substring(rotulo.range.last + 1)).toMutableList()
-            var k = i + 1
-            while (juntos.size < alvo && k < linhas.size && soNumeros(linhas[k])) {
-                juntos += numerosDe(linhas[k])
-                k++
-            }
-            if (valida(juntos)) rotulados += juntos.sorted()
-            i = maxOf(k, i + 1)
+            val (juntos, fim) = depoisDoRotuloDosNumeros(m, linhas, i, s.substring(rotulo.range.last + 1), esperados)
+            if (juntos != null) rotulados += juntos
+            i = maxOf(fim, i + 1)
         }
         if (rotulados.isNotEmpty()) return rotulados
-        val blocos = mutableListOf<List<Int>>()
-        var bloco = mutableListOf<Int>()
+        // Sem rótulo: cada sequência de linhas só de números. A sequência inteira igual a uma aposta esperada
+        // (com mais números) é um jogo só; senão, um jogo a cada [alvo] números, como sempre.
+        val sequencias = mutableListOf<List<List<Int>>>()
+        var atual = mutableListOf<List<Int>>()
         for (linha in linhas + "") {
             if (soNumeros(linha)) {
-                bloco += numerosDe(linha)
+                atual += numerosDe(linha)
+            } else {
+                if (atual.isNotEmpty()) sequencias += atual
+                atual = mutableListOf()
+            }
+        }
+        val blocos = mutableListOf<List<Int>>()
+        for (seq in sequencias) {
+            val todos = seq.flatten()
+            if (validaComMais(todos) && todos.sorted() in esperados) {
+                blocos += todos.sorted()
+                continue
+            }
+            val achados = mutableListOf<List<Int>>()
+            var bloco = mutableListOf<Int>()
+            for (l in seq) {
+                bloco += l
                 if (bloco.size == alvo && valida(bloco)) {
-                    blocos += bloco.sorted()
+                    achados += bloco.sorted()
                     bloco = mutableListOf()
                 }
-            } else {
-                if (valida(bloco)) blocos += bloco.sorted()
-                bloco = mutableListOf()
             }
+            if (achados.isEmpty() && validaComMais(todos)) achados += todos.sorted()
+            blocos += achados
         }
         return blocos
     }

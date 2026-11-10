@@ -291,9 +291,19 @@ class PendenciasTest {
     @Test
     fun modoIndividualSoTemAsApuracoes() {
         val individual = base.copy(modo = Modo.INDIVIDUAL, pessoas = pessoas.take(1))
-        // Sem aporte, sem dia de aposta, sem extrato.
+        // Sem aporte e sem extrato.
         assertTrue(Pendencias.de(individual, LocalDateTime.of(2026, 10, 31, 12, 0), fuso).isEmpty())
-        assertTrue(Pendencias.de(individual, LocalDateTime.of(2026, 11, 1, 12, 0), fuso).isEmpty())
+        // Desde a 0.22 o dia de aposta vale também no individual (pelo calendário dos Parâmetros)...
+        val dia1 = Pendencias.de(individual, LocalDateTime.of(2026, 11, 1, 12, 0), fuso).single()
+        assertEquals(Pendencia.Tipo.APOSTA_DO_DIA, dia1.tipo)
+        assertEquals("Hoje é dia de aposta.", dia1.texto)
+        // ...e some com o calendário "sem dia definido".
+        val semDia = individual.copy(config = individual.config.copy(parametros = Parametros(diasDeAposta = emptyList())))
+        assertTrue(Pendencias.de(semDia, LocalDateTime.of(2026, 11, 1, 12, 0), fuso).isEmpty())
+        // No bolão, o dia escolhido nos Parâmetros (o 2) vale no lugar dos do termo.
+        val dia2 = base.copy(config = base.config.copy(parametros = Parametros(diasDeAposta = listOf(2))), inicioAportes = "2027-01")
+        assertTrue(Pendencias.de(dia2, LocalDateTime.of(2026, 11, 1, 12, 0), fuso).none { it.tipo == Pendencia.Tipo.APOSTA_DO_DIA })
+        assertTrue(Pendencias.de(dia2, LocalDateTime.of(2026, 11, 2, 12, 0), fuso).any { it.tipo == Pendencia.Tipo.APOSTA_DO_DIA })
     }
 
     @Test

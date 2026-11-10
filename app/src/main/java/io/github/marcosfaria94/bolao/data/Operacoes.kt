@@ -243,9 +243,19 @@ object Operacoes {
     )
 
     fun provisao(e: Estado, hoje: LocalDate): Provisao {
-        val restantes = Calendario.apostasRestantesNoMes(hoje, apostaFeitaEm(e, hoje))
-        val porAposta = CalculoRateio.valorPorAposta(e.config.aporteMensal, e.pessoas.size.coerceAtLeast(1))
-        val aportes = aportesDoMes(e, YearMonth.from(hoje))
+        val dias = e.parametros.dias
+        val mes = YearMonth.from(hoje)
+        val aportes = aportesDoMes(e, mes)
+        if (dias.isEmpty()) {
+            // Sem dia definido (desde a 0.22): não há apostas programadas a contar. Fica reservado o que
+            // ainda sobra dos aportes do mês depois das apostas já feitas nele.
+            val gasto = apostasDoMes(e, mes).sumOf { it.valor }
+            return Provisao(0, 0, aportes, (maxOf(aportes, 0) - gasto).coerceAtLeast(0))
+        }
+        val restantes = Calendario.apostasRestantesNoMes(hoje, apostaFeitaEm(e, hoje), dias)
+        // As apostas do mês: os dias do calendário que o mês tem (o 31 não conta em abril).
+        val noMes = Calendario.diasProgramados(mes, dias).size.coerceAtLeast(1)
+        val porAposta = CalculoRateio.valorPorAposta(e.config.aporteMensal, e.pessoas.size.coerceAtLeast(1), noMes)
         return Provisao(restantes, porAposta, aportes, CalculoRateio.provisionado(restantes, porAposta, aportes))
     }
 
@@ -278,7 +288,8 @@ object Operacoes {
         val rascunho = Comprovante(
             id = id, tipo = tipo, titulo = titulo, texto = texto, data = data, criadoEm = agora,
             imagem = Arquivo(nomeImagem(tipo, id), nomeImagem(tipo, id), "image/png", agora),
-            anexos = anexos, autenticacao = "", envioDispensado = envioDispensado,
+            // No bolão informal (desde a 0.22) nada é enviado ao grupo: o comprovante fica só no app.
+            anexos = anexos, autenticacao = "", envioDispensado = envioDispensado || e.informal,
             apostaId = apostaId, rateioNumero = rateioNumero, mes = mes,
         )
         return rascunho.copy(autenticacao = Autenticacao.calcular(e.comprovantes.lastOrNull()?.autenticacao, partesAutenticacao(rascunho)))
@@ -465,6 +476,60 @@ object Operacoes {
         return comAsDuas to comAsDuas.apostas.first { it.id == espelho.id }
     }
 
+    // ---------- teimosinha (desde a 0.22) ----------
+
+    /** A teimosinha vai de 2 a [MAXIMO_DA_TEIMOSINHA] concursos seguidos. */
+    const val MAXIMO_DA_TEIMOSINHA = 24
+
+    /** A modalidade tem teimosinha (a Loteca muda de jogos e a Federal de bilhete a cada concurso). */
+    fun temTeimosinha(m: Modalidade): Boolean = m.formato != Formato.LOTECA && m.formato != Formato.FEDERAL
+
+    /** Em quantos concursos seguidos a aposta [a] (ainda não registrada) vai valer: 1 = só no dela. */
+    fun concursosDaTeimosinha(a: Aposta): Int =
+        if (!temTeimosinha(a.modalidade)) 1 else a.teimosinha.coerceIn(1, MAXIMO_DA_TEIMOSINHA)
+
+    /** Quantas apostas o registro de [a] vai fazer: uma por concurso da teimosinha, vezes 2 com a aposta espelho. */
+    fun apostasDoRegistro(a: Aposta): Int = concursosDaTeimosinha(a) * (if (a.espelho && Volante.temEspelho(a.modalidade)) 2 else 1)
+
+    /**
+     * Registra a aposta [id] com tudo o que ela pede (desde a 0.22): a aposta espelho da Lotomania e a
+     * teimosinha, que vira uma aposta por concurso (o da aposta e os seguintes), cada uma com o seu
+     * número no mês, a sua apuração e o seu comprovante. As dos concursos seguintes ficam sem o dia do
+     * sorteio e sem o prêmio estimado até a Caixa divulgar. Devolve o estado e as apostas registradas, em ordem.
+     */
+    fun registrarTudo(e: Estado, id: String, hoje: LocalDate, agora: Long): Pair<Estado, List<Aposta>> {
+        val original = e.apostas.first { it.id == id }
+        val n = concursosDaTeimosinha(original)
+        var est = e
+        val ids = mutableListOf<String>()
+        var t = agora
+        for (i in 0 until n) {
+            val alvo = if (i == 0) {
+                val marcada = if (n > 1) original.copy(teimosinha = n, teimosinhaOrdem = 1, teimosinhaDe = id) else original.copy(teimosinha = 0)
+                est = salvarRascunho(est, marcada)
+                id
+            } else {
+                val copia = original.copy(
+                    id = novoId(), numero = 0, concurso = original.concurso + i, dataSorteio = null, premioEstimado = null,
+                    criadaEm = t, teimosinha = n, teimosinhaOrdem = i + 1, teimosinhaDe = id, indices = null,
+                    comprovante = null, registrada = false, apuracao = null, pendenteDeAnexo = false, notasDoAnexo = emptyList(),
+                )
+                est = salvarRascunho(est, copia)
+                copia.id
+            }
+            val (novo, espelho) = registrarComEspelho(est, alvo, hoje, t)
+            est = novo
+            ids += alvo
+            espelho?.let { ids += it.id }
+            t += 2
+        }
+        return est to ids.map { i -> est.apostas.first { it.id == i } }
+    }
+
+    /** As apostas da mesma teimosinha da aposta [a] (ela também), na ordem dos concursos. */
+    fun daMesmaTeimosinha(e: Estado, a: Aposta): List<Aposta> =
+        if (!a.ehTeimosinha) listOf(a) else e.apostas.filter { it.teimosinhaDe == a.teimosinhaDe }.sortedWith(compareBy({ it.teimosinhaOrdem }, { it.numero }))
+
     /**
      * Guarda nas apostas registradas, ainda sem o resultado, o k1, o k2 e as odds do concurso delas
      * (desde a 0.21), quando os índices de agora ([itens]) são desse concurso. A aposta que já tem os
@@ -500,7 +565,22 @@ object Operacoes {
         val a = e.apostas.first { it.id == id }
         require(a.registrada && a.pendenteDeAnexo) { "Esta aposta não espera comprovante." }
         val base = ajustada?.takeIf { it.id == id } ?: a
-        return e.copy(apostas = e.apostas.map { if (it.id == id) base.copy(comprovante = arquivo, notasDoAnexo = notas) else it })
+        // O comprovante mudou o jogo: guarda como era, para o "tirar o comprovante" desfazer (desde a 0.22).
+        val antes = a.antesDoAnexo ?: jogoDaAposta(a).takeIf { it != jogoDaAposta(base) }
+        return e.copy(apostas = e.apostas.map { if (it.id == id) base.copy(comprovante = arquivo, notasDoAnexo = notas, antesDoAnexo = antes) else it })
+    }
+
+    /** O jogo da aposta (o que o comprovante da Caixa pode mudar). */
+    fun jogoDaAposta(a: Aposta): JogoDaAposta =
+        JogoDaAposta(a.concurso, a.dataSorteio, a.premioEstimado, a.numeros, a.trevos, a.extra, a.palpitesLoteca, a.bilheteFederal, a.valor)
+
+    private fun Aposta.comoAntesDoAnexo(): Aposta {
+        val j = antesDoAnexo
+        val base = if (j == null) this else copy(
+            concurso = j.concurso, dataSorteio = j.dataSorteio, premioEstimado = j.premioEstimado, numeros = j.numeros,
+            trevos = j.trevos, extra = j.extra, palpitesLoteca = j.palpitesLoteca, bilheteFederal = j.bilheteFederal, valor = j.valor,
+        )
+        return base.copy(comprovante = null, notasDoAnexo = emptyList(), antesDoAnexo = null)
     }
 
     /** O dia do sorteio e o prêmio do concurso da aposta (que mudou pelo comprovante da Caixa), antes da conferência. */
@@ -510,11 +590,21 @@ object Operacoes {
         },
     )
 
-    /** Tira o comprovante da Caixa anexado (na conferência): a aposta volta a esperar o comprovante. */
+    /**
+     * Tira o comprovante da Caixa anexado (na conferência): a aposta volta a esperar o comprovante e,
+     * se ele tinha mudado o jogo, volta a ser como era antes dele (até a 0.21 a mudança ficava: anexar
+     * de novo "dava certo" com o jogo já trocado). O mesmo arquivo em outras apostas que esperam a
+     * conferência (uma teimosinha, um comprovante com vários jogos) sai delas também.
+     */
     fun desanexarDaAposta(e: Estado, id: String): Estado {
         val a = e.apostas.first { it.id == id }
         require(aguardandoConferencia(a)) { "Esta aposta já foi conferida." }
-        return e.copy(apostas = e.apostas.map { if (it.id == id) it.copy(comprovante = null, notasDoAnexo = emptyList()) else it })
+        val arquivo = a.comprovante?.nome
+        return e.copy(
+            apostas = e.apostas.map {
+                if (it.id == id || (aguardandoConferencia(it) && it.comprovante?.nome == arquivo)) it.comoAntesDoAnexo() else it
+            },
+        )
     }
 
     /**
@@ -527,7 +617,7 @@ object Operacoes {
         require(a.registrada) { "Registre a aposta antes." }
         require(a.pendenteDeAnexo) { "Esta aposta já foi conferida." }
         val anexo = requireNotNull(a.comprovante) { "Anexe o comprovante da Caixa." }
-        val conferida = a.copy(pendenteDeAnexo = false, notasDoAnexo = emptyList())
+        val conferida = a.copy(pendenteDeAnexo = false, notasDoAnexo = emptyList(), antesDoAnexo = null)
         val texto = blocoAposta(e, conferida, a.dataAposta, saldoAntesDe(e, id, TipoLancamento.APOSTA))
         val c = novoComprovante(
             e, TipoComprovante.APOSTA, Mensagens.tituloAposta(a.numero, a.dataAposta), texto, a.dataAposta, agora,
@@ -578,6 +668,8 @@ object Operacoes {
         if (a.modalidade.formato == Formato.LOTECA || a.modalidade.formato == Formato.FEDERAL) return false
         if (a.comprovante != null || a.concurso !in 1 until proximo) return false
         if (!a.registrada) return true
+        // A teimosinha registrada vale para os concursos dela (a Caixa já tem a aposta em cada um).
+        if (a.ehTeimosinha) return false
         val sorteio = a.dataSorteio
         return a.pendenteDeAnexo && (sorteio == null || sorteio.isBefore(a.dataAposta))
     }
@@ -587,7 +679,40 @@ object Operacoes {
      * sem a data do sorteio (a Caixa não tinha divulgado), e agora a data chegou.
      */
     fun semDataDivulgada(a: Aposta, p: ProximoConcurso): Boolean =
-        (!a.registrada || a.pendenteDeAnexo) && a.comprovante == null && a.concurso == p.numero && a.dataSorteio == null && p.data != null
+        a.concurso == p.numero && a.dataSorteio == null && p.data != null && a.apuracao == null &&
+            // A teimosinha é registrada sem o dia dos concursos seguintes: o dia chega mesmo depois da conferência.
+            (a.ehTeimosinha || ((!a.registrada || a.pendenteDeAnexo) && a.comprovante == null))
+
+    /**
+     * As apostas registradas que ficaram sem o dia do sorteio (os concursos seguintes de uma teimosinha)
+     * e cujo concurso a Caixa já sorteou: sem o dia, a apuração nunca sairia. Quem chama busca o concurso
+     * na Caixa e grava o dia ([comDataDoSorteio]).
+     */
+    fun semDataJaSorteadas(e: Estado, ultimos: Map<Modalidade, Int>): List<Aposta> = e.apostas.filter { a ->
+        a.registrada && a.dataSorteio == null && a.apuracao?.confirmadaEm == null && a.concurso > 0 &&
+            (ultimos[a.modalidade] ?: 0) >= a.concurso
+    }
+
+    /** Só a parte das datas do [atualizarConcursos]: o dia do sorteio (e o prêmio) que a Caixa divulgou depois. */
+    fun completarDatas(e: Estado, proximos: Map<Modalidade, ProximoConcurso>): Estado {
+        var mudou = false
+        val apostas = e.apostas.map { a ->
+            val p = proximos[a.modalidade]
+            if (p != null && semDataDivulgada(a, p)) a.copy(dataSorteio = p.data, premioEstimado = a.premioEstimado ?: p.premio).also { mudou = true } else a
+        }
+        return if (mudou) e.copy(apostas = apostas) else e
+    }
+
+    /** O próximo concurso de cada modalidade, pelos índices guardados (o que a Caixa está recebendo agora). */
+    fun proximosConcursos(itens: Map<Modalidade, Indices.Item>): Map<Modalidade, ProximoConcurso> = itens.mapNotNull { (m, item) ->
+        val numero = item.proximoNumero ?: return@mapNotNull null
+        val u = item.ultimo
+        m to ProximoConcurso(numero, u?.proximaData?.takeIf { u.proximoNumero == numero }, u?.premioEstimadoProximo?.takeIf { u.proximoNumero == numero })
+    }.toMap()
+
+    /** Grava o dia do sorteio das apostas ([datas]: id da aposta -> dia) que ficaram sem ele. */
+    fun comDataDoSorteio(e: Estado, datas: Map<String, LocalDate>): Estado =
+        if (datas.isEmpty()) e else e.copy(apostas = e.apostas.map { a -> datas[a.id]?.takeIf { a.dataSorteio == null }?.let { a.copy(dataSorteio = it) } ?: a })
 
     /** A aposta passada para o próximo concurso (número, sorteio e prêmio estimado). */
     fun noConcurso(a: Aposta, p: ProximoConcurso): Aposta =

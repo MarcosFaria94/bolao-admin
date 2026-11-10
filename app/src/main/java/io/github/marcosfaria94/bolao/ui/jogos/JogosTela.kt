@@ -5,7 +5,17 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,8 +68,9 @@ import java.time.Instant
  * ficam guardados no celular e valem até o próximo sorteio: a Caixa só é consultada 1 hora depois de
  * cada sorteio ([AgendaDaCaixa]); o quadro do alto diz se os dados estão em dia ou esperando o
  * resultado (e quais jogos). Puxar a lista para baixo abre o Painel de Jogos. Tocar numa modalidade abre a página do jogo; segurar, os Detalhes dela. Tocar em
- * "Jogos" na barra de baixo, já nos Jogos ([paraOTopo]), volta a lista ao começo. Tocar na Legenda
- * abre a página que explica o cálculo do k1 e do k2 ([abrirIndices], desde a 0.19).
+ * "Jogos" na barra de baixo, já nos Jogos ([paraOTopo]), volta a lista ao começo. Desde a 0.22: o título
+ * grande "Escolha um jogo" e, embaixo, dois botões lado a lado: "Indicadores" (abre a página que explica
+ * o k1 e o k2, [abrirIndices]) e "Dados em dia" (ou "Aguardando resultado"), que ao tocar mostra o texto.
  */
 @Composable
 fun JogosTela(
@@ -96,10 +107,37 @@ fun JogosTela(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            item { Legenda(abrirIndices) }
-            // Os dados estão em dia (até o próximo sorteio) ou esperando o resultado?
+            // O título bem grande (desde a 0.22).
+            item(key = "titulo") {
+                Text(
+                    TITULO_DOS_JOGOS,
+                    style = MaterialTheme.typography.headlineLarge.copy(fontSize = 32.sp, lineHeight = 38.sp),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+                )
+            }
+            // Os dois botões, lado a lado: os Indicadores (abre a página do k1 e do k2) e a situação dos dados
+            // (em dia ou esperando o resultado), que ao tocar mostra o texto embaixo.
             item(key = "situacao") {
-                SituacaoDosDados(situacoes, consultas, agora, atualizando, aoTentar = { indices.atualizar(forcar = true) })
+                var aberto by rememberSaveable { mutableStateOf(false) }
+                val esperando = esperandoResultado(situacoes)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                        BotaoDoQuadro(
+                            INDICADORES, Icons.Outlined.Info, Dourado, Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                            Modifier.weight(1f).fillMaxHeight(), aoTocar = abrirIndices,
+                        )
+                        BotaoDoQuadro(
+                            if (esperando.isEmpty()) TITULO_EM_DIA else TITULO_ESPERANDO,
+                            if (esperando.isEmpty()) Icons.Outlined.CheckCircle else Icons.Outlined.HourglassTop,
+                            if (esperando.isEmpty()) corEntrada() else corDestaque(),
+                            if (aberto) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                            Modifier.weight(1f).fillMaxHeight(),
+                            descricaoDoSinal = if (aberto) "Fechar" else "Ver mais",
+                        ) { aberto = !aberto }
+                    }
+                    if (aberto) SituacaoDosDados(situacoes, consultas, agora, atualizando, aoTentar = { indices.atualizar(forcar = true) })
+                }
             }
             // Preço de Ajustes diferente do dos parâmetros ou regras da Caixa que mudaram.
             items(avisos, key = { it.chave }) { a -> Aviso(a.titulo, alerta = true) }
@@ -117,48 +155,50 @@ fun JogosTela(
     }
 }
 
-/** O que querem dizer os índices dos cartões (a lista vem em ordem de k1). */
-private val LEGENDA = listOf(
-    "k1" to "Retorno médio",
-    "k2" to "Retorno médio frequente",
-    "odds" to "Chance de prêmio",
-)
+/** O título grande da tela Jogos (desde a 0.22). */
+const val TITULO_DOS_JOGOS = "Escolha um jogo"
+
+/** O botão que abre a página do k1, do k2 e das odds (até a 0.21, o quadro "Legenda", com o texto de cada índice). */
+const val INDICADORES = "Indicadores"
 
 /**
- * Legenda dos índices num quadro, com os dois-pontos alinhados:
- * · k1   : Retorno médio
- * · k2   : Retorno médio frequente
- * · odds : Chance de prêmio
- * O quadro inteiro é um botão (desde a 0.19): abre a página do cálculo ("Ver cálculo ›").
+ * Um dos dois botões do alto dos Jogos (desde a 0.22): o ícone, o nome e, no fim, o sinal de que é um
+ * botão (a seta para a página, ou a de abrir e fechar), com o contorno na cor do app.
  */
 @Composable
-private fun Legenda(aoTocar: () -> Unit) {
-    val estilo = MaterialTheme.typography.bodyLarge
-    val cor = MaterialTheme.colorScheme.onSurface
-    val suave = MaterialTheme.colorScheme.onSurfaceVariant
-    val larguraDaSigla = with(LocalDensity.current) { 52.sp.toDp() }
+private fun BotaoDoQuadro(
+    texto: String,
+    icone: ImageVector,
+    corDoIcone: Color,
+    sinal: ImageVector,
+    modifier: Modifier = Modifier,
+    descricaoDoSinal: String? = null,
+    aoTocar: () -> Unit,
+) {
+    val primaria = MaterialTheme.colorScheme.primary
+    // A letra não cresce com a letra grande do celular: os dois botões dividem a largura da tela, e com a
+    // letra grande "Indicadores" quebrava no meio da palavra.
+    val (letra, linha) = with(LocalDensity.current) { 16.dp.toSp() to 19.dp.toSp() }
     Card(
         onClick = aoTocar,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.5.dp, primaria.copy(alpha = 0.55f)),
+        modifier = modifier,
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Info, contentDescription = null, tint = Dourado, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Legenda", style = MaterialTheme.typography.titleMedium, color = cor, modifier = Modifier.weight(1f))
-                Text("Ver cálculo", style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp), color = MaterialTheme.colorScheme.primary)
-                Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-            }
-            LEGENDA.forEach { (sigla, texto) ->
-                Row {
-                    Text("·", style = estilo, color = suave, modifier = Modifier.width(16.dp))
-                    // A largura acompanha o tamanho da letra do celular (com a letra grande, "odds" quebrava).
-                    Text(sigla, style = estilo, fontWeight = FontWeight.SemiBold, color = cor, maxLines = 1, softWrap = false, modifier = Modifier.width(larguraDaSigla))
-                    Text(": $texto", style = estilo, color = suave)
-                }
-            }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxHeight().padding(start = 10.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+        ) {
+            Icon(icone, contentDescription = null, tint = corDoIcone, modifier = Modifier.size(19.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(
+                texto,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = letra, lineHeight = linha),
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(sinal, contentDescription = descricaoDoSinal, tint = primaria, modifier = Modifier.size(22.dp))
         }
     }
 }
@@ -174,10 +214,10 @@ fun nomesDosJogos(lista: List<Modalidade>): String {
 }
 
 /**
- * O quadro da situação dos dados (desde a 0.20), abaixo da Legenda. Em dia: "Dados em dia", até quando
- * valem (o próximo sorteio) e que o app consulta a Caixa 1 hora depois de cada sorteio. Esperando: os
- * jogos que esperam o resultado e quando é a próxima consulta; se a Caixa não respondeu, o erro e o
- * "Tentar agora".
+ * O texto da situação dos dados (desde a 0.20; desde a 0.22 só aparece ao tocar no botão "Dados em dia"
+ * ou "Aguardando resultado"). Em dia: até quando os dados valem (o próximo sorteio) e que o app consulta
+ * a Caixa 1 hora depois de cada sorteio. Esperando: os jogos que esperam o resultado e quando é a
+ * próxima consulta; se a Caixa não respondeu, o erro e o "Tentar agora".
  */
 @Composable
 private fun SituacaoDosDados(
@@ -196,20 +236,6 @@ private fun SituacaoDosDados(
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             val emDia = esperando.isEmpty()
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    if (emDia) Icons.Outlined.CheckCircle else Icons.Outlined.HourglassTop,
-                    contentDescription = null,
-                    tint = if (emDia) corEntrada() else corDestaque(),
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (emDia) TITULO_EM_DIA else TITULO_ESPERANDO,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
             if (emDia) {
                 val proximo = situacoes.values.mapNotNull { s -> s.sorteio?.takeIf { s.certa } }.minOrNull()
                 Text(

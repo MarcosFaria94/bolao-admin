@@ -38,6 +38,8 @@ import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
+import io.github.marcosfaria94.bolao.ui.comum.depoisDoRegistro
+import io.github.marcosfaria94.bolao.ui.comum.textoDeRegistrar
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
@@ -106,8 +108,12 @@ fun AporteTela(estado: Estado) {
                 modifier = Modifier.fillMaxWidth(),
             )
             Aviso(
-                "Envie o lembrete ao grupo. Quando os Pix caírem na caixinha, registre o aporte: " +
-                    "o aporte mensal é só registrado, sem mensagem para o grupo.",
+                if (estado.enviaAoGrupo) {
+                    "Envie o lembrete ao grupo. Quando os Pix caírem na caixinha, registre o aporte: " +
+                        "o aporte mensal é só registrado, sem mensagem para o grupo."
+                } else {
+                    "Quando os Pix caírem na caixinha, registre o aporte. Se quiser, mande o lembrete aos integrantes."
+                },
             )
             BotoesDeRegistro(
                 habilitado = true,
@@ -134,7 +140,10 @@ fun AporteTela(estado: Estado) {
                 rotulo = "Valor total do aporte",
                 modifier = Modifier.fillMaxWidth(),
             )
-            Aviso("Aporte adicional só com a concordância dos 3 integrantes, registrada no grupo (Parte 2 do termo).")
+            Aviso(
+                if (estado.enviaAoGrupo) "Aporte adicional só com a concordância dos 3 integrantes, registrada no grupo (Parte 2 do termo)."
+                else "Aporte adicional só com a concordância de todos os integrantes.",
+            )
             problema?.takeIf { valor > 0 }?.let { Aviso(it, alerta = true) }
             BotoesDeRegistro(
                 habilitado = problema == null,
@@ -142,6 +151,7 @@ fun AporteTela(estado: Estado) {
                 aoVisualizar = { vendo = true },
                 aoRegistrar = { confirmar = true },
                 visualizarHabilitado = valor > 0,
+                textoRegistrar = textoDeRegistrar(estado),
             )
         }
     }
@@ -160,7 +170,7 @@ fun AporteTela(estado: Estado) {
             titulo = if (mensal) "Registrar o aporte mensal?" else "Registrar o aporte adicional?",
             texto = (
                 if (mensal) "Aporte de ${Dinheiro.rs(valorAporte)} ${Datas.quando(dataAporte, hoje)}. Fica só registrado (sem mensagem para o grupo)."
-                else "Aporte de ${Dinheiro.rs(valorAporte)} ${Datas.quando(dataAporte, hoje)}. Em seguida o WhatsApp abre com o comprovante."
+                else "Aporte de ${Dinheiro.rs(valorAporte)} ${Datas.quando(dataAporte, hoje)}. " + depoisDoRegistro(estado)
                 ) + "\n\n" + AVISO_DEFINITIVO,
             confirmar = "Confirmar",
             aoConfirmar = {

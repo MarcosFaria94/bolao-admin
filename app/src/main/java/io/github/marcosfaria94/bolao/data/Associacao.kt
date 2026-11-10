@@ -13,6 +13,8 @@ import io.github.marcosfaria94.bolao.domain.Modalidade
  * os comprovantes do bolão. Função pura: quem chama guarda os arquivos, lê o texto e grava o estado.
  *
  * Regras:
+ * - primeiro vão os comprovantes iguais a uma aposta (de todos os arquivos); os que não batem em cheio
+ *   vão depois, para a aposta mais parecida das que sobraram (desde a 0.22);
  * - arquivo repetido (o mesmo conteúdo já anexado, ou duas vezes no mesmo lote): descartado;
  * - comprovante da Caixa com outros números (ou outro concurso) que os da aposta do app: a aposta
  *   fica como no comprovante (o jogo é alterado pelos números do comprovante), com o aviso;
@@ -23,8 +25,12 @@ import io.github.marcosfaria94.bolao.domain.Modalidade
  */
 object Associacao {
 
-    /** Um arquivo escolhido, já guardado no app, com o texto lido nele. */
-    data class Entrada(val arquivo: Arquivo, val texto: String)
+    /**
+     * Um arquivo escolhido, já guardado no app, com o texto lido nele. [alternativas] (desde a 0.22):
+     * outras leituras do mesmo arquivo (o texto do próprio PDF, a leitura com a imagem maior), para
+     * quando a principal não bate com nenhuma aposta.
+     */
+    data class Entrada(val arquivo: Arquivo, val texto: String, val alternativas: List<String> = emptyList())
 
     enum class Tipo {
         /** Comprovante da Caixa anexado à aposta, conferindo com ela. */
@@ -101,6 +107,50 @@ object Associacao {
         Formato.FEDERAL -> l.bilhete != null
     }
 
+    /** Quanto a leitura [l] se parece com a aposta [a]: quantos números (ou colunas, ou palpites) batem. */
+    fun semelhanca(a: Aposta, l: LeituraComprovante.Lida): Int = when (a.modalidade.formato) {
+        Formato.NUMEROS -> l.numeros?.let { lidos -> a.numeros.count { it in lidos } } ?: 0
+        Formato.COLUNAS -> l.numeros?.let { lidos -> a.numeros.indices.count { lidos.getOrNull(it) == a.numeros[it] } } ?: 0
+        Formato.LOTECA -> l.palpitesLoteca?.let { lidos -> a.palpitesLoteca.indices.count { lidos.getOrNull(it) == a.palpitesLoteca[it] } } ?: 0
+        Formato.FEDERAL -> if (l.bilhete != null && l.bilhete.filter(Char::isDigit) == a.bilheteFederal.orEmpty().filter(Char::isDigit)) 1 else 0
+    }
+
+    /** Os números das apostas [livres] da modalidade [m], para a leitura (apostas com mais números, desempate). */
+    private fun esperados(livres: List<Aposta>, m: Modalidade): List<List<Int>> =
+        if (m.formato != Formato.NUMEROS) emptyList() else livres.filter { it.modalidade == m }.map { it.numeros.sorted() }
+
+    /** As leituras de aposta de um [texto] (uma por jogo), com a modalidade de cada uma, sem repetir o mesmo jogo. */
+    private fun leiturasDe(texto: String, livres: List<Aposta>, pix: Boolean): List<Pair<Modalidade, LeituraComprovante.Lida>> {
+        var leituras = LeituraComprovante.secoes(texto).flatMap { (m, t) ->
+            LeituraComprovante.lerApostas(m, t, esperados(livres, m)).filter { !it.vazia }.map { m to it }
+        }
+        // Sem o nome da modalidade no texto: tenta as modalidades das apostas que esperam comprovante.
+        if (leituras.isEmpty() && !pix) {
+            leituras = livres.map { it.modalidade }.distinct().flatMap { m ->
+                LeituraComprovante.lerApostas(m, texto, esperados(livres, m)).filter { temJogo(m, it) }.map { m to it }
+            }
+        }
+        return leituras.distinctBy { (m, l) -> listOf(m, l.numeros, l.palpitesLoteca, l.bilhete) }
+    }
+
+    /** Quantas das [leituras] batem em cheio com uma aposta [livres] (cada aposta conta uma vez). */
+    private fun acertosEmCheio(leituras: List<Pair<Modalidade, LeituraComprovante.Lida>>, livres: List<Aposta>): Int {
+        val usadas = mutableSetOf<String>()
+        return leituras.count { (m, l) ->
+            livres.firstOrNull { it.id !in usadas && it.modalidade == m && mesmoJogo(it, l) }?.also { usadas += it.id } != null
+        }
+    }
+
+    /**
+     * Um comprovante do [texto] confere em cheio com as apostas que esperam comprovante: todas as leituras
+     * têm o jogo e cada uma é igual a uma aposta. Aí não é preciso uma segunda leitura do arquivo.
+     */
+    fun confereEmCheio(e: Estado, texto: String): Boolean {
+        val livres = Operacoes.apostasSemComprovante(e)
+        val leituras = leiturasDe(texto, livres, LeituraComprovante.ehPix(texto))
+        return leituras.isNotEmpty() && leituras.all { (m, l) -> temJogo(m, l) } && acertosEmCheio(leituras, livres) == leituras.size
+    }
+
     fun associar(e: Estado, entradas: List<Entrada>): Resultado {
         var est = e
         val avisos = mutableListOf<Aviso>()
@@ -116,44 +166,17 @@ object Associacao {
 
         fun aposta(id: String) = est.apostas.first { it.id == id }
 
-        /** Tenta pôr a leitura [l] (da modalidade [m]) numa aposta. true = usou o arquivo. */
-        fun anexarLeitura(en: Entrada, m: Modalidade, lida: LeituraComprovante.Lida): Boolean {
+        /** Anexa a leitura [l] à aposta [alvo] (e às outras da mesma teimosinha, que têm o mesmo comprovante). */
+        fun anexarEm(en: Entrada, alvo: Aposta, l: LeituraComprovante.Lida, duvidoso: Int?) {
+            val m = alvo.modalidade
             val nome = en.arquivo.nomeOriginal
-            val candidatas = livres.map { aposta(it) }.filter { it.modalidade == m }
-            // O concurso que bate com uma aposta; um número muito longe do de todas (ex.: um telefone) não muda a aposta.
-            val esperados = candidatas.map { it.concurso }.ifEmpty {
-                est.apostas.filter { it.registrada && it.modalidade == m && it.comprovante != null }.map { it.concurso }
-            }
-            val escolha = LeituraComprovante.escolherConcurso(lida, esperados)
-            val l = escolha.lida
-            val exata = candidatas.firstOrNull { mesmoJogo(it, l) && (l.concurso == null || l.concurso == it.concurso) }
-                ?: candidatas.firstOrNull { mesmoJogo(it, l) }
-            val alvo = exata ?: run {
-                // O jogo do comprovante já tem comprovante (de antes ou deste lote): é repetição.
-                val jaTem = est.apostas.firstOrNull { a ->
-                    a.registrada && a.comprovante != null && a.modalidade == m && mesmoJogo(a, l) &&
-                        (l.concurso == null || l.concurso == a.concurso)
-                }
-                if (jaTem != null) {
-                    avisos += Aviso(Tipo.ARQUIVO_REPETIDO, "$nome: comprovante repetido (${nomeDaAposta(jaTem)} já tem o seu). Descartado.")
-                    return false
-                }
-                candidatas.firstOrNull { l.concurso != null && it.concurso == l.concurso } ?: candidatas.firstOrNull()
-            }
-            if (alvo == null) {
-                avisos += Aviso(
-                    Tipo.SEM_APOSTA,
-                    "$nome: ${m.nome}${l.concurso?.let { " $it" } ?: ""} não corresponde a nenhuma aposta esperando comprovante. Descartado.",
-                )
-                return false
-            }
             val diferencas = Operacoes.divergencias(alvo, l)
             val ajustada = if (diferencas.isEmpty()) null else Operacoes.ajustarPeloComprovante(alvo, l)
             val notas = buildList {
                 diferencas.forEach { d -> add("${d.campo}: no app ${d.noApp}; no comprovante ${d.naCaixa}.") }
                 if (!temJogo(m, l)) add("Não deu para ler o jogo no comprovante: confira os números.")
                 when {
-                    escolha.duvidoso != null -> add(notaConcursoDuvidoso(escolha.duvidoso, alvo.concurso))
+                    duvidoso != null -> add(notaConcursoDuvidoso(duvidoso, alvo.concurso))
                     l.concurso == null -> add("Não deu para ler o concurso no comprovante: confira.")
                 }
             }
@@ -169,6 +192,81 @@ object Associacao {
                         diferencas.joinToString(" ") { d -> "${d.campo}: era ${d.noApp}, ficou ${d.naCaixa}." },
                 )
             }
+            // Teimosinha (desde a 0.22): o comprovante da Caixa é um só para todos os concursos dela.
+            if (alvo.ehTeimosinha) {
+                val irmas = livres.map { aposta(it) }.filter { it.teimosinhaDe == alvo.teimosinhaDe && mesmoPalpite(it, alvo) }
+                irmas.forEach { irma ->
+                    // O mesmo jogo do comprovante, cada uma no seu concurso.
+                    val igual = ajustada?.let { irma.copy(numeros = it.numeros, trevos = it.trevos, extra = it.extra) }
+                    est = Operacoes.anexarNaAposta(est, irma.id, en.arquivo, igual, notas.filter { !it.startsWith("Concurso:") })
+                    livres.remove(irma.id)
+                }
+                if (irmas.isNotEmpty()) {
+                    avisos += Aviso(
+                        Tipo.ANEXADO,
+                        "Teimosinha: o mesmo comprovante ($nome) ficou também " +
+                            (if (irmas.size == 1) "na aposta" else "nas apostas") + " " + irmas.joinToString(", ") { "Nº${it.numero}" } + ".",
+                    )
+                }
+            }
+        }
+
+        /** A leitura com o concurso escolhido diante das apostas da modalidade [m] que esperam comprovante. */
+        fun comConcurso(m: Modalidade, lida: LeituraComprovante.Lida): LeituraComprovante.Escolha {
+            val candidatas = livres.map { aposta(it) }.filter { it.modalidade == m }
+            // O concurso que bate com uma aposta; um número muito longe do de todas (ex.: um telefone) não muda a aposta.
+            val esperados = candidatas.map { it.concurso }.ifEmpty {
+                est.apostas.filter { it.registrada && it.modalidade == m && it.comprovante != null }.map { it.concurso }
+            }
+            return LeituraComprovante.escolherConcurso(lida, esperados)
+        }
+
+        /** 1ª passada: a leitura igual a uma aposta que espera comprovante vai para ela. true = anexou. */
+        fun anexarEmCheio(en: Entrada, m: Modalidade, lida: LeituraComprovante.Lida): Boolean {
+            val candidatas = livres.map { aposta(it) }.filter { it.modalidade == m }
+            val escolha = comConcurso(m, lida)
+            val l = escolha.lida
+            val exata = candidatas.firstOrNull { mesmoJogo(it, l) && (l.concurso == null || l.concurso == it.concurso) }
+                ?: candidatas.firstOrNull { mesmoJogo(it, l) }
+                ?: return false
+            anexarEm(en, exata, l, escolha.duvidoso)
+            return true
+        }
+
+        /**
+         * 2ª passada: a leitura que não é igual a nenhuma aposta. Vai para a aposta mais parecida (a que tem
+         * mais números em comum; no empate, a do mesmo concurso e a mais antiga), que fica como no
+         * comprovante. Até a 0.21 ia para a primeira da fila, parecida ou não: um número mal lido num
+         * comprovante trocava o jogo de outra aposta, e as seguintes iam trocando em cadeia.
+         */
+        fun anexarNaMaisParecida(en: Entrada, m: Modalidade, lida: LeituraComprovante.Lida): Boolean {
+            val nome = en.arquivo.nomeOriginal
+            val candidatas = livres.map { aposta(it) }.filter { it.modalidade == m }
+            val escolha = comConcurso(m, lida)
+            val l = escolha.lida
+            // O jogo do comprovante já tem comprovante (de antes ou deste lote): é repetição.
+            val jaTem = est.apostas.firstOrNull { a ->
+                a.registrada && a.comprovante != null && a.modalidade == m && mesmoJogo(a, l) &&
+                    (l.concurso == null || l.concurso == a.concurso || a.ehTeimosinha)
+            }
+            if (jaTem != null) {
+                // O mesmo arquivo já está nessa aposta (o jogo aparece duas vezes no texto): nada a avisar.
+                if (jaTem.comprovante?.nome != en.arquivo.nome) {
+                    avisos += Aviso(Tipo.ARQUIVO_REPETIDO, "$nome: comprovante repetido (${nomeDaAposta(jaTem)} já tem o seu). Descartado.")
+                }
+                return false
+            }
+            val alvo = candidatas.withIndex().maxWithOrNull(
+                compareBy<IndexedValue<Aposta>>({ semelhanca(it.value, l) }, { if (l.concurso != null && it.value.concurso == l.concurso) 1 else 0 }, { -it.index }),
+            )?.value
+            if (alvo == null) {
+                avisos += Aviso(
+                    Tipo.SEM_APOSTA,
+                    "$nome: ${m.nome}${l.concurso?.let { " $it" } ?: ""} não corresponde a nenhuma aposta esperando comprovante. Descartado.",
+                )
+                return false
+            }
+            anexarEm(en, alvo, l, escolha.duvidoso)
             return true
         }
 
@@ -211,6 +309,8 @@ object Associacao {
             )
         }
 
+        // O que ficou para a 2ª passada: as leituras que não são iguais a nenhuma aposta.
+        val depois = mutableListOf<Triple<Entrada, Modalidade, LeituraComprovante.Lida>>()
         for (en in entradas) {
             val nome = en.arquivo.nomeOriginal
             val sha = en.arquivo.sha256?.uppercase()
@@ -220,21 +320,20 @@ object Associacao {
                 continue
             }
             val pix = LeituraComprovante.ehPix(en.texto)
-            var leituras = LeituraComprovante.secoes(en.texto).flatMap { (m, t) ->
-                LeituraComprovante.lerApostas(m, t).filter { !it.vazia }.map { m to it }
-            }
-            // Sem o nome da modalidade no texto: tenta as modalidades das apostas que esperam comprovante.
-            if (leituras.isEmpty() && !pix) {
-                leituras = livres.map { aposta(it).modalidade }.distinct().flatMap { m ->
-                    LeituraComprovante.lerApostas(m, en.texto).filter { temJogo(m, it) }.map { m to it }
-                }
-            }
+            // Entre as leituras do arquivo (a principal e as alternativas, desde a 0.22), vale a que mais bate
+            // em cheio com as apostas que esperam comprovante; no empate, a principal.
+            val fila = livres.map { aposta(it) }
+            val leituras = (listOf(en.texto) + en.alternativas).filter { it.isNotBlank() }.ifEmpty { listOf(en.texto) }
+                .map { leiturasDe(it, fila, pix) }
+                .withIndex()
+                .maxWithOrNull(compareBy<IndexedValue<List<Pair<Modalidade, LeituraComprovante.Lida>>>>({ acertosEmCheio(it.value, fila) }, { -it.index }))
+                ?.value.orEmpty()
             val ehAposta = leituras.any { (m, l) -> temJogo(m, l) } || (leituras.isNotEmpty() && !pix)
             when {
                 ehAposta -> {
-                    var usou = false
-                    for ((m, l) in leituras) if (anexarLeitura(en, m, l)) usou = true
-                    if (!usou) descartados += en.arquivo
+                    // Se nenhuma leitura deste arquivo for usada, ele sai no fim (os usados ficam de fora da lista).
+                    descartados += en.arquivo
+                    for ((m, l) in leituras) if (!anexarEmCheio(en, m, l)) depois += Triple(en, m, l)
                 }
                 pix -> anexarPix(en)
                 else -> {
@@ -243,6 +342,7 @@ object Associacao {
                 }
             }
         }
+        for ((en, m, l) in depois) anexarNaMaisParecida(en, m, l)
 
         // Aposta do app repetida: igual a outra que já tem comprovante e sem o comprovante dela.
         for (id in livres.toList()) {

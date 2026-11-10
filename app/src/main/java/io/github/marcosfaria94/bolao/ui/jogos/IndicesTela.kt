@@ -42,7 +42,7 @@ import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
 import kotlin.math.roundToLong
 
-/** Endereço da página que explica o k1 e o k2 (tocar na Legenda dos Jogos). */
+/** Endereço da página que explica o k1 e o k2 (tocar em "Indicadores", nos Jogos). */
 const val ROTA_INDICES = "indices"
 
 /*

@@ -242,7 +242,8 @@ fun ComprovanteTela(estado: Estado, id: String) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             if (c.envioDispensado) {
                 Text(
-                    "Este registro não vai ao grupo (o aporte mensal é só registrado).",
+                    if (estado.informal) "Bolão informal: os comprovantes ficam só no app, sem envio ao grupo."
+                    else "Este registro não vai ao grupo (o aporte mensal é só registrado).",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

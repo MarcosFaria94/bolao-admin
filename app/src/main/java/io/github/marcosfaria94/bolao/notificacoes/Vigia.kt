@@ -117,6 +117,18 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
     /** Os passos 1 e 2 numa sessão: a conferência na Caixa e a apuração automática. Devolve o estado depois deles. */
     private suspend fun vigiar(ctx: Context, repo: Repositorio, agora: LocalDateTime): Estado {
         var e = repo.atual()
+        // 0. O dia do sorteio das apostas registradas sem ele (os concursos seguintes de uma teimosinha, desde
+        // a 0.22): o que a Caixa já divulgou e, se o concurso já foi sorteado, o dia dele (sem o dia, não há apuração).
+        runCatching {
+            val itens = ctx.bolao.indices.itens.value
+            e = repo.atualizar { Operacoes.completarDatas(it, Operacoes.proximosConcursos(itens)) }
+            val ultimos = itens.mapNotNull { (m, item) -> item.ultimo?.numero?.let { m to it } }.toMap()
+            val datas = mutableMapOf<String, java.time.LocalDate>()
+            for (a in Operacoes.semDataJaSorteadas(e, ultimos)) {
+                runCatching { CaixaApi.concurso(a.modalidade, a.concurso).data }.getOrNull()?.let { datas[a.id] = it }
+            }
+            if (datas.isNotEmpty()) e = repo.atualizar { Operacoes.comDataDoSorteio(it, datas) }
+        }
         // 1. Conferência automática depois do horário do sorteio.
         for (a in Pendencias.aguardandoResultado(e, agora)) {
             try {

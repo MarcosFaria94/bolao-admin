@@ -107,6 +107,12 @@ class CadastroViewModel(app: Application, val sessao: String) : AndroidViewModel
     var passo by mutableIntStateOf(0)
     /** Bolão (o grupo) ou Individual: escolhido no passo 1. */
     var modo by mutableStateOf(Modo.BOLAO)
+
+    /**
+     * Bolão formal ou informal (desde a 0.22, escolhido no passo 1). Informal: sem o termo (o cadastro não
+     * pede para anexar nada) e sem nada para enviar ao grupo; o comprovante da Caixa das apostas continua.
+     */
+    var informal by mutableStateOf(false)
     val pessoas = mutableStateListOf(FormPessoa(), FormPessoa(), FormPessoa())
     var administrador by mutableIntStateOf(0)
     /** Modo individual: o nome de quem usa (opcional). */
@@ -114,8 +120,12 @@ class CadastroViewModel(app: Application, val sessao: String) : AndroidViewModel
 
     val individual: Boolean get() = modo == Modo.INDIVIDUAL
 
-    /** Passos do cadastro: 1 = modo; no bolão, integrantes, saldo, aporte e termo; no individual, o nome. */
-    val totalPassos: Int get() = if (individual) 2 else 5
+    /** Passos do cadastro: 1 = modo; no bolão, integrantes, saldo, aporte e termo (o informal não tem o termo); no individual, o nome. */
+    val totalPassos: Int get() = when {
+        individual -> 2
+        informal -> 4
+        else -> 5
+    }
 
     /** Muda a quantidade de integrantes (no mínimo 2), mantendo o que já foi digitado. */
     fun mudarQuantidade(n: Int) {
@@ -231,14 +241,15 @@ class CadastroViewModel(app: Application, val sessao: String) : AndroidViewModel
                 repo.atualizar {
                     it.copy(
                         modo = Modo.BOLAO,
+                        informal = informal,
                         cadastroConcluido = true,
                         cadastradoEm = hoje,
                         inicioAportes = inicioAportes(hoje).toString(),
                         pessoas = lista,
                         config = it.config.copy(aporteMensal = aporteMensal),
                         lancamentos = it.lancamentos + lancamentos,
-                        termo = termo ?: it.termo,
-                        termoSemAssinatura = termoSemAssinatura ?: it.termoSemAssinatura,
+                        termo = if (informal) null else termo ?: it.termo,
+                        termoSemAssinatura = if (informal) null else termoSemAssinatura ?: it.termoSemAssinatura,
                     )
                 }
                 // O nome da sessão (desde a 0.21): o escolhido ou o genérico.
@@ -489,14 +500,16 @@ private fun PassoBoasVindas(
     }
 }
 
-/** Passo 1: Bolão (o grupo) ou Individual. */
+/** A pergunta do bolão formal ou informal, no passo 1 do cadastro (desde a 0.22). */
+const val PERGUNTA_DO_TIPO = "Como é o bolão?"
+
+/** Passo 1: Bolão (o grupo, formal ou informal) ou Individual. */
 @Composable
 private fun PassoModo(vm: CadastroViewModel) {
     Text("Como vai usar o app?", style = MaterialTheme.typography.titleLarge)
     OpcaoDeModo(
         titulo = "Bolão",
-        texto = "Para um grupo de 2 ou mais pessoas, com o termo, os aportes, o rateio, o extrato e os comprovantes " +
-            "enviados ao grupo do WhatsApp.",
+        texto = "Para um grupo de 2 ou mais pessoas, com os aportes, o rateio, o extrato e os comprovantes.",
         escolhida = !vm.individual,
         aoEscolher = { vm.modo = Modo.BOLAO },
     )
@@ -516,6 +529,24 @@ private fun PassoModo(vm: CadastroViewModel) {
     )
     // Com o Individual ocupado, o modo fica no Bolão.
     LaunchedEffect(ocupado) { if (ocupado) vm.modo = Modo.BOLAO }
+    // O bolão formal ou informal (desde a 0.22).
+    if (!vm.individual) {
+        Spacer(Modifier.height(4.dp))
+        Text(PERGUNTA_DO_TIPO, style = MaterialTheme.typography.titleLarge)
+        OpcaoDeModo(
+            titulo = "Formal",
+            texto = "Com o termo assinado pelos integrantes e os comprovantes enviados ao grupo do WhatsApp.",
+            escolhida = !vm.informal,
+            aoEscolher = { vm.informal = false },
+        )
+        OpcaoDeModo(
+            titulo = "Informal",
+            texto = "Sem termo e sem nada para enviar ao grupo: o cadastro não pede para anexar nada. " +
+                "O app só pede o comprovante da Caixa de cada aposta.",
+            escolhida = vm.informal,
+            aoEscolher = { vm.informal = true },
+        )
+    }
 }
 
 @Composable

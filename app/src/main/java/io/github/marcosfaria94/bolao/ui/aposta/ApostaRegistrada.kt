@@ -75,6 +75,7 @@ import io.github.marcosfaria94.bolao.ui.comum.LinhaAnexo
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
+import io.github.marcosfaria94.bolao.ui.comum.depoisDoRegistro
 import io.github.marcosfaria94.bolao.ui.tema.corConferir
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
 import kotlinx.coroutines.Dispatchers
@@ -198,6 +199,7 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
             Text(tituloDaAposta(a), style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp))
             Column {
                 LinhaInfo("Registro", Datas.relativa(a.dataAposta, hoje))
+                if (a.ehTeimosinha) LinhaInfo("Teimosinha", "concurso ${a.teimosinhaOrdem} de ${a.teimosinha}")
                 LinhaInfo("Situação", situacao, destaque = true, cor = corDaSituacao(s))
                 acumulou?.let { LinhaInfo("Acumulou", if (it) "Sim" else "Não") }
             }
@@ -277,7 +279,7 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
                         Text("Visualizar")
                     }
                     Button(onClick = { confirmar = true }, enabled = !trabalhando, modifier = Modifier.weight(1f)) {
-                        if (trabalhando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Apurar e enviar")
+                        if (trabalhando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(if (estado.enviaAoGrupo) "Apurar e enviar" else "Apurar")
                     }
                 }
             }
@@ -400,8 +402,8 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
         DialogoConfirmar(
             titulo = "Confirmar a apuração da aposta Nº${a.numero}?",
             texto = (
-                if (premio > 0) "Soma ${Dinheiro.rs(premio)} ao saldo. Em seguida o WhatsApp abre com o comprovante e a imagem dos acertos."
-                else "Registra que não houve prêmio. Em seguida o WhatsApp abre com o comprovante e a imagem dos acertos."
+                if (premio > 0) "Soma ${Dinheiro.rs(premio)} ao saldo. " + depoisDoRegistro(estado, "o comprovante e a imagem dos acertos")
+                else "Registra que não houve prêmio. " + depoisDoRegistro(estado, "o comprovante e a imagem dos acertos")
                 ) + "\n\n" + AVISO_DEFINITIVO,
             confirmar = "Confirmar",
             aoConfirmar = {
@@ -447,6 +449,7 @@ private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String
             Text(tituloDaAposta(a), style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp))
             Column {
                 LinhaInfo("Registro", Datas.relativa(a.dataAposta, hoje))
+                if (a.ehTeimosinha) LinhaInfo("Teimosinha", "concurso ${a.teimosinhaOrdem} de ${a.teimosinha}")
                 LinhaInfo(
                     "Situação",
                     if (anexado == null) "Esperando o comprovante da Caixa" else "Comprovante anexado: falta a conferência",
@@ -512,6 +515,8 @@ private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String
 private fun detalheDoEnvio(e: Estado, c: Comprovante?): String = when {
     c == null -> "Registro antigo, sem comprovante"
     e.enviado(c) -> "Enviado ao grupo"
+    // Bolão informal (desde a 0.22): nada vai ao grupo.
+    c.envioDispensado -> "Guardado no app"
     else -> "Ainda não enviado ao grupo"
 }
 

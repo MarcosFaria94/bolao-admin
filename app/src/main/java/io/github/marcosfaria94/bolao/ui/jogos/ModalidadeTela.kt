@@ -93,10 +93,10 @@ import java.time.LocalDate
  * "Detalhes →" (na barra de cima, na linha do título) leva aos Detalhes (último resultado, regras e
  * probabilidades), que ficam à direita da página: deslizar o dedo para a esquerda também abre e,
  * para a direita (ou o voltar), volta à página como ela estava, sem mexer na aposta.
- * Na barra: "← Voltar" na página do jogo e, nos Detalhes, "← Aposta" (volta para a página do
- * volante) e "Voltar →". Os dois "Voltar" (e deslizar para a direita na página do jogo ou para a
- * esquerda nos Detalhes) saem da página, de volta para a tela de onde ela foi aberta ([aoSair]: a
- * Home, os Jogos, o Painel de Jogos...).
+ * Na barra: "Detalhes →" na página do jogo e, nos Detalhes, "← Aposta" (volta para a página do
+ * volante). Deslizar para a direita na página do jogo ou para a esquerda nos Detalhes (e puxar para
+ * baixo, ou o voltar do celular) sai da página, de volta para a tela de onde ela foi aberta ([aoSair]:
+ * a Home, os Jogos, o Painel de Jogos...).
  *
  * [apostaId]: a aposta aberta pelo Histórico ou por um aviso. Registrada, ela aparece no lugar do
  * volante (com a apuração e os comprovantes); em andamento, ela é a do volante.
@@ -130,13 +130,13 @@ fun ModalidadeTela(
     // foi aberta direto nos Detalhes (segurar a modalidade): aí ele sai da página (volta para os Jogos).
     val voltarDosDetalhes: () -> Unit = { escopo.launch { paginas.animateScrollToPage(0) } }
     BackHandler(enabled = nosDetalhes && !detalhes) { escopo.launch { paginas.animateScrollToPage(0) } }
-    // Na barra de cima: "← Voltar" (o título da raiz) e "Detalhes →"; nos Detalhes, "← Aposta" (volta à
-    // página do volante) e "Voltar →" (sai da página, como deslizar para a esquerda).
+    // Na barra de cima: só o "Detalhes →"; nos Detalhes, só o "← Aposta" (volta à página do volante). Desde a
+    // 0.22 não há mais o "← Voltar" nem o "Voltar →": sai-se da página deslizando o dedo ou pelo voltar do celular.
     val barra = LocalBarraDaTela.current
     val dono = LocalViewModelStoreOwner.current
     DisposableEffect(nosDetalhes, dono) {
         val acao = if (nosDetalhes) {
-            AcaoDaBarra(dono, titulo = "Aposta", botao = "Voltar", aoTocarBotao = aoSair, aoVoltar = voltarDosDetalhes)
+            AcaoDaBarra(dono, titulo = "Aposta", aoVoltar = voltarDosDetalhes)
         } else {
             AcaoDaBarra(dono, botao = "Detalhes", aoTocarBotao = { escopo.launch { paginas.animateScrollToPage(1) } })
         }
@@ -241,10 +241,10 @@ fun ModalidadeTela(
                     estado = estado,
                     r = v.aposta,
                     mudar = v::mudar,
-                    aoDescartar = {
-                        v.descartar()
-                        aoSair()
-                    },
+                    // O concurso do volante já foi sorteado e o resultado ainda não chegou: sem registro até lá.
+                    bloqueio = avisoDoQuadro?.let { bloqueioDaAposta(v.aposta.concurso.takeIf { it > 0 } ?: item?.proximoNumero) },
+                    atualizando = atualizando,
+                    aoAtualizar = { indices.atualizar(forcar = true) },
                 )
             }
             Spacer(Modifier.height(8.dp))
@@ -252,6 +252,14 @@ fun ModalidadeTela(
     }
     }
 }
+
+/**
+ * O aviso do volante bloqueado (desde a 0.22): os dados guardados são de um concurso que já foi (ou está
+ * sendo) sorteado e o resultado ainda não chegou; a aposta só é liberada com os dados atualizados.
+ */
+fun bloqueioDaAposta(concurso: Int?): String =
+    "Aposta bloqueada: o concurso" + (concurso?.let { " $it" } ?: "") + " já foi sorteado e o resultado ainda não chegou. " +
+        "O registro é liberado quando os dados forem atualizados."
 
 /** Emblema (sigla e concurso), o nome bem grande e a chance do prêmio principal. */
 @Composable

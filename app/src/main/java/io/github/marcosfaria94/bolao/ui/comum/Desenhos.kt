@@ -36,22 +36,29 @@ object Desenhos {
         )
     }
 
+    /**
+     * O porquinho do aporte, refeito na 0.22: de lado, com o corpo num oval só, o focinho, a orelha, o
+     * rabinho enrolado, as quatro pernas (as de trás mais escuras) e a moeda dourada entrando na fenda.
+     */
     val Cofrinho: ImageVector by lazy {
         desenho("Cofrinho") {
-            forma("M9.5,27.5 C6.5,27.5 5.2,25 6.6,23.4", traco = 0xFFE86E9C, espessura = 1.8f, redondo = true)
-            forma("M15.4,33H16.6A2.4,2.4 0 0,1 19,35.4V38.6A2.4,2.4 0 0,1 16.6,41H15.4A2.4,2.4 0 0,1 13,38.6V35.4A2.4,2.4 0 0,1 15.4,33Z", cor = 0xFFE86E9C)
-            forma("M29.4,33H30.6A2.4,2.4 0 0,1 33,35.4V38.6A2.4,2.4 0 0,1 30.6,41H29.4A2.4,2.4 0 0,1 27,38.6V35.4A2.4,2.4 0 0,1 29.4,33Z", cor = 0xFFE86E9C)
-            forma("M8,27.5A15,11.5 0 1,0 38,27.5A15,11.5 0 1,0 8,27.5Z", cor = 0xFFF7A1C0)
-            forma("M25.5,24.5A8.5,8.5 0 1,0 42.5,24.5A8.5,8.5 0 1,0 25.5,24.5Z", cor = 0xFFF7A1C0)
-            forma("M30.5,17.2 L33.2,10.8 L37.6,17.6 Z", cor = 0xFFE86E9C)
-            forma("M38.4,26.5A3.6,4.4 0 1,0 45.6,26.5A3.6,4.4 0 1,0 38.4,26.5Z", cor = 0xFFEE7FA9)
-            forma("M40.3,25.2A0.9,0.9 0 1,0 42.1,25.2A0.9,0.9 0 1,0 40.3,25.2Z", cor = 0xFFA92C5E)
-            forma("M40.5,27.9A0.9,0.9 0 1,0 42.3,27.9A0.9,0.9 0 1,0 40.5,27.9Z", cor = 0xFFA92C5E)
-            forma("M34.9,21.8A1.5,1.5 0 1,0 37.9,21.8A1.5,1.5 0 1,0 34.9,21.8Z", cor = 0xFF2B1B24)
-            forma("M10.5,23.5A6.5,3.2 0 1,0 23.5,23.5A6.5,3.2 0 1,0 10.5,23.5Z", cor = 0xFFFCC8DA)
-            forma("M19.5,17.2 L27,17.2", traco = 0xFFA92C5E, espessura = 1.8f, redondo = true)
-            forma("M17.2,9.6A6,6 0 1,0 29.2,9.6A6,6 0 1,0 17.2,9.6Z", cor = 0xFFF2B630, traco = 0xFFC98A12, espessura = 1.2f)
-            forma("M19.6,9.6A3.6,3.6 0 1,0 26.8,9.6A3.6,3.6 0 1,0 19.6,9.6Z", traco = 0xFFFFE08A, espessura = 1.1f)
+            forma("M8.6,27.6C5.2,28 3.6,24.6 5.6,23.2C7.2,22.2 8.6,24 7.2,25", traco = 0xFFE56F9B, espessura = 1.7f, redondo = true)
+            forma("M18.6,33H18.8A2.2,2.2 0 0,1 21,35.2V39.2A2.2,2.2 0 0,1 18.8,41.4H18.6A2.2,2.2 0 0,1 16.4,39.2V35.2A2.2,2.2 0 0,1 18.6,33Z", cor = 0xFFCB5584)
+            forma("M32.4,33H32.6A2.2,2.2 0 0,1 34.8,35.2V39A2.2,2.2 0 0,1 32.6,41.2H32.4A2.2,2.2 0 0,1 30.2,39V35.2A2.2,2.2 0 0,1 32.4,33Z", cor = 0xFFCB5584)
+            forma("M13.6,33H13.8A2.4,2.4 0 0,1 16.2,35.4V40A2.4,2.4 0 0,1 13.8,42.4H13.6A2.4,2.4 0 0,1 11.2,40V35.4A2.4,2.4 0 0,1 13.6,33Z", cor = 0xFFE56F9B)
+            forma("M27.6,33H27.8A2.4,2.4 0 0,1 30.2,35.4V40A2.4,2.4 0 0,1 27.8,42.4H27.6A2.4,2.4 0 0,1 25.2,40V35.4A2.4,2.4 0 0,1 27.6,33Z", cor = 0xFFE56F9B)
+            forma("M16.6,11.8A5.4,5.4 0 1,0 27.4,11.8A5.4,5.4 0 1,0 16.6,11.8Z", cor = 0xFFF2B630, traco = 0xFFC98A12, espessura = 1.1f)
+            forma("M18.9,11.8A3.1,3.1 0 1,0 25.1,11.8A3.1,3.1 0 1,0 18.9,11.8Z", traco = 0xFFFFE08A, espessura = 1f)
+            forma("M7.5,27.8A15,11.4 0 1,0 37.5,27.8A15,11.4 0 1,0 7.5,27.8Z", cor = 0xFFF59AB9)
+            forma("M27.6,18.4C28.4,14.6 30.6,11.8 33.4,10.6C34.6,13.6 35,16.8 34.2,20.2Z", cor = 0xFFE56F9B)
+            forma("M29.6,18.6C30.2,16.2 31.4,14.4 32.8,13.4C33.2,15.2 33.2,17 32.8,19Z", cor = 0xFFA8305F)
+            forma("M34.3,28.4A4.3,4.9 0 1,0 42.9,28.4A4.3,4.9 0 1,0 34.3,28.4Z", cor = 0xFFEC7FA8)
+            forma("M36.65,28A0.85,1.35 0 1,0 38.35,28A0.85,1.35 0 1,0 36.65,28Z", cor = 0xFFA8305F)
+            forma("M39.45,28A0.85,1.35 0 1,0 41.15,28A0.85,1.35 0 1,0 39.45,28Z", cor = 0xFFA8305F)
+            forma("M30.35,24A1.45,1.45 0 1,0 33.25,24A1.45,1.45 0 1,0 30.35,24Z", cor = 0xFF2B1B24)
+            forma("M32.4,33.4Q33.8,34.6 35.4,33.9", traco = 0xFFA8305F, espessura = 1.1f, redondo = true)
+            forma("M10.6,24.6C11.4,21.6 14.2,19.6 18,19.2", traco = 0xFFFCCADB, espessura = 2.2f, redondo = true)
+            forma("M17.5,16.6H26.5A0.9,0.9 0 0,1 27.4,17.5V17.5A0.9,0.9 0 0,1 26.5,18.4H17.5A0.9,0.9 0 0,1 16.6,17.5V17.5A0.9,0.9 0 0,1 17.5,16.6Z", cor = 0xFFA8305F)
         }
     }
 

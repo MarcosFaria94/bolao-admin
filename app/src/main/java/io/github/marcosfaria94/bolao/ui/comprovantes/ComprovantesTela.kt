@@ -65,6 +65,7 @@ import io.github.marcosfaria94.bolao.data.Rateio
 import io.github.marcosfaria94.bolao.data.TipoLancamento
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
+import io.github.marcosfaria94.bolao.domain.LeituraComprovante
 import io.github.marcosfaria94.bolao.imagem.LeitorComprovante
 import io.github.marcosfaria94.bolao.net.CaixaApi
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
@@ -146,10 +147,20 @@ class ComprovantesViewModel(app: Application) : AndroidViewModel(app) {
         val lista = escolhidos.toList()
         viewModelScope.launch {
             try {
+                val antes = repo.atual()
                 val entradas = lista.mapIndexed { i, a ->
                     lendo = "Lendo ${i + 1} de ${lista.size}..."
-                    val texto = textos[a.nome] ?: runCatching { LeitorComprovante.texto(repo.arquivo(a), a.mime) }.getOrDefault("")
-                    Associacao.Entrada(a, texto)
+                    val conhecido = textos[a.nome]
+                    val texto = conhecido ?: runCatching { LeitorComprovante.texto(repo.arquivo(a), a.mime) }.getOrDefault("")
+                    // A leitura não bateu em cheio com as apostas que esperam comprovante: lê de novo, de outro
+                    // jeito (desde a 0.22), para um número mal reconhecido não trocar o jogo de uma aposta.
+                    val outras = if (conhecido != null || LeituraComprovante.ehPix(texto) || Associacao.confereEmCheio(antes, texto)) {
+                        emptyList()
+                    } else {
+                        lendo = "Conferindo ${i + 1} de ${lista.size}..."
+                        runCatching { LeitorComprovante.outrasLeituras(repo.arquivo(a), a.mime) }.getOrDefault(emptyList())
+                    }
+                    Associacao.Entrada(a, texto, outras)
                 }
                 lendo = "Guardando..."
                 var resultado: Associacao.Resultado? = null
@@ -207,7 +218,15 @@ class ComprovantesViewModel(app: Application) : AndroidViewModel(app) {
                     registrarComprovante(context, { est -> item.aprovar(est, agora + i) }, enviar = false)
                     feitos++
                 }
-                aoFim(if (feitos == 1) "Conferência aprovada: 1 comprovante pronto para enviar ao grupo." else "Conferência aprovada: $feitos comprovantes prontos para enviar ao grupo.")
+                val informal = e.informal
+                aoFim(
+                    when {
+                        informal && feitos == 1 -> "Conferência aprovada: 1 comprovante do bolão criado."
+                        informal -> "Conferência aprovada: $feitos comprovantes do bolão criados."
+                        feitos == 1 -> "Conferência aprovada: 1 comprovante pronto para enviar ao grupo."
+                        else -> "Conferência aprovada: $feitos comprovantes prontos para enviar ao grupo."
+                    },
+                )
             } catch (t: Throwable) {
                 aoFim("Não foi possível aprovar tudo ($feitos aprovados): ${t.message}")
             } finally {
@@ -358,6 +377,32 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
             item(key = "enviar") {
                 Secao("Enviar ao grupo") {
                     Column(Modifier.padding(vertical = 4.dp)) {
+                        // O envio em lote (desde a 0.22): as apostas e as apurações num envio só.
+                        val doLote = Compartilhar.paraOLote(estado)
+                        if (doLote.size > 1) {
+                            Button(
+                                onClick = {
+                                    escopo.launch {
+                                        val foram = Compartilhar.lote(ctx, estado, doLote)
+                                        if (foram in 1 until doLote.size) {
+                                            avisos.showSnackbar("Foram $foram comprovantes neste lote: os outros ${doLote.size - foram} vão no próximo.")
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                            ) {
+                                Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("$ENVIAR_EM_LOTE (${doLote.size})")
+                            }
+                            Text(
+                                "As apostas e as apurações num envio só: os títulos na mensagem e, junto, a imagem de cada comprovante com os anexos.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 6.dp),
+                            )
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
                         aEnviar.forEachIndexed { i, c ->
                             if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             LinhaEnviar(c, aoVer = { abrir("comprovante/${c.id}") }) {
@@ -371,7 +416,10 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
 
         if (nada && vm.escolhidos.isEmpty()) {
             item(key = "vazio") {
-                TextoVazio("Tudo em dia: nenhum registro esperando comprovante, conferência ou envio.")
+                TextoVazio(
+                    if (estado.enviaAoGrupo) "Tudo em dia: nenhum registro esperando comprovante, conferência ou envio."
+                    else "Tudo em dia: nenhum registro esperando comprovante ou conferência.",
+                )
             }
         }
     }
@@ -380,8 +428,9 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
         val n = apostasConferir.size + rateiosConferir.size
         DialogoConfirmar(
             titulo = "Aprovar a conferência?",
-            texto = "Os comprovantes anexados de $n registro(s) conferem com o app. Os comprovantes do bolão serão criados " +
-                "e ficam prontos para enviar ao grupo. Depois disso não dá mais para descartar esses registros.",
+            texto = "Os comprovantes anexados de $n registro(s) conferem com o app. Os comprovantes do bolão serão criados" +
+                (if (estado.enviaAoGrupo) " e ficam prontos para enviar ao grupo" else "") +
+                ". Depois disso não dá mais para descartar esses registros.",
             confirmar = "Aprovar",
             aoConfirmar = {
                 confirmarAprovacao = false
@@ -393,6 +442,9 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
 
     vm.relatorio?.let { lista -> RelatorioDaLeitura(lista, aoFechar = { vm.relatorio = null }) }
 }
+
+/** O botão do envio em lote dos comprovantes de aposta e de apuração (com a quantidade entre parênteses). */
+const val ENVIAR_EM_LOTE = "Enviar em lote"
 
 /** Uma aposta com o comprovante da Caixa anexado: o que mudou, o anexo (ver ou tirar) e abrir a aposta. */
 @Composable
@@ -476,7 +528,8 @@ private fun LinhaDoAnexo(arq: Arquivo, rotulo: String? = null, aoVer: () -> Unit
     if (confirmar) {
         DialogoConfirmar(
             titulo = "Tirar este comprovante?",
-            texto = "O arquivo sai do app e o registro volta a esperar o comprovante.",
+            texto = "O arquivo sai do app e o registro volta a esperar o comprovante. Se o comprovante tinha mudado o jogo, " +
+                "a aposta volta a ser como era antes dele.",
             confirmar = "Tirar",
             aoConfirmar = {
                 confirmar = false

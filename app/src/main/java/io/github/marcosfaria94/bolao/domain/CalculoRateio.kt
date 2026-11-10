@@ -35,8 +35,8 @@ object CalculoRateio {
      * Valor de referência de cada aposta para o provisionado: os aportes do mês divididos
      * pelas 10 apostas programadas (R$ 10,00 × 3 ÷ 10 = R$ 3,00).
      */
-    fun valorPorAposta(aporteMensal: Long, integrantes: Int = 3): Long =
-        aporteMensal * integrantes / Calendario.DIAS_PROGRAMADOS.size
+    fun valorPorAposta(aporteMensal: Long, integrantes: Int = 3, apostasPorMes: Int = Calendario.DIAS_PROGRAMADOS.size): Long =
+        if (apostasPorMes <= 0) 0 else aporteMensal * integrantes / apostasPorMes
 
     /** Provisionado = apostas restantes do mês × valor por aposta, nunca acima dos aportes do mês. */
     fun provisionado(apostasRestantes: Int, valorPorAposta: Long, aportesDoMes: Long): Long =

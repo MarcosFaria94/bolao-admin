@@ -100,7 +100,7 @@ fun HomeTela(
     LaunchedEffect(filtro) {
         if (filtro.resumo() != filtroVisto) {
             filtroVisto = filtro.resumo()
-            val titulo = if (individual) 1 else 3
+            val titulo = if (individual) 2 else 3
             if (rolagem.firstVisibleItemIndex > titulo) rolagem.scrollToItem(titulo)
         }
     }
@@ -108,6 +108,10 @@ fun HomeTela(
     LazyColumn(state = rolagem, contentPadding = PaddingTela, modifier = Modifier.fillMaxSize()) {
         if (individual) {
             item(key = "saldo") { QuadroSaldoIndividual(estado, Modifier.padding(top = 8.dp, bottom = ESPACO)) }
+            // A próxima aposta também no modo individual (desde a 0.22), pelo calendário dos Parâmetros.
+            item(key = "proxima") {
+                CartaoProximaAposta(hoje, Operacoes.apostaFeitaEm(estado, hoje), estado.parametros.dias, Modifier.padding(bottom = ESPACO), aoApostar = apostar)
+            }
         } else {
             item(key = "saldo") {
                 // Tocar no quadro gera o "Saldo atual".
@@ -121,7 +125,7 @@ fun HomeTela(
                 }
             }
             item(key = "proxima") {
-                CartaoProximaAposta(hoje, Operacoes.apostaFeitaEm(estado, hoje), Modifier.padding(bottom = ESPACO), aoApostar = apostar)
+                CartaoProximaAposta(hoje, Operacoes.apostaFeitaEm(estado, hoje), estado.parametros.dias, Modifier.padding(bottom = ESPACO), aoApostar = apostar)
             }
         }
         item(key = "titulo-historico") {
@@ -238,14 +242,25 @@ private fun Bloco(rotulo: String, desenho: ImageVector, modifier: Modifier, aoTo
     }
 }
 
+/** O que a Home mostra na "Próxima aposta" quando o calendário não tem dia nenhum (Parâmetros). */
+const val SEM_DIA_DEFINIDO = "Sem dia definido"
+
+/** "Hoje", "Amanhã", a data... ou "Sem dia definido": o texto da "Próxima aposta" da Home. */
+fun textoDaProximaAposta(hoje: LocalDate, apostaDeHojeFeita: Boolean, dias: List<Int>): String {
+    val ehHoje = Calendario.ehDiaProgramado(hoje, dias) && !apostaDeHojeFeita
+    val dia = if (ehHoje) hoje else Calendario.diaDepoisDe(hoje, dias)
+    return dia?.let { Datas.relativa(it, hoje) } ?: SEM_DIA_DEFINIDO
+}
+
 /**
  * "Próxima aposta: Hoje" e o "Apostar", que abre os Jogos (lá fica o volante de cada modalidade).
  * No dia de aposta, enquanto a aposta do dia não foi registrada, o "Apostar" pulsa para chamar a atenção.
+ * Os dias vêm do calendário de apostas da sessão ([dias], dos Parâmetros); sem nenhum, "Sem dia definido".
  */
 @Composable
-private fun CartaoProximaAposta(hoje: LocalDate, apostaDeHojeFeita: Boolean, modifier: Modifier, aoApostar: () -> Unit) {
-    val ehHoje = Calendario.ehDiaProgramado(hoje) && !apostaDeHojeFeita
-    val dia = if (ehHoje) hoje else Calendario.diaProgramadoDepoisDe(hoje)
+private fun CartaoProximaAposta(hoje: LocalDate, apostaDeHojeFeita: Boolean, dias: List<Int>, modifier: Modifier, aoApostar: () -> Unit) {
+    val ehHoje = Calendario.ehDiaProgramado(hoje, dias) && !apostaDeHojeFeita
+    val texto = textoDaProximaAposta(hoje, apostaDeHojeFeita, dias)
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         modifier = modifier.fillMaxWidth(),
@@ -254,7 +269,7 @@ private fun CartaoProximaAposta(hoje: LocalDate, apostaDeHojeFeita: Boolean, mod
             Column(Modifier.weight(1f)) {
                 Text("Próxima aposta", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(2.dp))
-                Text(Datas.relativa(dia, hoje), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                TextoQueCabe(texto, MaterialTheme.typography.headlineSmall, peso = FontWeight.Bold, menor = 15.sp, modifier = Modifier.fillMaxWidth())
             }
             Button(
                 onClick = aoApostar,

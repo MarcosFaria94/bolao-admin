@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.AlertDialog
@@ -131,6 +132,8 @@ enum class SecaoAjuste(val id: String) {
     MODO("modo"),
     INTEGRANTES("integrantes"),
     VALORES("valores"),
+    /** Os parâmetros da sessão (desde a 0.22): confirmação, mais números, teimosinha e o calendário de apostas. */
+    PARAMETROS("parametros"),
     TERMO("termo"),
     INTEGRIDADE("integridade"),
     AUDITORIA("auditoria"),
@@ -150,6 +153,7 @@ enum class SecaoAjuste(val id: String) {
         MODO -> "Modo"
         INTEGRANTES -> "Integrantes"
         VALORES -> if (individual) "Preços" else "Aporte e preços"
+        PARAMETROS -> "Parâmetros"
         TERMO -> "Termo"
         INTEGRIDADE -> "Integridade"
         AUDITORIA -> "Auditoria"
@@ -177,8 +181,13 @@ enum class SecaoAjuste(val id: String) {
          * Segurança são da sessão em uso, e o Modo de teste saiu daqui: é uma sessão à parte, na tela das
          * sessões (o "Alternar sessão").
          */
-        fun grupos(individual: Boolean): List<Pair<String, List<SecaoAjuste>>> = listOf(
-            (if (individual) "APOSTAS" else "BOLÃO") to (if (individual) listOf(MODO, VALORES, EXTINCAO) else listOf(INTEGRANTES, VALORES, TERMO, EXTINCAO)),
+        fun grupos(individual: Boolean, informal: Boolean = false): List<Pair<String, List<SecaoAjuste>>> = listOf(
+            (if (individual) "APOSTAS" else "BOLÃO") to when {
+                individual -> listOf(MODO, VALORES, PARAMETROS, EXTINCAO)
+                // O bolão informal (desde a 0.22) não tem termo.
+                informal -> listOf(INTEGRANTES, VALORES, PARAMETROS, EXTINCAO)
+                else -> listOf(INTEGRANTES, VALORES, PARAMETROS, TERMO, EXTINCAO)
+            },
             "SEGURANÇA" to (if (individual) listOf(BACKUP) else listOf(INTEGRIDADE, AUDITORIA, BACKUP)),
             "CELULAR" to listOf(NOTIFICACOES, ATUALIZACAO),
         )
@@ -189,6 +198,7 @@ private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
     SecaoAjuste.MODO -> Icons.Outlined.Person
     SecaoAjuste.INTEGRANTES -> Icons.Outlined.Groups
     SecaoAjuste.VALORES -> Icons.Outlined.Payments
+    SecaoAjuste.PARAMETROS -> Icons.Outlined.Tune
     SecaoAjuste.TERMO -> Icons.Outlined.HistoryEdu
     SecaoAjuste.INTEGRIDADE -> Icons.Outlined.VerifiedUser
     SecaoAjuste.AUDITORIA -> Icons.Outlined.PictureAsPdf
@@ -230,7 +240,8 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
 
     fun situacao(s: SecaoAjuste): Pair<String, TomItem> = when (s) {
         SecaoAjuste.MODO -> "Individual" to TomItem.NORMAL
-        SecaoAjuste.INTEGRANTES -> "${estado.pessoas.size} pessoas" to TomItem.NORMAL
+        SecaoAjuste.INTEGRANTES -> "${estado.pessoas.size} pessoas" + (if (estado.informal) " · informal" else "") to TomItem.NORMAL
+        SecaoAjuste.PARAMETROS -> resumoDosParametros(estado.parametros) to TomItem.NORMAL
         SecaoAjuste.VALORES -> (if (individual) "Das apostas" else "${Dinheiro.rs(estado.config.aporteMensal)}/mês") to TomItem.NORMAL
         SecaoAjuste.TERMO ->
             if (estado.termo != null && estado.termoSemAssinatura != null) "Anexado" to TomItem.NORMAL else "Falta anexar" to TomItem.ALERTA
@@ -266,7 +277,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
     VoltarAoTopo(lista, paraOTopo)
 
     LazyColumn(state = lista, contentPadding = PaddingTela, modifier = Modifier.fillMaxSize()) {
-        SecaoAjuste.grupos(individual).forEachIndexed { g, (nome, secoes) ->
+        SecaoAjuste.grupos(individual, estado.informal).forEachIndexed { g, (nome, secoes) ->
             item(key = "grupo-$nome") {
                 Text(
                     nome,
@@ -423,6 +434,7 @@ fun AjustesSecaoTela(estado: Estado, secao: SecaoAjuste, atualizacao: Atualizaca
                     }
                     SecaoAjuste.INTEGRANTES -> Integrantes(estado)
                     SecaoAjuste.VALORES -> Valores(estado)
+                    SecaoAjuste.PARAMETROS -> ParametrosDaSessao(estado)
                     SecaoAjuste.TERMO -> Termo(estado)
                     SecaoAjuste.INTEGRIDADE -> QuadroAjuste {
                         LinhaAjuste(
