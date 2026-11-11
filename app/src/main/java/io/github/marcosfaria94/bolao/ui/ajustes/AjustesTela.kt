@@ -147,6 +147,7 @@ enum class SecaoAjuste(val id: String) {
     BACKUP("backup"),
     /** A apuração automática (avisos, bateria, inicialização) e o toque do prêmio, numa tela só. */
     NOTIFICACOES("notificacoes"),
+    /** Fora da lista desde a 0.26: o app confere sozinho, ao abrir, se há versão nova ([AtualizacaoViewModel]). */
     ATUALIZACAO("atualizacao"),
     TESTE("teste"),
     EXTINCAO("extincao"),
@@ -198,7 +199,8 @@ enum class SecaoAjuste(val id: String) {
                 informal -> "SEGURANÇA" to listOf(INTEGRIDADE, AUDITORIA)
                 else -> "SEGURANÇA" to listOf(TERMO, INTEGRIDADE, AUDITORIA)
             },
-            "CELULAR" to listOf(NOTIFICACOES, ATUALIZACAO, BACKUP),
+            // Sem a Atualização desde a 0.26 (pedido do usuário): o app confere sozinho ao abrir e mostra a janela da versão nova.
+            "CELULAR" to listOf(NOTIFICACOES, BACKUP),
         )
     }
 }
@@ -223,8 +225,8 @@ private enum class TomItem { NORMAL, ALERTA, DESTAQUE }
 /**
  * Ajustes: uma lista em grupos, como os Ajustes do Android (Bolão, Segurança e Celular), com os
  * Créditos no rodapé ("Criado com Claude", a versão e o "Tecnologia"). Cada linha tem o ícone,
- * o nome, a situação à direita (ex.: "3 pessoas", "Falta anexar" em vermelho, "Nova versão" em
- * dourado) e a seta, e abre a sua tela; a Atualização verifica ali mesmo; os Integrantes (desde a
+ * o nome, a situação à direita (ex.: "3 pessoas", "Falta anexar" em vermelho) e a seta, e abre a sua
+ * tela (desde a 0.26 sem a linha da Atualização: o app confere sozinho ao abrir); os Integrantes (desde a
  * 0.23) abrem e fecham embaixo da linha, com a seta para baixo, e começam abertos. Tocar em "Ajustes"
  * na barra de baixo, já nos Ajustes ([paraOTopo]), volta a lista ao começo.
  */

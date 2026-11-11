@@ -51,14 +51,26 @@ class AtualizacaoViewModel(app: Application) : AndroidViewModel(app) {
     private val _ultima = MutableStateFlow<Atualizador.Versao?>(null)
     val ultima = _ultima.asStateFlow()
 
+    /** Quando o app conferiu pela última vez se há versão nova (ms). */
+    private var ultimaVerificacao = 0L
+
     init {
         verificar(manual = false)
+    }
+
+    /**
+     * Ao voltar para o app (desde a 0.26, quando a linha "Atualização" saiu dos Ajustes): confere de novo, em
+     * silêncio, se já passou [INTERVALO_DAS_VERIFICACOES] desde a última vez (o app pode ficar dias aberto).
+     */
+    fun verificarAoVoltar() {
+        if (System.currentTimeMillis() - ultimaVerificacao >= INTERVALO_DAS_VERIFICACOES) verificar(manual = false)
     }
 
     /** Na abertura do app a conferência é silenciosa: só aparece algo se houver versão nova. */
     fun verificar(manual: Boolean) {
         if (_etapa.value is EtapaAtualizacao.Baixando) return
         if (manual) _etapa.value = EtapaAtualizacao.Verificando
+        ultimaVerificacao = System.currentTimeMillis()
         viewModelScope.launch {
             try {
                 val v = Atualizador.ultimaPublicada()
@@ -107,6 +119,11 @@ class AtualizacaoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun fechar() {
         if (_etapa.value !is EtapaAtualizacao.Baixando) _etapa.value = EtapaAtualizacao.Nada
+    }
+
+    companion object {
+        /** De quanto em quanto tempo, no máximo, o app confere de novo ao voltar para ele: 6 horas. */
+        const val INTERVALO_DAS_VERIFICACOES = 6 * 60 * 60 * 1000L
     }
 }
 

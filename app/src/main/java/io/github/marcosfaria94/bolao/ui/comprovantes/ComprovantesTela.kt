@@ -363,6 +363,16 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
                                 aoTocar = { abrir("aposta/${a.id}") },
                             )
                         }
+                        // Desde a 0.25: descarta de uma vez as apostas que esperam o comprovante (com a confirmação).
+                        // Só os jogos (desde a 0.26): fica logo abaixo das apostas, e os rateios não entram.
+                        if (semComprovante.isNotEmpty()) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            TextButton(onClick = { confirmarDescarte = true }, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Outlined.DeleteSweep, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(DESCARTAR_TUDO, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
                         rateiosSemPix.forEachIndexed { i, r ->
                             if (i > 0 || semComprovante.isNotEmpty()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             val faltam = estado.pessoas.filter { !r.pix.containsKey(it.id) }
@@ -372,13 +382,6 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
                                 texto = "Falta o Pix de " + faltam.joinToString(", ") { it.apelido },
                                 aoTocar = null,
                             )
-                        }
-                        // Desde a 0.25: descarta de uma vez tudo o que espera comprovante (com a confirmação).
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        TextButton(onClick = { confirmarDescarte = true }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Outlined.DeleteSweep, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(DESCARTAR_TUDO, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -453,19 +456,17 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
     }
 
     if (confirmarDescarte) {
-        val valor = semComprovante.sumOf { it.valor } + rateiosSemPix.sumOf { it.cota * estado.pessoas.size }
+        val valor = semComprovante.sumOf { it.valor }
         DialogoConfirmar(
             titulo = "Descartar tudo?",
-            texto = textoDescartarTudo(semComprovante.size, rateiosSemPix.size, valor, comPix = rateiosSemPix.any { it.pix.isNotEmpty() }),
+            texto = textoDescartarTudo(semComprovante.size, valor),
             confirmar = "Descartar",
             aoConfirmar = {
                 confirmarDescarte = false
-                val pix = rateiosSemPix.flatMap { it.pix.values }
                 escopo.launch {
                     try {
-                        repo.atualizar { Operacoes.descartarEsperandoComprovante(it) }
-                        pix.forEach { repo.apagarSeSolto(it) }
-                        avisos.showSnackbar("Tudo descartado: ${Dinheiro.rs(valor)} voltou ao saldo.")
+                        repo.atualizar { Operacoes.descartarApostasSemComprovante(it) }
+                        avisos.showSnackbar("Apostas descartadas: ${Dinheiro.rs(valor)} voltou ao saldo.")
                     } catch (t: Throwable) {
                         avisos.showSnackbar("Não foi possível descartar: ${t.message}")
                     }
@@ -478,24 +479,18 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
     vm.relatorio?.let { lista -> RelatorioDaLeitura(lista, aoFechar = { vm.relatorio = null }) }
 }
 
-/** O botão da seção "Esperando comprovante" (desde a 0.25): descarta de uma vez o que espera comprovante. */
+/** O botão da seção "Esperando comprovante" (desde a 0.25): descarta de uma vez as apostas sem comprovante. */
 const val DESCARTAR_TUDO = "Descartar tudo"
 
 /**
- * O texto da confirmação do "Descartar tudo": quantas apostas e rateios saem do app e quanto volta ao saldo
- * ([valor], em centavos); [comPix]: algum rateio já tem Pix anexado (eles também são apagados).
+ * O texto da confirmação do "Descartar tudo" (só os jogos, desde a 0.26): quantas apostas saem do app e
+ * quanto volta ao saldo ([valor], em centavos).
  */
-fun textoDescartarTudo(apostas: Int, rateios: Int, valor: Long, comPix: Boolean): String {
-    val partes = listOfNotNull(
-        when (apostas) { 0 -> null; 1 -> "1 aposta"; else -> "$apostas apostas" },
-        when (rateios) { 0 -> null; 1 -> "1 rateio"; else -> "$rateios rateios" },
-    )
-    val varios = apostas + rateios > 1
-    return partes.joinToString(" e ") + (if (varios) " ainda sem comprovante saem" else " ainda sem comprovante sai") +
-        " do app, e ${Dinheiro.rs(valor)} volta ao saldo." +
-        (if (comPix) " Os comprovantes de Pix já anexados também são apagados." else "") +
-        " Os registros com os comprovantes anexados, esperando a conferência, ficam."
-}
+fun textoDescartarTudo(apostas: Int, valor: Long): String =
+    (if (apostas == 1) "1 aposta ainda sem comprovante sai" else "$apostas apostas ainda sem comprovante saem") +
+        " do app, e ${Dinheiro.rs(valor)} volta ao saldo. As apostas com o comprovante anexado, esperando a " +
+        "conferência, e os rateios ficam."
+
 
 /** O botão do envio em lote dos comprovantes de aposta e de apuração (com a quantidade entre parênteses). */
 const val ENVIAR_EM_LOTE = "Enviar em lote"

@@ -354,7 +354,7 @@ class TelasTest {
         assertEquals("Notificações", SecaoAjuste.NOTIFICACOES.titulo(false))
         // Desde a 0.21 o Modo de teste saiu dos Ajustes (é uma sessão à parte, na tela das sessões).
         // Desde a 0.24 o Backup também fica no Celular.
-        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.ATUALIZACAO, SecaoAjuste.BACKUP), SecaoAjuste.grupos(false).first { it.first == "CELULAR" }.second)
+        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.BACKUP), SecaoAjuste.grupos(false).first { it.first == "CELULAR" }.second)
         assertTrue(SecaoAjuste.grupos(true).none { SecaoAjuste.TESTE in it.second })
     }
 
@@ -404,7 +404,7 @@ class TelasTest {
         // O individual: o "Apagar tudo" no fim do "Apostas"; sem o grupo Segurança.
         assertEquals(listOf(SecaoAjuste.MODO, SecaoAjuste.PARAMETROS, SecaoAjuste.EXTINCAO), SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second)
         assertEquals(listOf("APOSTAS", "CELULAR"), SecaoAjuste.grupos(true).map { it.first })
-        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.ATUALIZACAO, SecaoAjuste.BACKUP), SecaoAjuste.grupos(true).first { it.first == "CELULAR" }.second)
+        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.BACKUP), SecaoAjuste.grupos(true).first { it.first == "CELULAR" }.second)
         assertEquals(listOf("BOLÃO", "SEGURANÇA", "CELULAR"), SecaoAjuste.grupos(false).map { it.first })
         // O endereço antigo do "Aporte e preços" (avisos de antes da 0.23) abre os Parâmetros.
         assertEquals(SecaoAjuste.PARAMETROS, SecaoAjuste.de("valores"))
@@ -754,13 +754,13 @@ class TelasTest {
             "Falta o comprovante da Caixa das apostas Nº3, Nº4 e Nº5. Anexe em Comprovantes para elas valerem no bolão.",
             textoFaltaComprovante(listOf(5, 3, 4)),
         )
-        // A confirmação do "Descartar tudo" dos Comprovantes.
+        // A confirmação do "Descartar tudo" dos Comprovantes (só os jogos, desde a 0.26).
         assertEquals(
-            "3 apostas e 1 rateio ainda sem comprovante saem do app, e R$ 33,00 volta ao saldo. Os comprovantes de Pix já anexados " +
-                "também são apagados. Os registros com os comprovantes anexados, esperando a conferência, ficam.",
-            textoDescartarTudo(3, 1, 3300, comPix = true),
+            "3 apostas ainda sem comprovante saem do app, e R$ 9,00 volta ao saldo. As apostas com o comprovante anexado, " +
+                "esperando a conferência, e os rateios ficam.",
+            textoDescartarTudo(3, 900),
         )
-        assertTrue(textoDescartarTudo(1, 0, 300, comPix = false).startsWith("1 aposta ainda sem comprovante sai do app, e R$ 3,00 volta ao saldo."))
+        assertTrue(textoDescartarTudo(1, 300).startsWith("1 aposta ainda sem comprovante sai do app, e R$ 3,00 volta ao saldo."))
     }
 
     @Test

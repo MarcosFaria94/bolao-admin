@@ -646,16 +646,15 @@ object Operacoes {
     }
 
     /**
-     * "Descartar tudo" (desde a 0.25): descarta de uma vez o que espera comprovante, as apostas sem o
-     * comprovante da Caixa e os rateios sem todos os Pix (a seção "Esperando comprovante" dos Comprovantes).
-     * O que já tem os comprovantes anexados (esperando a conferência) fica. Do mais novo para o mais velho,
-     * para a numeração do mês fechar sem buracos. Os Pix já anexados aos rateios ficam soltos (apagar à parte).
+     * "Descartar tudo" (desde a 0.25): descarta de uma vez as apostas sem o comprovante da Caixa (a seção
+     * "Esperando comprovante" dos Comprovantes). Só os jogos (desde a 0.26, pedido do usuário): os rateios
+     * esperando os Pix ficam, e as apostas com o comprovante anexado (esperando a conferência) também. Da
+     * mais nova para a mais velha, para a numeração do mês fechar sem buracos.
      */
-    fun descartarEsperandoComprovante(e: Estado): Estado {
+    fun descartarApostasSemComprovante(e: Estado): Estado {
         var x = e
         apostasSemComprovante(e).sortedWith(compareByDescending<Aposta> { it.dataAposta }.thenByDescending { it.numero })
             .forEach { x = descartarAposta(x, it.id) }
-        rateiosSemPix(e).sortedByDescending { it.numero }.forEach { x = descartarRateio(x, it.numero) }
         return x
     }
 

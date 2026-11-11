@@ -249,7 +249,7 @@ class OperacoesTest {
 
     @Test
     fun descartarTudoQueEsperaComprovante() {
-        // Desde a 0.25: o "Descartar tudo" da seção "Esperando comprovante" dos Comprovantes.
+        // Desde a 0.25: o "Descartar tudo" da seção "Esperando comprovante" dos Comprovantes (só os jogos, desde a 0.26).
         var e = Operacoes.registrarAporteMensal(inicial().copy(lancamentos = listOf(Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 5000))), d(1), agora())
         listOf("a", "b", "c", "d").forEach { id -> e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, semComprovante(id, 4)), id, d(4), agora()) }
         // A "b" já tem o comprovante anexado (espera a conferência): fica.
@@ -258,16 +258,17 @@ class OperacoesTest {
         val r = e.rateios.single()
         e = Operacoes.anexarPix(e, r.numero, "p1", anexo("pix-Fulano.png"))
         val antes = Operacoes.saldo(e)
-        val depois = Operacoes.descartarEsperandoComprovante(e)
-        // Sai tudo o que espera comprovante (3 apostas e o rateio); o valor volta ao saldo.
-        assertEquals(antes + 3 * 300 + 2400, Operacoes.saldo(depois))
+        val depois = Operacoes.descartarApostasSemComprovante(e)
+        // Saem as 3 apostas sem comprovante; o valor volta ao saldo. O rateio (com o Pix já anexado) fica.
+        assertEquals(antes + 3 * 300, Operacoes.saldo(depois))
         assertTrue(Operacoes.apostasSemComprovante(depois).isEmpty())
-        assertTrue(Operacoes.rateiosSemPix(depois).isEmpty() && depois.rateios.isEmpty())
+        assertEquals(listOf(r.numero), Operacoes.rateiosSemPix(depois).map { it.numero })
+        assertEquals(setOf("p1"), depois.rateios.single().pix.keys)
         // A que espera a conferência fica, com o número fechando o buraco (era a Nº2, vira a Nº1).
         assertEquals(listOf("b" to 1), depois.apostas.map { it.id to it.numero })
         assertEquals(listOf("b"), Operacoes.apostasParaConferir(depois).map { it.id })
         // Nada esperando: não muda nada.
-        assertEquals(depois, Operacoes.descartarEsperandoComprovante(depois))
+        assertEquals(depois, Operacoes.descartarApostasSemComprovante(depois))
     }
 
     @Test

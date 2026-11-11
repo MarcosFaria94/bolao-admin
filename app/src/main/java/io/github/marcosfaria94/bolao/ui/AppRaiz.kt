@@ -90,6 +90,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
@@ -205,6 +206,12 @@ fun AppRaiz() {
     val ativa by sessoes.ativa.collectAsStateWithLifecycle()
     val avisos = remember { SnackbarHostState() }
     val atualizacao: AtualizacaoViewModel = viewModel()
+    // A versão nova é conferida sozinha ao abrir o app e, ao voltar para ele, a cada 6 horas no máximo (desde a 0.26
+    // a linha "Atualização" saiu dos Ajustes): havendo, aparece a janela "Nova versão".
+    LifecycleResumeEffect(atualizacao) {
+        atualizacao.verificarAoVoltar()
+        onPauseOrDispose {}
+    }
     // A aba de agora: ao trocar de sessão (ou entrar e sair do modo de teste) a navegação recomeça, mas na mesma aba.
     var abaGuardada by rememberSaveable { mutableStateOf(Aba.HOME.name) }
 
