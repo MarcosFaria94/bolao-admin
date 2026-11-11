@@ -6,7 +6,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import io.github.marcosfaria94.bolao.BolaoApp
 import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.data.Indices
 import io.github.marcosfaria94.bolao.data.Pendencias
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -14,8 +16,9 @@ import java.time.ZoneId
 /**
  * Despertador do Vigia. O WorkManager sozinho (de hora em hora) atrasa muito, ou nem roda, em
  * celulares que economizam bateria (HyperOS/MIUI): a apuração e o aviso do prêmio ficavam para
- * quando o app fosse aberto. O despertador acorda o app na hora em que o resultado deve sair, de
- * meia em meia hora enquanto ele não sai e na hora da apuração automática ([Pendencias.proximoDespertar]).
+ * quando o app fosse aberto. O despertador acorda o app 5 minutos depois do sorteio, de 5 em 5 minutos
+ * enquanto o resultado (ou a apuração) não sai e para quando consegue ([Pendencias.proximoDespertar]).
+ * Desde a 0.25 acorda também para os dados dos Jogos ([Indices.proximaConsulta]), mesmo sem apostas.
  * Um despertador só: cada vez que o Vigia roda (ou os dados mudam), ele é remarcado.
  */
 object Despertador {
@@ -34,19 +37,21 @@ object Despertador {
 
     /** O próximo despertar, lendo os dados de todas as sessões. */
     suspend fun agendarTodas(context: Context) {
-        val estados = (context.applicationContext as io.github.marcosfaria94.bolao.BolaoApp).sessoes.todasComDados().map { it.second }
+        val estados = (context.applicationContext as BolaoApp).sessoes.todasComDados().map { it.second }
         agendar(context, estados)
     }
 
     /** O próximo despertar entre todas as sessões ([estados]; desde a 0.21 o Vigia cuida de todas). */
     fun agendar(context: Context, estados: List<Estado>, agora: LocalDateTime = LocalDateTime.now(), fuso: ZoneId = ZoneId.systemDefault()) {
         val am = context.getSystemService(AlarmManager::class.java) ?: return
-        val quando = estados.mapNotNull { Pendencias.proximoDespertar(it, agora) }.minOrNull()
+        val dasApostas = estados.mapNotNull { Pendencias.proximoDespertar(it, agora) }.minOrNull()?.atZone(fuso)?.toInstant()
+        val dosJogos = runCatching { (context.applicationContext as BolaoApp).indices.proximaConsulta(agora.atZone(fuso).toInstant()) }.getOrNull()
+        val quando = listOfNotNull(dasApostas, dosJogos).minOrNull()
         if (quando == null) {
             pedido(context, criar = false)?.let { am.cancel(it) }
             return
         }
-        val ms = maxOf(quando.atZone(fuso).toInstant().toEpochMilli(), System.currentTimeMillis() + 60_000)
+        val ms = maxOf(quando.toEpochMilli(), System.currentTimeMillis() + 60_000)
         val pi = pedido(context, criar = true) ?: return
         runCatching {
             if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {

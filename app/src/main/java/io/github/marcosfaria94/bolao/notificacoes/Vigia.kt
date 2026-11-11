@@ -19,10 +19,13 @@ import io.github.marcosfaria94.bolao.data.Premiada
 import io.github.marcosfaria94.bolao.data.Repositorio
 import io.github.marcosfaria94.bolao.data.Sessoes
 import io.github.marcosfaria94.bolao.data.palpite
+import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
 import io.github.marcosfaria94.bolao.domain.Conferencia
 import io.github.marcosfaria94.bolao.imagem.ImagemConferencia
 import io.github.marcosfaria94.bolao.net.CaixaApi
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
@@ -40,11 +43,21 @@ import java.util.concurrent.TimeUnit
  * Desde a 0.21 faz isso em todas as sessões (cada bolão, o Individual e o modo de teste, se existir),
  * e não só na que está em uso: os avisos levam o nome da sessão (com mais de uma) e abrem nela. Os do
  * modo de teste levam "Teste" (e não tocam o toque do prêmio).
+ * Desde a 0.25: depois do sorteio, de 5 em 5 minutos até conseguir (o despertador e, com o app aberto,
+ * o relógio da tela, [devido]); um Vigia de cada vez ([trava]: dois juntos podiam apurar duas vezes).
  */
 class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(contexto, parametros) {
 
     override suspend fun doWork(): Result {
-        val ctx = applicationContext
+        val tocar = trava.withLock { rodar(applicationContext) }
+        // Já marcado como avisado (não toca de novo); o trabalho segue até o fim do toque.
+        if (tocar) Toque.tocarEEsperar(applicationContext, Toque.Origem.PREMIO)
+        return Result.success()
+    }
+
+    /** Os passos 0 a 4 em todas as sessões. Devolve se o toque do prêmio principal deve tocar. */
+    private suspend fun rodar(ctx: Context): Boolean {
+        ultimaRodada = System.currentTimeMillis()
         val app = ctx.bolao
         val agora = LocalDateTime.now()
 
@@ -90,9 +103,9 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             novasChaves += novas.map { marca + it.chave } + premiadas.map { marca + it.chave }
         }
 
-        // 4. O próximo despertar (resultado que ainda não saiu, apuração da manhã seguinte), de todas as sessões.
+        // 4. O próximo despertar (resultado que ainda não saiu, apuração, dados dos Jogos), de todas as sessões.
         Despertador.agendar(ctx, estados)
-        if (!permitido) return Result.success()
+        if (!permitido) return false
 
         // Prêmio principal (fora do modo de teste): o toque dos Ajustes, como uma chamada.
         val tocar = premiadasPorSessao.any { (id, p) -> id != Sessoes.TESTE && p.any { it.principal } } && Toque.config(ctx).ligado
@@ -109,9 +122,7 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             val todas = (avisados + novasChaves).takeLast(MAX_CHAVES)
             prefs.edit().putString(CHAVES, todas.joinToString("\n")).apply()
         }
-        // Já marcado como avisado (não toca de novo); o trabalho segue até o fim do toque.
-        if (tocar) Toque.tocarEEsperar(ctx, Toque.Origem.PREMIO)
-        return Result.success()
+        return tocar
     }
 
     /** Os passos 1 e 2 numa sessão: a conferência na Caixa e a apuração automática. Devolve o estado depois deles. */
@@ -129,17 +140,20 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             }
             if (datas.isNotEmpty()) e = repo.atualizar { Operacoes.comDataDoSorteio(it, datas) }
         }
-        // 1. Conferência automática depois do horário do sorteio.
+        // 1. Conferência automática depois do horário do sorteio. Se os dados dos Jogos (passo 0) já trouxeram o
+        // resultado completo do concurso da aposta, vale ele (desde a 0.25: um pedido a menos à Caixa).
+        val ultimos = ctx.bolao.indices.itens.value
         for (a in Pendencias.aguardandoResultado(e, agora)) {
             try {
-                val c = CaixaApi.concurso(a.modalidade, a.concurso)
+                val doJogo = ultimos[a.modalidade]?.ultimo?.takeIf { it.numero == a.concurso && it.temResultado && !AgendaDaCaixa.semRateio(it) }
+                val c = doJogo ?: CaixaApi.concurso(a.modalidade, a.concurso)
                 if (c.temResultado) {
                     val r = Conferencia.conferir(a.modalidade, a.palpite, c, a.bilheteFederal, a.fracoesFederal)
                     val ap = Operacoes.apuracaoDe(c, r, r.premio, System.currentTimeMillis())
                     e = repo.atualizar { Operacoes.guardarConferencia(it, a.id, ap) }
                 }
             } catch (t: Throwable) {
-                // Sem internet ou Caixa fora do ar: tenta de novo na próxima hora.
+                // Sem internet ou Caixa fora do ar: tenta de novo em 5 minutos.
             }
         }
 
@@ -160,6 +174,26 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
         private const val PREFS = "lembretes"
         private const val CHAVES = "avisados"
         private const val PREFIXO_TESTE = "teste:"
+
+        /** Um Vigia de cada vez (o de hora em hora e o de agora podiam rodar juntos e apurar a mesma aposta duas vezes). */
+        private val trava = Mutex()
+
+        /** Quando o Vigia rodou pela última vez nesta abertura do app (ms). */
+        @Volatile
+        var ultimaRodada: Long = 0L
+            private set
+
+        /** Quando o Vigia foi pedido pela última vez ([rodarAgora], ms). */
+        @Volatile
+        private var pedidoEm: Long = 0L
+
+        /**
+         * Com o app aberto (desde a 0.25): alguma aposta da sessão [e] espera a Caixa e já passaram 5 minutos
+         * desde o último Vigia (rodado ou pedido). A tela confere a cada minuto e, se for, chama [rodarAgora].
+         */
+        fun devido(e: Estado, agora: LocalDateTime, agoraMs: Long = System.currentTimeMillis()): Boolean =
+            Pendencias.esperandoACaixa(e, agora) &&
+                agoraMs - maxOf(ultimaRodada, pedidoEm) >= AgendaDaCaixa.INTERVALO_DAS_TENTATIVAS.toMillis()
 
         /** As chaves dos avisos das sessões novas (desde a 0.21): "s:<id>:". A principal fica sem marca, como antes. */
         private const val PREFIXO_SESSAO = "s:"
@@ -188,6 +222,7 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
          * diante vai como trabalho urgente (roda na hora, mesmo com o celular em repouso).
          */
         fun rodarAgora(context: Context) {
+            pedidoEm = System.currentTimeMillis()
             val pedido = OneTimeWorkRequestBuilder<Vigia>().apply {
                 if (Build.VERSION.SDK_INT >= 31) setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             }.build()

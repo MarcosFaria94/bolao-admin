@@ -72,8 +72,11 @@ object Pendencias {
     /** Hora do aviso "Apurar a aposta" quando a apuração automática não conseguiu o resultado. */
     const val HORA_APURACAO = 8
 
-    /** Enquanto o resultado (ou o rateio oficial) não sai, confere de novo a cada meia hora. */
-    const val MINUTOS_NOVA_CONFERENCIA = 30L
+    /**
+     * Enquanto o resultado (ou o rateio oficial) não sai, confere de novo a cada 5 minutos (desde a 0.25;
+     * antes, a cada meia hora); passadas 3 horas, a cada meia hora ([intervaloDaConferencia]).
+     */
+    const val MINUTOS_NOVA_CONFERENCIA = 5L
 
     /**
      * Sem o resultado da Caixa no dia seguinte ao sorteio (D+1): aí, e só aí, é um erro — a pendência
@@ -279,7 +282,7 @@ object Pendencias {
     /**
      * Apostas cujo resultado já deve ter saído e que precisam de conferência: as que ainda não
      * foram conferidas e as conferidas sem o rateio oficial ou com algum dado faltando
-     * (conferir de novo, até a Caixa completar): 1 hora depois do sorteio ([horaDoResultado]).
+     * (conferir de novo, até a Caixa completar): 5 minutos depois do sorteio ([horaDoResultado]).
      */
     fun aguardandoResultado(e: Estado, agora: LocalDateTime): List<Aposta> = e.apostas.filter { a ->
         val sorteio = a.dataSorteio ?: return@filter false
@@ -289,8 +292,9 @@ object Pendencias {
     }
 
     /**
-     * Quando o resultado do sorteio do dia [sorteio] costuma estar na Caixa: 1 hora depois do sorteio
-     * (desde a 0.20: às 22h; a Federal, às 21h; aos domingos, às 12h). Ver [AgendaDaCaixa].
+     * A partir de quando o app procura o resultado do sorteio do dia [sorteio] na Caixa: 5 minutos depois
+     * do sorteio (desde a 0.25: às 21h05; a Federal, às 20h05; aos domingos, às 11h05; até a 0.24, 1 hora
+     * depois). Ver [AgendaDaCaixa].
      */
     fun horaDoResultado(m: Modalidade, sorteio: LocalDate): LocalDateTime =
         sorteio.atTime(AgendaDaCaixa.horaDoSorteio(m, sorteio)).plus(AgendaDaCaixa.ESPERA_DEPOIS_DO_SORTEIO)
@@ -322,9 +326,33 @@ object Pendencias {
     }
 
     /**
+     * O intervalo entre as conferências de quem espera o resultado desde [resultado] (a [horaDoResultado]):
+     * 5 minutos; passadas 3 horas ([AgendaDaCaixa.ESPERA_LONGA]), meia hora.
+     */
+    fun intervaloDaConferencia(resultado: LocalDateTime, agora: LocalDateTime): Long =
+        if (java.time.Duration.between(resultado, agora) > AgendaDaCaixa.ESPERA_LONGA) AgendaDaCaixa.INTERVALO_LONGO.toMinutes()
+        else MINUTOS_NOVA_CONFERENCIA
+
+    /**
+     * Alguma aposta espera a Caixa agora (desde a 0.25): passou a [horaDoResultado] e falta a conferência
+     * completa ou a apuração automática, até o limite de dias da conferência automática. Com o app aberto,
+     * o Vigia roda de 5 em 5 minutos enquanto isso for verdade (sem depender do despertador).
+     */
+    fun esperandoACaixa(e: Estado, agora: LocalDateTime): Boolean {
+        if (!e.cadastroConcluido || e.extincao != null) return false
+        return e.apostas.any { a ->
+            val sorteio = a.dataSorteio ?: return@any false
+            a.registrada && !a.pendenteDeAnexo && a.apuracao?.confirmadaEm == null &&
+                !agora.isBefore(horaDoResultado(a.modalidade, sorteio)) &&
+                agora.isBefore(sorteio.plusDays(DIAS_DE_CONFERENCIA_AUTOMATICA).atStartOfDay())
+        }
+    }
+
+    /**
      * Quando o app precisa acordar (mesmo fechado) para conferir e apurar sozinho: na hora do
-     * resultado de cada aposta que espera o sorteio e a cada meia hora enquanto o resultado (ou o
-     * rateio oficial) não sai. null = nada a esperar.
+     * resultado de cada aposta que espera o sorteio (5 minutos depois dele) e, enquanto o resultado (ou
+     * o rateio oficial) não sai, de novo a cada 5 minutos (passadas 3 horas, a cada meia hora). Conferida
+     * e apurada, para. null = nada a esperar.
      */
     fun proximoDespertar(e: Estado, agora: LocalDateTime): LocalDateTime? {
         if (!e.cadastroConcluido || e.extincao != null) return null
@@ -334,10 +362,11 @@ object Pendencias {
             val resultado = horaDoResultado(a.modalidade, sorteio)
             // Alguns dias depois do sorteio sem apuração, quem resolve é o Administrador (a pendência pede desde D+1).
             if (!agora.isBefore(sorteio.plusDays(DIAS_DE_CONFERENCIA_AUTOMATICA).atStartOfDay())) return@mapNotNull null
+            val intervalo = intervaloDaConferencia(resultado, agora)
             when {
                 agora.isBefore(resultado) -> resultado
-                !conferenciaCompleta(a) -> agora.plusMinutes(MINUTOS_NOVA_CONFERENCIA)
-                else -> apuracaoAutomaticaEm(e, a)?.let { if (agora.isBefore(it)) it else agora.plusMinutes(MINUTOS_NOVA_CONFERENCIA) }
+                !conferenciaCompleta(a) -> agora.plusMinutes(intervalo)
+                else -> apuracaoAutomaticaEm(e, a)?.let { if (agora.isBefore(it)) it else agora.plusMinutes(intervalo) }
             }
         }
         return vezes.minOrNull()

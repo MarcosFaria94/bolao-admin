@@ -3,6 +3,7 @@ package io.github.marcosfaria94.bolao.data
 import io.github.marcosfaria94.bolao.domain.FaixaPremio
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
@@ -115,14 +116,18 @@ class PendenciasTest {
         val sorteio = LocalDate.of(2026, 10, 21)
         val a = Aposta("a", 0, Modalidade.QUINA, 1, LocalDate.of(2026, 10, 19), dataSorteio = sorteio, valor = 300, criadaEm = 0, comprovante = anexo)
         var e = registrar(base, a, LocalDate.of(2026, 10, 19))
-        // O resultado sai à noite: desde a 0.20, o sorteio é às 21h e a conferência começa 1 hora depois,
-        // às 22h (a Federal sorteia às 20h; aos domingos, às 11h).
-        assertEquals(0, Pendencias.aguardandoResultado(e, sorteio.atTime(21, 50)).size)
-        assertEquals(1, Pendencias.aguardandoResultado(e, sorteio.atTime(22, 0)).size)
+        // O resultado sai à noite: o sorteio é às 21h e, desde a 0.25, a conferência começa 5 minutos depois,
+        // às 21h05 (a Federal sorteia às 20h; aos domingos, às 11h). Até a 0.24, 1 hora depois.
+        assertEquals(0, Pendencias.aguardandoResultado(e, sorteio.atTime(21, 4)).size)
+        assertEquals(1, Pendencias.aguardandoResultado(e, sorteio.atTime(21, 5)).size)
         assertEquals(1, Pendencias.aguardandoResultado(e, sorteio.atTime(22, 10)).size)
-        assertEquals(sorteio.atTime(22, 0), Pendencias.horaDoResultado(Modalidade.QUINA, sorteio))
-        assertEquals(sorteio.atTime(21, 0), Pendencias.horaDoResultado(Modalidade.FEDERAL, sorteio))
-        assertEquals(LocalDate.of(2026, 10, 25).atTime(12, 0), Pendencias.horaDoResultado(Modalidade.QUINA, LocalDate.of(2026, 10, 25)))
+        assertEquals(sorteio.atTime(21, 5), Pendencias.horaDoResultado(Modalidade.QUINA, sorteio))
+        assertEquals(sorteio.atTime(20, 5), Pendencias.horaDoResultado(Modalidade.FEDERAL, sorteio))
+        assertEquals(LocalDate.of(2026, 10, 25).atTime(11, 5), Pendencias.horaDoResultado(Modalidade.QUINA, LocalDate.of(2026, 10, 25)))
+        // Esperando a Caixa (o Vigia roda de 5 em 5 minutos com o app aberto): depois das 21h05, até o 3º dia.
+        assertFalse(Pendencias.esperandoACaixa(e, sorteio.atTime(21, 0)))
+        assertTrue(Pendencias.esperandoACaixa(e, sorteio.atTime(21, 5)))
+        assertFalse(Pendencias.esperandoACaixa(e, sorteio.plusDays(3).atTime(0, 1)))
 
         // Conferida sem o rateio oficial: confere de novo na próxima vez e ainda não apura.
         e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, conferidaEm = ms(sorteio.atTime(22, 10))))
@@ -133,6 +138,10 @@ class PendenciasTest {
         e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, rateioOficial = rateio, conferidaEm = ms(sorteio.atTime(23, 10))))
         assertEquals(0, Pendencias.aguardandoResultado(e, sorteio.atTime(23, 30)).size)
         assertEquals(listOf("a"), Pendencias.prontasParaApurar(e, sorteio.atTime(23, 10)).map { it.id })
+        assertTrue(Pendencias.esperandoACaixa(e, sorteio.atTime(23, 10)))
+        // Apurada: para de esperar.
+        val apurada = Operacoes.confirmarApuracao(e, "a", e.apostas.single().apuracao!!, sorteio, ms(sorteio.atTime(23, 11)))
+        assertFalse(Pendencias.esperandoACaixa(apurada, sorteio.atTime(23, 12)))
         assertEquals(sorteio.atStartOfDay(), Pendencias.apuracaoAutomaticaEm(e, e.apostas.single()))
         // Enquanto a apuração automática não acontece, não há pendência para o Administrador.
         assertTrue(chaves(e, sorteio.plusDays(1).atTime(8, 0)).none { it.startsWith("apuracao-") })
@@ -166,16 +175,18 @@ class PendenciasTest {
         val sorteio = LocalDate.of(2026, 10, 21)
         val a = Aposta("a", 0, Modalidade.QUINA, 1, LocalDate.of(2026, 10, 19), dataSorteio = sorteio, valor = 300, criadaEm = 0, comprovante = anexo)
         var e = registrar(base, a, LocalDate.of(2026, 10, 19))
-        // Antes do sorteio: acorda na hora do resultado (1 hora depois do sorteio das 21h, desde a 0.20).
-        assertEquals(sorteio.atTime(22, 0), Pendencias.proximoDespertar(e, sorteio.atTime(9, 0)))
-        assertEquals(sorteio.atTime(22, 0), Pendencias.proximoDespertar(e, sorteio.atTime(21, 10)))
-        // Depois, enquanto o resultado (ou o rateio oficial) não sai: de meia em meia hora.
-        assertEquals(sorteio.atTime(22, 40), Pendencias.proximoDespertar(e, sorteio.atTime(22, 10)))
-        e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, conferidaEm = ms(sorteio.atTime(22, 10))))
-        assertEquals(sorteio.atTime(23, 0), Pendencias.proximoDespertar(e, sorteio.atTime(22, 30)))
-        // Conferida com o rateio: a apuração já pode sair (se ainda não saiu, tenta de novo em meia hora).
+        // Antes do sorteio: acorda na hora do resultado (5 minutos depois do sorteio das 21h, desde a 0.25).
+        assertEquals(sorteio.atTime(21, 5), Pendencias.proximoDespertar(e, sorteio.atTime(9, 0)))
+        assertEquals(sorteio.atTime(21, 5), Pendencias.proximoDespertar(e, sorteio.atTime(21, 1)))
+        // Depois, enquanto o resultado (ou o rateio oficial) não sai: de 5 em 5 minutos (antes, meia hora).
+        assertEquals(sorteio.atTime(21, 15), Pendencias.proximoDespertar(e, sorteio.atTime(21, 10)))
+        e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, conferidaEm = ms(sorteio.atTime(21, 30))))
+        assertEquals(sorteio.atTime(21, 35), Pendencias.proximoDespertar(e, sorteio.atTime(21, 30)))
+        // Passadas 3 horas sem o rateio: de meia em meia hora.
+        assertEquals(sorteio.plusDays(1).atTime(1, 0), Pendencias.proximoDespertar(e, sorteio.plusDays(1).atTime(0, 30)))
+        // Conferida com o rateio: a apuração já pode sair (se ainda não saiu, tenta de novo em 5 minutos).
         e = Operacoes.guardarConferencia(e, "a", Apuracao("1/5", 0, rateioOficial = rateio, conferidaEm = ms(sorteio.atTime(23, 0))))
-        assertEquals(sorteio.atTime(23, 30), Pendencias.proximoDespertar(e, sorteio.atTime(23, 0)))
+        assertEquals(sorteio.atTime(23, 5), Pendencias.proximoDespertar(e, sorteio.atTime(23, 0)))
         // Apurada (no mesmo dia): nada a esperar.
         e = Operacoes.confirmarApuracao(e, "a", e.apostas.single().apuracao!!, sorteio, ms(sorteio.atTime(23, 1)))
         assertEquals(null, Pendencias.proximoDespertar(e, sorteio.atTime(23, 2)))

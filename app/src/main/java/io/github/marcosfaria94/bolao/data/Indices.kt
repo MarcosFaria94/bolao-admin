@@ -46,9 +46,9 @@ import kotlin.math.roundToLong
  * no máximo 3 pedidos ao mesmo tempo. As respostas ficam guardadas no celular: a tela abre com
  * o que já se sabe e se atualiza quando a Caixa responde. Concursos já sorteados (a) não mudam.
  *
- * Desde a 0.20 a Caixa só é consultada quando a agenda dos sorteios pede ([AgendaDaCaixa]): uma vez
- * depois de cada sorteio (1 hora depois), e de novo a cada 15 minutos enquanto o resultado não
- * chega. Os dados guardados valem até o próximo sorteio e nunca voltam para um concurso mais velho
+ * Desde a 0.20 a Caixa só é consultada quando a agenda dos sorteios pede ([AgendaDaCaixa]): depois
+ * de cada sorteio (desde a 0.25, 5 minutos depois) e de novo a cada 5 minutos enquanto o resultado não
+ * chega; o despertador acorda o app para isso, mesmo fechado ([proximaConsulta]). Os dados guardados valem até o próximo sorteio e nunca voltam para um concurso mais velho
  * (servidores da Caixa às vezes respondem com dados atrasados). A última consulta de cada modalidade
  * (e o erro, se deu) fica guardada no celular ([consultas]), para a tela mostrar se os dados são
  * certos ou estão esperando o resultado.
@@ -258,6 +258,10 @@ class Indices(private val context: Context) {
         mapa: Map<Modalidade, Item> = _itens.value,
         ultimas: Map<Modalidade, Consulta> = _consultas.value,
     ): AgendaDaCaixa.Situacao = AgendaDaCaixa.situacao(m, mapa[m]?.ultimo, agora, ultimas[m]?.tentativaEm)
+
+    /** Quando a agenda pede a próxima consulta depois de um sorteio (o despertador do Vigia acorda o app para ela). */
+    fun proximaConsulta(agora: Instant = Instant.now()): Instant? =
+        AgendaDaCaixa.proximaConsulta(Modalidade.entries.map { situacao(it, agora) }, agora)
 
     /**
      * Consulta a Caixa, só para os jogos que a agenda pede (o sorteio passou e o resultado ainda não

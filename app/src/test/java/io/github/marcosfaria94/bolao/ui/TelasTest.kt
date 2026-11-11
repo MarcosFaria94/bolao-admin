@@ -82,6 +82,9 @@ import io.github.marcosfaria94.bolao.ui.ajustes.textoDoCalendario
 import io.github.marcosfaria94.bolao.ui.aposta.mensagemDoRegistro
 import io.github.marcosfaria94.bolao.ui.aposta.textoDoVolante
 import io.github.marcosfaria94.bolao.ui.aposta.textoRegistrar
+import io.github.marcosfaria94.bolao.ui.aposta.proximaAposta
+import io.github.marcosfaria94.bolao.ui.aposta.textoFaltaComprovante
+import io.github.marcosfaria94.bolao.ui.comprovantes.textoDescartarTudo
 import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.home.textoDaProximaAposta
 import io.github.marcosfaria94.bolao.ui.jogos.bloqueioDaAposta
@@ -730,6 +733,37 @@ class TelasTest {
     }
 
     @Test
+    fun registrarContinuaNoVolante() {
+        // Desde a 0.25 o volante continua na página depois do registro: a aposta seguinte, vazia, no mesmo concurso.
+        val e = Estado(cadastroConcluido = true)
+        val hoje = LocalDate.of(2026, 11, 10)
+        val feita = novaAposta(e, Modalidade.QUINA, null, hoje, 1L).copy(
+            concurso = 7150, dataSorteio = hoje, premioEstimado = 900_000_00, numeros = listOf(5, 12, 33, 47, 71), teimosinha = 3,
+        )
+        val proxima = proximaAposta(e, feita, hoje, 2L)
+        assertTrue(proxima.id != feita.id)
+        assertEquals(7150, proxima.concurso)
+        assertEquals(hoje, proxima.dataSorteio)
+        assertEquals(900_000_00L, proxima.premioEstimado)
+        assertTrue(proxima.numeros.isEmpty())
+        assertEquals(0, proxima.teimosinha)
+        assertEquals(e.config.preco(Modalidade.QUINA), proxima.valor)
+        // O aviso do comprovante que falta, no alto do volante.
+        assertEquals("Falta o comprovante da Caixa da aposta Nº3. Anexe em Comprovantes para ela valer no bolão.", textoFaltaComprovante(listOf(3)))
+        assertEquals(
+            "Falta o comprovante da Caixa das apostas Nº3, Nº4 e Nº5. Anexe em Comprovantes para elas valerem no bolão.",
+            textoFaltaComprovante(listOf(5, 3, 4)),
+        )
+        // A confirmação do "Descartar tudo" dos Comprovantes.
+        assertEquals(
+            "3 apostas e 1 rateio ainda sem comprovante saem do app, e R$ 33,00 volta ao saldo. Os comprovantes de Pix já anexados " +
+                "também são apagados. Os registros com os comprovantes anexados, esperando a conferência, ficam.",
+            textoDescartarTudo(3, 1, 3300, comPix = true),
+        )
+        assertTrue(textoDescartarTudo(1, 0, 300, comPix = false).startsWith("1 aposta ainda sem comprovante sai do app, e R$ 3,00 volta ao saldo."))
+    }
+
+    @Test
     fun envioEmLoteDeApostasEApuracoes() {
         fun c(id: String, tipo: TipoComprovante, em: Long, dispensado: Boolean = false) = Comprovante(
             id = id, tipo = tipo, titulo = "TÍTULO $id", texto = "", data = LocalDate.of(2026, 11, 10), criadoEm = em,
@@ -747,6 +781,8 @@ class TelasTest {
         val lote = Compartilhar.paraOLote(e)
         assertEquals(listOf("aposta", "apuracao"), lote.map { it.id })
         assertEquals("TÍTULO aposta\nTÍTULO apuracao", Compartilhar.textoDoLote(lote))
+        // Os anexos vão de trás para a frente (desde a 0.25): o WhatsApp manda do último para o primeiro.
+        assertEquals(listOf("pdf 2", "imagem 2", "pdf 1", "imagem 1"), Compartilhar.naOrdemDoWhatsApp(listOf("imagem 1", "pdf 1", "imagem 2", "pdf 2")))
         // No bolão informal nada espera envio: não há lote.
         assertTrue(Compartilhar.paraOLote(e.copy(comprovantes = e.comprovantes.map { it.copy(envioDispensado = true) })).isEmpty())
     }

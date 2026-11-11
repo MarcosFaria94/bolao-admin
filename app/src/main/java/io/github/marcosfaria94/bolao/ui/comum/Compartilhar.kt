@@ -128,10 +128,17 @@ object Compartilhar {
     fun textoDoLote(comprovantes: List<Comprovante>): String = comprovantes.joinToString("\n") { it.titulo }
 
     /**
+     * Os anexos do lote na ordem em que vão para o WhatsApp (desde a 0.25): de trás para a frente. O
+     * WhatsApp manda vários arquivos compartilhados de uma vez do último para o primeiro (na 0.24 a
+     * aposta mais nova chegava primeiro ao grupo); invertendo a lista, chega primeiro a mais antiga.
+     */
+    fun <T> naOrdemDoWhatsApp(anexos: List<T>): List<T> = anexos.reversed()
+
+    /**
      * Envia vários comprovantes de uma vez (desde a 0.22): na mensagem, os títulos (um por linha); junto,
-     * a imagem de cada comprovante com os anexos dele, na ordem. Cabem até [ARQUIVOS_POR_LOTE] arquivos:
-     * os comprovantes que passarem disso ficam para o lote seguinte. Fica registrado o envio dos que
-     * foram. Devolve quantos foram (0 = não deu para abrir o WhatsApp).
+     * a imagem de cada comprovante com os anexos dele, na ordem (invertida para o WhatsApp: [naOrdemDoWhatsApp]).
+     * Cabem até [ARQUIVOS_POR_LOTE] arquivos: os comprovantes que passarem disso ficam para o lote seguinte.
+     * Fica registrado o envio dos que foram. Devolve quantos foram (0 = não deu para abrir o WhatsApp).
      */
     suspend fun lote(context: Context, e: Estado, comprovantes: List<Comprovante>): Int {
         val escolhidos = mutableListOf<Comprovante>()
@@ -142,7 +149,7 @@ object Compartilhar {
             escolhidos += c
             anexos += dele
         }
-        if (escolhidos.isEmpty() || !whatsapp(context, textoDoLote(escolhidos), anexos)) return 0
+        if (escolhidos.isEmpty() || !whatsapp(context, textoDoLote(escolhidos), naOrdemDoWhatsApp(anexos))) return 0
         val agora = System.currentTimeMillis()
         runCatching {
             context.bolao.repo.atualizar { est -> escolhidos.fold(est) { x, c -> Operacoes.registrarEnvio(x, c.id, agora) } }

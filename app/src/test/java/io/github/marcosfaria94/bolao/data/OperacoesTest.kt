@@ -248,6 +248,29 @@ class OperacoesTest {
     }
 
     @Test
+    fun descartarTudoQueEsperaComprovante() {
+        // Desde a 0.25: o "Descartar tudo" da seção "Esperando comprovante" dos Comprovantes.
+        var e = Operacoes.registrarAporteMensal(inicial().copy(lancamentos = listOf(Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 5000))), d(1), agora())
+        listOf("a", "b", "c", "d").forEach { id -> e = Operacoes.registrarAposta(Operacoes.salvarRascunho(e, semComprovante(id, 4)), id, d(4), agora()) }
+        // A "b" já tem o comprovante anexado (espera a conferência): fica.
+        e = Operacoes.anexarNaAposta(e, "b", anexo("b.pdf"))
+        e = Operacoes.registrarRateio(e, d(14), 2400, agora())
+        val r = e.rateios.single()
+        e = Operacoes.anexarPix(e, r.numero, "p1", anexo("pix-Fulano.png"))
+        val antes = Operacoes.saldo(e)
+        val depois = Operacoes.descartarEsperandoComprovante(e)
+        // Sai tudo o que espera comprovante (3 apostas e o rateio); o valor volta ao saldo.
+        assertEquals(antes + 3 * 300 + 2400, Operacoes.saldo(depois))
+        assertTrue(Operacoes.apostasSemComprovante(depois).isEmpty())
+        assertTrue(Operacoes.rateiosSemPix(depois).isEmpty() && depois.rateios.isEmpty())
+        // A que espera a conferência fica, com o número fechando o buraco (era a Nº2, vira a Nº1).
+        assertEquals(listOf("b" to 1), depois.apostas.map { it.id to it.numero })
+        assertEquals(listOf("b"), Operacoes.apostasParaConferir(depois).map { it.id })
+        // Nada esperando: não muda nada.
+        assertEquals(depois, Operacoes.descartarEsperandoComprovante(depois))
+    }
+
+    @Test
     fun rateioEsperaOsPixEAConferencia() {
         var e = Operacoes.registrarAporteMensal(inicial().copy(lancamentos = listOf(Lancamento("ini", d(1), 0, TipoLancamento.SALDO_INICIAL, 5000))), d(1), agora())
         e = Operacoes.registrarRateio(e, d(14), 2400, agora())

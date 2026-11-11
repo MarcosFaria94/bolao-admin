@@ -645,6 +645,20 @@ object Operacoes {
         return renumerarApostas(semEla, YearMonth.from(a.dataAposta), a.numero)
     }
 
+    /**
+     * "Descartar tudo" (desde a 0.25): descarta de uma vez o que espera comprovante, as apostas sem o
+     * comprovante da Caixa e os rateios sem todos os Pix (a seção "Esperando comprovante" dos Comprovantes).
+     * O que já tem os comprovantes anexados (esperando a conferência) fica. Do mais novo para o mais velho,
+     * para a numeração do mês fechar sem buracos. Os Pix já anexados aos rateios ficam soltos (apagar à parte).
+     */
+    fun descartarEsperandoComprovante(e: Estado): Estado {
+        var x = e
+        apostasSemComprovante(e).sortedWith(compareByDescending<Aposta> { it.dataAposta }.thenByDescending { it.numero })
+            .forEach { x = descartarAposta(x, it.id) }
+        rateiosSemPix(e).sortedByDescending { it.numero }.forEach { x = descartarRateio(x, it.numero) }
+        return x
+    }
+
     /** Fecha o buraco do número [livre] no [mes], se todas as apostas depois dele ainda puderem mudar de número. */
     private fun renumerarApostas(e: Estado, mes: YearMonth, livre: Int): Estado {
         val depois = e.apostas.filter { it.registrada && YearMonth.from(it.dataAposta) == mes && it.numero > livre }

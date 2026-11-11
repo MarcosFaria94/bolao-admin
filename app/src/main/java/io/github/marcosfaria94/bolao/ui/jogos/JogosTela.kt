@@ -65,8 +65,8 @@ import java.time.Instant
 
 /**
  * Jogos: as modalidades em ordem de k1 (melhor retorno matemático primeiro). Desde a 0.20 os dados
- * ficam guardados no celular e valem até o próximo sorteio: a Caixa só é consultada 1 hora depois de
- * cada sorteio ([AgendaDaCaixa]); o quadro do alto diz se os dados estão em dia ou esperando o
+ * ficam guardados no celular e valem até o próximo sorteio: a Caixa só é consultada depois de cada
+ * sorteio (desde a 0.25, 5 minutos depois e de 5 em 5 minutos até o resultado chegar; [AgendaDaCaixa]); o quadro do alto diz se os dados estão em dia ou esperando o
  * resultado (e quais jogos). Puxar a lista para baixo abre o Painel de Jogos. Tocar numa modalidade abre a página do jogo; segurar, os Detalhes dela. Tocar em
  * "Jogos" na barra de baixo, já nos Jogos ([paraOTopo]), volta a lista ao começo. Desde a 0.22: o título
  * grande "Escolha um jogo" e, embaixo, dois botões lado a lado: "Indicadores" (abre a página que explica
@@ -216,7 +216,7 @@ fun nomesDosJogos(lista: List<Modalidade>): String {
 /**
  * O texto da situação dos dados (desde a 0.20; desde a 0.22 só aparece ao tocar no botão "Dados em dia"
  * ou "Aguardando resultado"). Em dia: até quando os dados valem (o próximo sorteio) e que o app consulta
- * a Caixa 1 hora depois de cada sorteio. Esperando: os jogos que esperam o resultado e quando é a
+ * a Caixa 5 minutos depois de cada sorteio. Esperando: os jogos que esperam o resultado e quando é a
  * próxima consulta; se a Caixa não respondeu, o erro e o "Tentar agora".
  */
 @Composable
@@ -240,7 +240,7 @@ private fun SituacaoDosDados(
                 val proximo = situacoes.values.mapNotNull { s -> s.sorteio?.takeIf { s.certa } }.minOrNull()
                 Text(
                     (proximo?.let { "Valem até o próximo sorteio, ${AgendaDaCaixa.quando(it, agora)}. " } ?: "") +
-                        "O app consulta a Caixa 1 hora depois de cada sorteio.",
+                        "O app consulta a Caixa 5 minutos depois de cada sorteio, de 5 em 5 minutos até o resultado chegar.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = suave,
                 )

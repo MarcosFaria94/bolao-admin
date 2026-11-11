@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -225,6 +226,10 @@ private fun Aposta.com(d: DadosConcurso): Aposta = copy(
  * teimosinha, a opção de repetir a aposta em vários concursos. [bloqueio]: o concurso do volante já foi
  * sorteado e o resultado ainda não chegou ao app; até os dados serem atualizados ([aoAtualizar]), não
  * dá para registrar.
+ *
+ * Desde a 0.25, registrada a aposta ([aoRegistrar]), a página não vai mais para a aposta registrada:
+ * continua no volante, vazio, para fazer mais apostas, e o aviso do comprovante que falta fica no alto
+ * ([AvisoDoComprovante]).
  */
 @Composable
 fun SecaoVolante(
@@ -234,6 +239,7 @@ fun SecaoVolante(
     bloqueio: String? = null,
     atualizando: Boolean = false,
     aoAtualizar: () -> Unit = {},
+    aoRegistrar: (registrada: Aposta, feitas: List<Aposta>) -> Unit = { _, _ -> },
 ) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
@@ -331,6 +337,9 @@ fun SecaoVolante(
                     // O k1, o k2 e as odds do concurso ficam guardados na aposta (desde a 0.21).
                     Operacoes.guardarIndices(x, ctx.bolao.indices.itens.value)
                 }
+                // A página continua no volante, vazio, para a próxima aposta (desde a 0.25), já liberado.
+                aoRegistrar(final, feitas)
+                registrando = false
                 avisos.showSnackbar(listOf(nota, mensagemDoRegistro(feitas, individual)).filter { it.isNotBlank() }.joinToString(" "))
             } catch (t: Throwable) {
                 avisos.showSnackbar("Não foi possível registrar: ${t.message}")
@@ -519,6 +528,34 @@ fun SecaoVolante(
             },
         )
     }
+}
+
+/**
+ * O aviso do alto do volante depois do registro (desde a 0.25): as apostas registradas na página que ainda
+ * esperam o comprovante da Caixa e o botão que abre os Comprovantes.
+ */
+@Composable
+fun AvisoDoComprovante(apostas: List<Aposta>, aoAnexar: () -> Unit) {
+    if (apostas.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Aviso(textoFaltaComprovante(apostas.map { it.numero }), alerta = true)
+        OutlinedButton(onClick = aoAnexar, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(ANEXAR_COMPROVANTES)
+        }
+    }
+}
+
+/** O botão do aviso do comprovante que falta: abre os Comprovantes. */
+const val ANEXAR_COMPROVANTES = "Anexar comprovantes"
+
+/** "Falta o comprovante da Caixa da aposta Nº3." (ou "das apostas Nº3, Nº4 e Nº5"), com o que fazer. */
+fun textoFaltaComprovante(numeros: List<Int>): String {
+    val lista = numeros.sorted().map { "Nº$it" }
+    val quais = if (lista.size == 1) "da aposta ${lista[0]}" else "das apostas " + lista.dropLast(1).joinToString(", ") + " e " + lista.last()
+    val valer = if (lista.size == 1) "ela valer" else "elas valerem"
+    return "Falta o comprovante da Caixa $quais. Anexe em Comprovantes para $valer no bolão."
 }
 
 /** O botão do volante pronto: "Registrar aposta" ou, com a espelho ou a teimosinha, "Registrar 4 apostas". */

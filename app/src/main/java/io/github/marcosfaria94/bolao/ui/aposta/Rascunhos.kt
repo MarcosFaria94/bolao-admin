@@ -1,6 +1,7 @@
 package io.github.marcosfaria94.bolao.ui.aposta
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
@@ -46,6 +47,19 @@ fun novaAposta(estado: Estado, m: Modalidade, ultimo: Concurso?, hoje: LocalDate
         criadaEm = agora,
     )
 }
+
+/**
+ * A aposta seguinte do volante, logo depois do registro de [registrada] (desde a 0.25 a página do jogo
+ * continua no volante, para mais apostas): o volante vazio, no mesmo concurso (com o dia do sorteio, o
+ * prêmio e os jogos da Loteca) e com o preço de Ajustes. Na teimosinha, [registrada] é a do primeiro concurso.
+ */
+fun proximaAposta(estado: Estado, registrada: Aposta, hoje: LocalDate, agora: Long): Aposta =
+    novaAposta(estado, registrada.modalidade, null, hoje, agora).copy(
+        concurso = registrada.concurso,
+        dataSorteio = registrada.dataSorteio,
+        premioEstimado = registrada.premioEstimado,
+        jogosLoteca = registrada.jogosLoteca,
+    )
 
 /**
  * O próximo concurso do [ultimo] ainda é o que a Caixa está recebendo: a data dele é de hoje em
@@ -122,10 +136,13 @@ class ApostaEmEdicao(
     private val repo: Repositorio,
     private val escopo: CoroutineScope,
     inicial: Aposta,
-    private val nova: Boolean,
+    private var nova: Boolean,
 ) : ViewModel() {
     var aposta by mutableStateOf(inicial)
         private set
+
+    /** As apostas registradas nesta página (desde a 0.25: o aviso do comprovante que falta, no alto do volante). */
+    val registradasAqui = mutableStateListOf<String>()
 
     /** Descartada pelo botão "Descartar rascunho" (ou em outra tela): ao sair, nada mais a fazer. */
     private var descartada = false
@@ -195,6 +212,20 @@ class ApostaEmEdicao(
         val novo = Operacoes.noConcurso(a, p)
         mudar(novo)
         return a to novo
+    }
+
+    /**
+     * Depois do registro (desde a 0.25): a página continua no volante, agora com a aposta [proxima] (vazia,
+     * no mesmo concurso), para mais apostas. As [feitas] entram no aviso do comprovante que falta.
+     */
+    fun recomecar(proxima: Aposta, feitas: List<Aposta>) {
+        registradasAqui += feitas.map { it.id }.filter { it !in registradasAqui }
+        aposta = proxima
+        descartada = false
+        conhecidas.clear()
+        conhecidas += proxima
+        vistaGravada = false
+        nova = true
     }
 
     /**

@@ -61,6 +61,8 @@ import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Indices
+import io.github.marcosfaria94.bolao.data.Operacoes
+import io.github.marcosfaria94.bolao.data.Pendencias
 import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Datas
@@ -70,9 +72,11 @@ import io.github.marcosfaria94.bolao.domain.Formato
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Probabilidades
 import io.github.marcosfaria94.bolao.ui.aposta.ApostaEmEdicao
+import io.github.marcosfaria94.bolao.ui.aposta.AvisoDoComprovante
 import io.github.marcosfaria94.bolao.ui.aposta.SecaoApostaRegistrada
 import io.github.marcosfaria94.bolao.ui.aposta.SecaoVolante
 import io.github.marcosfaria94.bolao.ui.aposta.novaAposta
+import io.github.marcosfaria94.bolao.ui.aposta.proximaAposta
 import io.github.marcosfaria94.bolao.ui.aposta.rascunhoDa
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
 import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
@@ -100,6 +104,10 @@ import java.time.LocalDate
  *
  * [apostaId]: a aposta aberta pelo Histórico ou por um aviso. Registrada, ela aparece no lugar do
  * volante (com a apuração e os comprovantes); em andamento, ela é a do volante.
+ *
+ * Desde a 0.25, ao registrar a aposta do volante a página não vai para a aposta registrada: continua no
+ * volante, vazio e no mesmo concurso, para mais apostas, e no alto fica o aviso do comprovante da Caixa
+ * que falta ([AvisoDoComprovante]), com o botão que abre os Comprovantes.
  * [detalhes]: abre direto nos Detalhes (segurar a modalidade em Jogos); aí o voltar sai da página.
  */
 @Composable
@@ -151,13 +159,17 @@ fun ModalidadeTela(
     )
 
     val aberta = apostaId?.let { id -> estado.apostas.firstOrNull { it.id == id } }
-    if (apostaId != null && aberta == null) {
+    // A página é de uma aposta já registrada (aberta pelo Histórico, por um aviso...) ou do volante; decidido ao
+    // abrir: a aposta do volante registrada aqui não troca a página (desde a 0.25, o volante continua, vazio).
+    val existiaAoAbrir = remember(apostaId) { apostaId == null || aberta != null }
+    val daRegistrada = remember(apostaId) { aberta?.registrada == true }
+    if (!existiaAoAbrir || (daRegistrada && aberta == null)) {
         Box(Modifier.fillMaxSize().padding(24.dp)) { Text("Esta aposta não existe mais.") }
         return
     }
     // O volante: a aposta em andamento (a aberta ou a da modalidade) ou uma nova, com o volante vazio.
     // Fica no modelo da página: ver os Detalhes não descarta nada.
-    val vm: ApostaEmEdicao? = if (aberta?.registrada == true) {
+    val vm: ApostaEmEdicao? = if (daRegistrada) {
         null
     } else {
         viewModel(key = "volante") {
@@ -170,10 +182,15 @@ fun ModalidadeTela(
             )
         }
     }
-    // Registrada (a aberta, ou a do volante, logo depois do registro): a página mostra a aposta registrada.
-    val registrada: Aposta? = aberta?.takeIf { it.registrada }
-        ?: vm?.let { v -> estado.apostas.firstOrNull { it.id == v.aposta.id && it.registrada } }
+    // Registrada (a aberta): a página mostra a aposta registrada.
+    val registrada: Aposta? = aberta?.takeIf { daRegistrada }
     val aposta: Aposta = registrada ?: vm!!.aposta
+    // As apostas registradas nesta página que ainda esperam o comprovante da Caixa (o aviso do alto do volante).
+    val semComprovante = vm?.let { v ->
+        val ids = v.registradasAqui.toSet()
+        Operacoes.apostasSemComprovante(estado).filter { it.id in ids }
+    }.orEmpty()
+    val rolagem = rememberScrollState()
 
     // O volante acompanha a Caixa: a consulta que chega com a página aberta pode trazer outro concurso.
     if (vm != null) {
@@ -209,7 +226,7 @@ fun ModalidadeTela(
             Modifier
                 .fillMaxSize()
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rolagem)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -237,6 +254,7 @@ fun ModalidadeTela(
                 // A aposta mudada (ou descartada) numa tela aberta por cima desta: a página acompanha.
                 val gravada = estado.apostas.firstOrNull { it.id == v.aposta.id }
                 LaunchedEffect(gravada) { if (v.conferirGravada(gravada)) aoSair() }
+                AvisoDoComprovante(semComprovante, aoAnexar = { abrir(Pendencias.ABA_COMPROVANTES) })
                 SecaoVolante(
                     estado = estado,
                     r = v.aposta,
@@ -245,6 +263,11 @@ fun ModalidadeTela(
                     bloqueio = avisoDoQuadro?.let { bloqueioDaAposta(v.aposta.concurso.takeIf { it > 0 } ?: item?.proximoNumero) },
                     atualizando = atualizando,
                     aoAtualizar = { indices.atualizar(forcar = true) },
+                    aoRegistrar = { feita, feitas ->
+                        // Desde a 0.25: o volante continua na página, vazio e no mesmo concurso, para a próxima aposta.
+                        v.recomecar(proximaAposta(estado, feita, LocalDate.now(), System.currentTimeMillis()), feitas)
+                        escopo.launch { rolagem.animateScrollTo(0) }
+                    },
                 )
             }
             Spacer(Modifier.height(8.dp))

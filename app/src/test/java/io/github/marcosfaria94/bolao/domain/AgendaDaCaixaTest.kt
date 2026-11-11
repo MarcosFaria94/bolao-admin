@@ -30,10 +30,10 @@ class AgendaDaCaixaTest {
         assertEquals("21h", AgendaDaCaixa.hora(AgendaDaCaixa.horaDoSorteio(Modalidade.QUINA, quarta)))
         assertEquals("20h", AgendaDaCaixa.hora(AgendaDaCaixa.horaDoSorteio(Modalidade.FEDERAL, quarta)))
         assertEquals("11h", AgendaDaCaixa.hora(AgendaDaCaixa.horaDoSorteio(Modalidade.LOTOFACIL, domingo)))
-        // A consulta é 1 hora depois do sorteio, na hora de Brasília.
-        assertEquals(em(quarta.atTime(22, 0)), AgendaDaCaixa.resultadoSai(Modalidade.QUINA, quarta))
-        assertEquals(em(quarta.atTime(21, 0)), AgendaDaCaixa.resultadoSai(Modalidade.FEDERAL, quarta))
-        assertEquals(em(domingo.atTime(12, 0)), AgendaDaCaixa.resultadoSai(Modalidade.QUINA, domingo))
+        // A consulta é 5 minutos depois do sorteio (desde a 0.25; antes, 1 hora), na hora de Brasília.
+        assertEquals(em(quarta.atTime(21, 5)), AgendaDaCaixa.resultadoSai(Modalidade.QUINA, quarta))
+        assertEquals(em(quarta.atTime(20, 5)), AgendaDaCaixa.resultadoSai(Modalidade.FEDERAL, quarta))
+        assertEquals(em(domingo.atTime(11, 5)), AgendaDaCaixa.resultadoSai(Modalidade.QUINA, domingo))
     }
 
     @Test
@@ -44,25 +44,27 @@ class AgendaDaCaixaTest {
         assertEquals(Estado.EM_DIA, manha.estado)
         assertTrue(manha.certa)
         assertFalse(manha.precisaConsultar(em(quarta.atTime(9, 0))))
-        assertEquals(em(quarta.atTime(22, 0)), manha.consultarEm)
-        // Durante o sorteio (e a primeira hora depois): o concurso já foi sorteado, mas ainda não consulta.
-        val sorteando = AgendaDaCaixa.situacao(Modalidade.QUINA, u, em(quarta.atTime(21, 30)), tentativa = null)
+        assertEquals(em(quarta.atTime(21, 5)), manha.consultarEm)
+        // Durante o sorteio (e os 5 minutos depois): o concurso já foi sorteado, mas ainda não consulta.
+        val sorteando = AgendaDaCaixa.situacao(Modalidade.QUINA, u, em(quarta.atTime(21, 3)), tentativa = null)
         assertEquals(Estado.SORTEANDO, sorteando.estado)
         assertTrue(sorteando.sorteado)
-        assertFalse(sorteando.precisaConsultar(em(quarta.atTime(21, 30))))
-        // 1 hora depois: consulta (uma vez).
-        val depois = AgendaDaCaixa.situacao(Modalidade.QUINA, u, em(quarta.atTime(22, 0)), tentativa = em(quarta.atTime(8, 0)))
+        assertFalse(sorteando.precisaConsultar(em(quarta.atTime(21, 3))))
+        // 5 minutos depois: consulta.
+        val depois = AgendaDaCaixa.situacao(Modalidade.QUINA, u, em(quarta.atTime(21, 5)), tentativa = em(quarta.atTime(8, 0)))
         assertEquals(Estado.AGUARDANDO, depois.estado)
-        assertTrue(depois.precisaConsultar(em(quarta.atTime(22, 0))))
-        // Consultou às 22h e o resultado não veio: tenta de novo 15 minutos depois.
-        val semResultado = AgendaDaCaixa.situacao(Modalidade.QUINA, u, em(quarta.atTime(22, 5)), tentativa = em(quarta.atTime(22, 0)))
+        assertTrue(depois.precisaConsultar(em(quarta.atTime(21, 5))))
+        // Consultou às 21h05 e o resultado não veio: tenta de novo 5 minutos depois (desde a 0.25; antes, 15).
+        val semResultado = AgendaDaCaixa.situacao(Modalidade.QUINA, u, em(quarta.atTime(21, 7)), tentativa = em(quarta.atTime(21, 5)))
         assertEquals(Estado.AGUARDANDO, semResultado.estado)
-        assertEquals(em(quarta.atTime(22, 15)), semResultado.consultarEm)
-        assertTrue(AgendaDaCaixa.situacao(Modalidade.QUINA, u, em(quarta.atTime(22, 15)), em(quarta.atTime(22, 0))).precisaConsultar(em(quarta.atTime(22, 15))))
-        // Mais de 2 horas esperando (ex.: a Loteca, que depende dos jogos): de hora em hora.
+        assertEquals(em(quarta.atTime(21, 10)), semResultado.consultarEm)
+        assertTrue(AgendaDaCaixa.situacao(Modalidade.QUINA, u, em(quarta.atTime(21, 10)), em(quarta.atTime(21, 5))).precisaConsultar(em(quarta.atTime(21, 10))))
+        // Duas horas depois, ainda de 5 em 5 minutos.
+        assertEquals(em(quarta.atTime(23, 5)), AgendaDaCaixa.situacao(Modalidade.QUINA, u, em(quarta.atTime(23, 2)), em(quarta.atTime(23, 0))).consultarEm)
+        // Mais de 3 horas esperando (ex.: a Loteca, que depende dos jogos): de meia em meia hora.
         val demorado = AgendaDaCaixa.situacao(Modalidade.QUINA, u, em(quarta.plusDays(1).atTime(0, 30)), tentativa = em(quarta.plusDays(1).atTime(0, 20)))
         assertEquals(Estado.AGUARDANDO, demorado.estado)
-        assertEquals(em(quarta.plusDays(1).atTime(1, 20)), demorado.consultarEm)
+        assertEquals(em(quarta.plusDays(1).atTime(0, 50)), demorado.consultarEm)
         // Chegou o resultado novo (próximo sorteio na sexta): em dia de novo.
         val novo = quina(7149, proxima = quarta.plusDays(2))
         assertEquals(Estado.EM_DIA, AgendaDaCaixa.situacao(Modalidade.QUINA, novo, em(quarta.atTime(22, 20)), em(quarta.atTime(22, 15))).estado)
@@ -70,14 +72,14 @@ class AgendaDaCaixaTest {
 
     @Test
     fun semRateioSemDataESemDados() {
-        // O resultado chegou sem o rateio (ganhadores sem o valor): tenta de novo a cada 15 minutos.
+        // O resultado chegou sem o rateio (ganhadores sem o valor): tenta de novo a cada 5 minutos.
         val semRateio = quina(7149, quarta.plusDays(2), listOf(FaixaPremio(2, "4 acertos", 54, 0), FaixaPremio(3, "3 acertos", 4_210, 0))).copy(data = quarta)
         assertTrue(AgendaDaCaixa.semRateio(semRateio))
-        val s = AgendaDaCaixa.situacao(Modalidade.QUINA, semRateio, em(quarta.atTime(22, 5)), em(quarta.atTime(22, 0)))
+        val s = AgendaDaCaixa.situacao(Modalidade.QUINA, semRateio, em(quarta.atTime(22, 2)), em(quarta.atTime(22, 0)))
         assertEquals(Estado.SEM_RATEIO, s.estado)
-        assertEquals(em(quarta.atTime(22, 15)), s.consultarEm)
-        // De madrugada (mais de 2 horas depois), de hora em hora.
-        assertEquals(em(quarta.plusDays(1).atTime(1, 0)), AgendaDaCaixa.situacao(Modalidade.QUINA, semRateio, em(quarta.plusDays(1).atTime(0, 10)), em(quarta.plusDays(1).atTime(0, 0))).consultarEm)
+        assertEquals(em(quarta.atTime(22, 5)), s.consultarEm)
+        // De madrugada (mais de 3 horas depois do sorteio), de meia em meia hora.
+        assertEquals(em(quarta.plusDays(1).atTime(0, 30)), AgendaDaCaixa.situacao(Modalidade.QUINA, semRateio, em(quarta.plusDays(1).atTime(0, 10)), em(quarta.plusDays(1).atTime(0, 0))).consultarEm)
         // Ninguém ganhou em nenhuma faixa (ainda não apurado) também é sem rateio; na Loteca, não.
         assertTrue(AgendaDaCaixa.semRateio(quina(7149, null, listOf(FaixaPremio(1, "5 acertos", 0, 0), FaixaPremio(2, "4 acertos", 0, 0)))))
         // Sem a data do próximo sorteio: pergunta de novo a cada 2 horas.
@@ -89,6 +91,28 @@ class AgendaDaCaixaTest {
         val nada = AgendaDaCaixa.situacao(Modalidade.QUINA, null, em(quarta.atTime(10, 0)), null)
         assertEquals(Estado.SEM_DADOS, nada.estado)
         assertTrue(nada.precisaConsultar(em(quarta.atTime(10, 0))))
+    }
+
+    @Test
+    fun despertadorDosJogos() {
+        // Desde a 0.25 o despertador acorda o app para os dados dos Jogos: 5 minutos depois do próximo sorteio.
+        val u = quina(7148, proxima = quarta)
+        val manha = em(quarta.atTime(9, 0))
+        val emDia = AgendaDaCaixa.situacao(Modalidade.QUINA, u, manha, tentativa = null)
+        assertEquals(em(quarta.atTime(21, 5)), AgendaDaCaixa.proximaConsulta(listOf(emDia), manha))
+        // Esperando o resultado: a próxima tentativa (já devida = agora).
+        val noite = em(quarta.atTime(21, 7))
+        val esperando = AgendaDaCaixa.situacao(Modalidade.QUINA, u, noite, tentativa = em(quarta.atTime(21, 5)))
+        assertEquals(em(quarta.atTime(21, 10)), AgendaDaCaixa.proximaConsulta(listOf(esperando), noite))
+        // Entre vários jogos, o mais cedo (um já devido = agora).
+        assertEquals(noite, AgendaDaCaixa.proximaConsulta(listOf(esperando, emDia), noite))
+        assertEquals(noite, AgendaDaCaixa.proximaConsulta(listOf(AgendaDaCaixa.situacao(Modalidade.QUINA, u, noite, tentativa = null)), noite))
+        // Chegou o resultado: para até o sorteio seguinte (sexta, 21h05).
+        val novo = AgendaDaCaixa.situacao(Modalidade.QUINA, quina(7149, proxima = quarta.plusDays(2)), noite, tentativa = noite)
+        assertEquals(em(quarta.plusDays(2).atTime(21, 5)), AgendaDaCaixa.proximaConsulta(listOf(novo), noite))
+        // Sem a data do próximo sorteio ou sem dados: não acorda o app.
+        val semData = AgendaDaCaixa.situacao(Modalidade.QUINA, quina(7149, proxima = null), noite, tentativa = noite)
+        assertNull(AgendaDaCaixa.proximaConsulta(listOf(semData, AgendaDaCaixa.situacao(Modalidade.QUINA, null, noite, null)), noite))
     }
 
     @Test

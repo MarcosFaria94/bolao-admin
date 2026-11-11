@@ -10,10 +10,13 @@ import java.time.temporal.ChronoUnit
 
 /**
  * Quando consultar a Caixa (desde a 0.20). Os dados de cada jogo (o último resultado, o próximo
- * concurso, a data e o prêmio estimado) só mudam no sorteio: o app consulta a Caixa uma vez depois de
- * cada sorteio, com 1 hora de espera para a apuração sair no site, e segura os dados (guardados no
- * celular) até o sorteio seguinte. Assim a lista não volta para dados velhos ao reabrir o app e a
- * Caixa recebe poucos pedidos.
+ * concurso, a data e o prêmio estimado) só mudam no sorteio: o app consulta a Caixa depois de cada
+ * sorteio e segura os dados (guardados no celular) até o sorteio seguinte. Assim a lista não volta para
+ * dados velhos ao reabrir o app e a Caixa recebe poucos pedidos.
+ *
+ * Desde a 0.25 (pedido do usuário) a primeira tentativa é 5 minutos depois do sorteio e, enquanto o
+ * resultado completo (com o rateio) não chega, de novo a cada 5 minutos; chegou, para na hora (até o
+ * sorteio seguinte). Até a 0.24 esperava 1 hora e tentava a cada 15 minutos.
  *
  * Horário dos sorteios (de Brasília): concursos regulares às 21h; a Federal às 20h; aos domingos, às
  * 11h. Os concursos especiais podem ser em outro horário: enquanto o resultado não chega, o app tenta
@@ -28,17 +31,20 @@ object AgendaDaCaixa {
     val HORA_FEDERAL: LocalTime = LocalTime.of(20, 0)
     val HORA_DOMINGO: LocalTime = LocalTime.of(11, 0)
 
-    /** Espera depois do sorteio para a Caixa publicar o resultado e o rateio. */
-    val ESPERA_DEPOIS_DO_SORTEIO: Duration = Duration.ofHours(1)
+    /** Espera depois do sorteio até a primeira consulta (desde a 0.25: 5 minutos; até a 0.24, 1 hora). */
+    val ESPERA_DEPOIS_DO_SORTEIO: Duration = Duration.ofMinutes(5)
 
-    /** Esperando o resultado (ou depois de uma falha): nova tentativa a cada... */
-    val INTERVALO_DAS_TENTATIVAS: Duration = Duration.ofMinutes(15)
+    /** Esperando o resultado (ou depois de uma falha): nova tentativa a cada 5 minutos (desde a 0.25; antes, 15)... */
+    val INTERVALO_DAS_TENTATIVAS: Duration = Duration.ofMinutes(5)
 
-    /** Passado este tempo esperando (ex.: a Loteca, que depende dos jogos), as tentativas ficam mais espaçadas... */
-    val ESPERA_LONGA: Duration = Duration.ofHours(2)
+    /**
+     * ...até este tempo esperando (ex.: a Loteca, que depende dos jogos, ou a Caixa fora do ar). Depois, as
+     * tentativas ficam mais espaçadas, para não gastar a bateria a noite inteira...
+     */
+    val ESPERA_LONGA: Duration = Duration.ofHours(3)
 
-    /** ...de hora em hora. */
-    val INTERVALO_LONGO: Duration = Duration.ofHours(1)
+    /** ...de meia em meia hora. */
+    val INTERVALO_LONGO: Duration = Duration.ofMinutes(30)
 
     /** Sem a data do próximo sorteio (a Caixa não divulgou): pergunta de novo a cada... */
     val INTERVALO_SEM_DATA: Duration = Duration.ofHours(2)
@@ -53,7 +59,7 @@ object AgendaDaCaixa {
     /** O instante do sorteio da modalidade [m] no dia [dia] (hora de Brasília). */
     fun momentoDoSorteio(m: Modalidade, dia: LocalDate): Instant = dia.atTime(horaDoSorteio(m, dia)).atZone(FUSO).toInstant()
 
-    /** A partir de quando o resultado do sorteio do dia [dia] deve estar na Caixa (o sorteio + 1 hora). */
+    /** A partir de quando o app procura o resultado do sorteio do dia [dia] na Caixa (o sorteio + 5 minutos). */
     fun resultadoSai(m: Modalidade, dia: LocalDate): Instant = momentoDoSorteio(m, dia).plus(ESPERA_DEPOIS_DO_SORTEIO)
 
     enum class Estado {
@@ -63,10 +69,10 @@ object AgendaDaCaixa {
         /** Com o último resultado completo: os dados valem até o próximo sorteio (certeza). */
         EM_DIA,
 
-        /** O sorteio do próximo concurso já começou; a consulta é 1 hora depois. */
+        /** O sorteio do próximo concurso já começou; a consulta é 5 minutos depois. */
         SORTEANDO,
 
-        /** Passou 1 hora do sorteio e o resultado ainda não chegou ao app. */
+        /** Passaram 5 minutos do sorteio e o resultado ainda não chegou ao app. */
         AGUARDANDO,
 
         /** O último resultado chegou sem o rateio (a Caixa ainda está apurando). */
@@ -127,6 +133,17 @@ object AgendaDaCaixa {
             }
         }
     }
+
+    /**
+     * A próxima consulta depois de um sorteio, entre os jogos de [situacoes] (desde a 0.25: o despertador
+     * acorda o app para ela, mesmo fechado). Contam os jogos em dia (5 minutos depois do próximo sorteio),
+     * sorteando, esperando o resultado e sem o rateio; os sem a data do próximo sorteio e os sem dados
+     * esperam o app abrir (ou o despertar de outro jogo). null = nenhum. Já devida = [agora].
+     */
+    fun proximaConsulta(situacoes: Collection<Situacao>, agora: Instant): Instant? = situacoes
+        .filter { it.estado == Estado.EM_DIA || it.estado == Estado.SORTEANDO || it.estado == Estado.AGUARDANDO || it.estado == Estado.SEM_RATEIO }
+        .map { s -> s.consultarEm?.takeIf { it.isAfter(agora) } ?: agora }
+        .minOrNull()
 
     /**
      * Fica o concurso [novo] (que a Caixa acabou de mandar) no lugar do [guardado]? Nunca volta para um

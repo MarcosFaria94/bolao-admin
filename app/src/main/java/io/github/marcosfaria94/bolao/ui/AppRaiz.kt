@@ -280,8 +280,17 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         Vigia.rodarAgora(ctx)
         ctx.bolao.indices.atualizar()
     }
-    // O despertador da apuração acompanha as apostas (registrar, apurar e descartar mudam a hora de acordar).
-    LaunchedEffect(estado.apostas) { runCatching { Despertador.agendarTodas(ctx) } }
+    // Com o app aberto (desde a 0.25), a cada minuto: os dados dos Jogos, se a agenda pedir (5 minutos depois do
+    // sorteio e de 5 em 5 minutos até o resultado chegar), e o Vigia, de 5 em 5 minutos enquanto alguma aposta
+    // espera o resultado ou a apuração (sem depender do despertador, que o celular pode atrasar).
+    LaunchedEffect(agora) {
+        ctx.bolao.indices.atualizar()
+        if (Vigia.devido(estado, agora)) Vigia.rodarAgora(ctx)
+    }
+    // O despertador da apuração acompanha as apostas (registrar, apurar e descartar mudam a hora de acordar)
+    // e os dados dos Jogos (desde a 0.25: a próxima consulta depois de um sorteio).
+    val consultasDosJogos by ctx.bolao.indices.consultas.collectAsStateWithLifecycle()
+    LaunchedEffect(estado.apostas, consultasDosJogos) { runCatching { Despertador.agendarTodas(ctx) } }
     // O concurso das apostas que ainda não valem (em andamento ou esperando o comprovante) acompanha a Caixa.
     val itens by ctx.bolao.indices.itens.collectAsStateWithLifecycle()
     LaunchedEffect(itens) { atualizarConcursos(ctx, itens) }
@@ -715,11 +724,13 @@ private fun fechar(nav: NavHostController, entrada: NavBackStackEntry) {
 /** A página do jogo de uma aposta (registrada ou em andamento). */
 @Composable
 private fun PaginaDaAposta(estado: Estado, id: String, abrir: (String) -> Unit, aoSair: () -> Unit) {
-    val a = estado.apostas.firstOrNull { it.id == id }
-    if (a == null) {
+    // O jogo de quando a página abriu: a aposta em andamento registrada aqui (e depois descartada nos Comprovantes)
+    // não fecha o volante, que continua na página (desde a 0.25).
+    val m = remember(id) { estado.apostas.firstOrNull { it.id == id }?.modalidade }
+    if (m == null) {
         Box(Modifier.fillMaxSize().padding(24.dp)) { Text("Esta aposta não existe mais.") }
     } else {
-        ModalidadeTela(estado, a.modalidade, aoSair = aoSair, apostaId = id, abrir = abrir)
+        ModalidadeTela(estado, m, aoSair = aoSair, apostaId = id, abrir = abrir)
     }
 }
 
