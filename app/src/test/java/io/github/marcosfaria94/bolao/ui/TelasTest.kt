@@ -10,6 +10,8 @@ import io.github.marcosfaria94.bolao.data.IndicesDaAposta
 import io.github.marcosfaria94.bolao.data.Sessao
 import io.github.marcosfaria94.bolao.data.Sessoes
 import io.github.marcosfaria94.bolao.ui.sessoes.resumoDaSessao
+import io.github.marcosfaria94.bolao.ui.sessoes.tipoDaSessao
+import io.github.marcosfaria94.bolao.ui.sessoes.linhasDaSessao
 import io.github.marcosfaria94.bolao.ui.sessoes.sessoesCriadas
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.Extrato
@@ -348,7 +350,8 @@ class TelasTest {
         assertEquals(SecaoAjuste.NOTIFICACOES, SecaoAjuste.de("toque"))
         assertEquals("Notificações", SecaoAjuste.NOTIFICACOES.titulo(false))
         // Desde a 0.21 o Modo de teste saiu dos Ajustes (é uma sessão à parte, na tela das sessões).
-        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.ATUALIZACAO), SecaoAjuste.grupos(false).first { it.first == "CELULAR" }.second)
+        // Desde a 0.24 o Backup também fica no Celular.
+        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.ATUALIZACAO, SecaoAjuste.BACKUP), SecaoAjuste.grupos(false).first { it.first == "CELULAR" }.second)
         assertTrue(SecaoAjuste.grupos(true).none { SecaoAjuste.TESTE in it.second })
     }
 
@@ -371,25 +374,34 @@ class TelasTest {
         val individual = Sessao("i", "Individual", 0, Modo.INDIVIDUAL)
         assertEquals("Individual · saldo R$\u00A012,30", resumoDaSessao(individual, e.copy(modo = Modo.INDIVIDUAL)))
         assertTrue(individual.individual && !bolao.individual)
+        // O cartão da tela das sessões (desde a 0.24): uma informação por linha, com o tipo do bolão.
+        assertEquals("Bolão formal", tipoDaSessao(bolao, e))
+        assertEquals("Bolão informal", tipoDaSessao(bolao, e.copy(informal = true)))
+        assertEquals("Modo individual", tipoDaSessao(individual, e.copy(modo = Modo.INDIVIDUAL)))
+        assertNull(tipoDaSessao(Sessao("b"), Estado()))
+        assertEquals(listOf("Bolão formal", "3 integrantes", "Saldo: R$\u00A012,30"), linhasDaSessao(bolao, e).map { it.texto })
+        assertTrue(linhasDaSessao(bolao, e).first().principal)
+        assertEquals(listOf("Modo individual", "Saldo: R$\u00A012,30"), linhasDaSessao(individual, e.copy(modo = Modo.INDIVIDUAL)).map { it.texto })
+        assertEquals(listOf("Cadastro não concluído"), linhasDaSessao(Sessao("b"), Estado()).map { it.texto })
+        assertEquals(listOf("Carregando..."), linhasDaSessao(bolao, null).map { it.texto })
     }
 
     @Test
-    fun ajustesComTermoEExtincaoNaSegurancaECreditosNoRodape() {
-        // Desde a 0.23: o "Aporte e preços" dentro dos Parâmetros; o termo e a extinção na Segurança (a
-        // extinção no fim); sem o grupo "Sobre" (os Créditos são o rodapé da lista).
+    fun ajustesComExtincaoNosIntegrantesEBackupNoCelular() {
+        // Desde a 0.24: a extinção do bolão fica no fim dos Integrantes abertos (fora dos grupos); o Backup,
+        // no Celular. Desde a 0.23: o aporte e os preços nos Parâmetros; o termo na Segurança. Sem o grupo
+        // "Sobre" (os Créditos são o rodapé da lista).
         assertEquals(listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.PARAMETROS), SecaoAjuste.grupos(false).first { it.first == "BOLÃO" }.second)
-        assertEquals(
-            listOf(SecaoAjuste.TERMO, SecaoAjuste.INTEGRIDADE, SecaoAjuste.AUDITORIA, SecaoAjuste.BACKUP, SecaoAjuste.EXTINCAO),
-            SecaoAjuste.grupos(false).first { it.first == "SEGURANÇA" }.second,
-        )
+        assertEquals(listOf(SecaoAjuste.TERMO, SecaoAjuste.INTEGRIDADE, SecaoAjuste.AUDITORIA), SecaoAjuste.grupos(false).first { it.first == "SEGURANÇA" }.second)
+        assertTrue(SecaoAjuste.grupos(false).none { SecaoAjuste.EXTINCAO in it.second })
+        assertTrue(SecaoAjuste.grupos(false, informal = true).none { SecaoAjuste.EXTINCAO in it.second })
         // O bolão informal (desde a 0.22) não tem o termo.
         assertEquals(listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.PARAMETROS), SecaoAjuste.grupos(false, informal = true).first { it.first == "BOLÃO" }.second)
-        assertEquals(
-            listOf(SecaoAjuste.INTEGRIDADE, SecaoAjuste.AUDITORIA, SecaoAjuste.BACKUP, SecaoAjuste.EXTINCAO),
-            SecaoAjuste.grupos(false, informal = true).first { it.first == "SEGURANÇA" }.second,
-        )
-        assertEquals(listOf(SecaoAjuste.MODO, SecaoAjuste.PARAMETROS), SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second)
-        assertEquals(listOf(SecaoAjuste.BACKUP, SecaoAjuste.EXTINCAO), SecaoAjuste.grupos(true).first { it.first == "SEGURANÇA" }.second)
+        assertEquals(listOf(SecaoAjuste.INTEGRIDADE, SecaoAjuste.AUDITORIA), SecaoAjuste.grupos(false, informal = true).first { it.first == "SEGURANÇA" }.second)
+        // O individual: o "Apagar tudo" no fim do "Apostas"; sem o grupo Segurança.
+        assertEquals(listOf(SecaoAjuste.MODO, SecaoAjuste.PARAMETROS, SecaoAjuste.EXTINCAO), SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second)
+        assertEquals(listOf("APOSTAS", "CELULAR"), SecaoAjuste.grupos(true).map { it.first })
+        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.ATUALIZACAO, SecaoAjuste.BACKUP), SecaoAjuste.grupos(true).first { it.first == "CELULAR" }.second)
         assertEquals(listOf("BOLÃO", "SEGURANÇA", "CELULAR"), SecaoAjuste.grupos(false).map { it.first })
         // O endereço antigo do "Aporte e preços" (avisos de antes da 0.23) abre os Parâmetros.
         assertEquals(SecaoAjuste.PARAMETROS, SecaoAjuste.de("valores"))

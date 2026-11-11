@@ -130,7 +130,8 @@ const val ROTA_SECAO_AJUSTES = "ajustes/{secao}"
  * lados ou puxando para baixo). A Integridade abre direto a "Verificar integridade". Desde a 0.16 a
  * Atualização (tocar já verifica) e o Modo de teste (liga e desliga na chave) ficam direto na lista,
  * e os Créditos viraram o rodapé da lista. Desde a 0.23 os Integrantes abrem e fecham ali mesmo, na
- * lista (começam abertos), e o "Aporte e preços" está dentro dos Parâmetros.
+ * lista (começam abertos), e o "Aporte e preços" está dentro dos Parâmetros. Desde a 0.24 a extinção
+ * do bolão fica no fim dos Integrantes abertos (fora dos grupos).
  */
 enum class SecaoAjuste(val id: String) {
     MODO("modo"),
@@ -183,20 +184,21 @@ enum class SecaoAjuste(val id: String) {
 
         /**
          * Os grupos da lista, em ordem (o individual não tem integrantes, termo, integridade nem
-         * auditoria; o "Apostas" dele é o modo e os parâmetros). Desde a 0.23 o termo e a extinção (no
-         * individual, "Apagar tudo") ficam na Segurança, a extinção no fim; os Créditos, no rodapé da
-         * lista. Desde a 0.21 os grupos Bolão e Segurança são da sessão em uso, e o Modo de teste saiu
-         * daqui: é uma sessão à parte, na tela das sessões (o "Alternar sessão").
+         * auditoria). Desde a 0.24: a extinção do bolão fica no fim dos Integrantes abertos (não está em
+         * grupo nenhum: a [AjustesTela] desenha ela lá); no individual, o "Apagar tudo" fica no fim do
+         * "Apostas" (e ele não tem o grupo Segurança); o Backup fica no Celular. Desde a 0.23 o termo
+         * fica na Segurança e o aporte e os preços, nos Parâmetros. Os Créditos ficam no rodapé da lista.
+         * Desde a 0.21 o Modo de teste saiu daqui: é uma sessão à parte, na tela das sessões.
          */
-        fun grupos(individual: Boolean, informal: Boolean = false): List<Pair<String, List<SecaoAjuste>>> = listOf(
-            (if (individual) "APOSTAS" else "BOLÃO") to (if (individual) listOf(MODO, PARAMETROS) else listOf(INTEGRANTES, PARAMETROS)),
-            "SEGURANÇA" to when {
-                individual -> listOf(BACKUP, EXTINCAO)
+        fun grupos(individual: Boolean, informal: Boolean = false): List<Pair<String, List<SecaoAjuste>>> = listOfNotNull(
+            if (individual) "APOSTAS" to listOf(MODO, PARAMETROS, EXTINCAO) else "BOLÃO" to listOf(INTEGRANTES, PARAMETROS),
+            when {
+                individual -> null
                 // O bolão informal (desde a 0.22) não tem termo.
-                informal -> listOf(INTEGRIDADE, AUDITORIA, BACKUP, EXTINCAO)
-                else -> listOf(TERMO, INTEGRIDADE, AUDITORIA, BACKUP, EXTINCAO)
+                informal -> "SEGURANÇA" to listOf(INTEGRIDADE, AUDITORIA)
+                else -> "SEGURANÇA" to listOf(TERMO, INTEGRIDADE, AUDITORIA)
             },
-            "CELULAR" to listOf(NOTIFICACOES, ATUALIZACAO),
+            "CELULAR" to listOf(NOTIFICACOES, ATUALIZACAO, BACKUP),
         )
     }
 }
@@ -351,6 +353,17 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
                                     ItemIntegrante(p) { copiar(ctx, "Chave Pix", p.chavePix) }
                                 }
                             }
+                            // No fim dos integrantes, a extinção do bolão (desde a 0.24), com o ícone alinhado com os nomes.
+                            HorizontalDivider(Modifier.padding(start = RECUO_DA_LISTA), color = MaterialTheme.colorScheme.outlineVariant)
+                            Box(Modifier.padding(start = RECUO_DA_LISTA - RECUO_DO_ICONE)) {
+                                LinhaDaLista(
+                                    titulo = SecaoAjuste.EXTINCAO.titulo(individual),
+                                    situacao = "",
+                                    tom = TomItem.NORMAL,
+                                    icone = iconeDoItem(SecaoAjuste.EXTINCAO),
+                                    vermelho = true,
+                                ) { tocar(SecaoAjuste.EXTINCAO) }
+                            }
                         }
                     }
                 }
@@ -366,6 +379,9 @@ private val ALTURA_DA_CHAVE = 24.dp
 
 /** Onde começa o nome nas linhas da lista dos Ajustes (depois do ícone): os integrantes abertos ficam alinhados com ele. */
 private val RECUO_DA_LISTA = 54.dp
+
+/** A margem antes do ícone nas linhas da lista dos Ajustes. */
+private val RECUO_DO_ICONE = 16.dp
 
 /**
  * Uma linha da lista dos Ajustes: o ícone, o nome, a situação à direita e a [seta] (a de abrir a tela;
@@ -394,7 +410,7 @@ private fun LinhaDaLista(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = aoTocar)
-            .padding(start = 16.dp, end = 10.dp, top = 13.dp, bottom = 13.dp),
+            .padding(start = RECUO_DO_ICONE, end = 10.dp, top = 13.dp, bottom = 13.dp),
     ) {
         Icon(icone, contentDescription = null, tint = if (vermelho) corDoNome else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(16.dp))
