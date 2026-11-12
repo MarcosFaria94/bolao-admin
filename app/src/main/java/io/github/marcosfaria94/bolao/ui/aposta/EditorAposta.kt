@@ -1,5 +1,13 @@
 package io.github.marcosfaria94.bolao.ui.aposta
 
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import io.github.marcosfaria94.bolao.ui.tema.corDestaque
+import io.github.marcosfaria94.bolao.ui.tema.corApuracao
+import androidx.compose.foundation.background
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -154,27 +162,60 @@ private fun TituloDoVolante(
             }
             EtiquetaDePreco(valorSemQuebra(preco), Modifier.padding(start = 8.dp))
         }
+        // Desde a 0.30, com mais contraste: o que falta marcar na cor do texto, com a quantidade em destaque (dourado),
+        // e a aposta pronta em verde com o certo (até a 0.29, tudo cinza como o aviso de baixo).
         if (texto.isNotEmpty()) {
-            Text(
-                texto,
-                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 21.sp),
-                fontWeight = if (pronto) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (pronto) corEntrada() else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        if (aviso != null) {
-            Row(verticalAlignment = Alignment.Top) {
-                Icon(
-                    Icons.Outlined.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp).size(16.dp),
+            val estilo = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 21.sp)
+            if (pronto) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = corEntrada(), modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(texto, style = estilo, fontWeight = FontWeight.SemiBold, color = corEntrada(), modifier = Modifier.weight(1f))
+                }
+            } else {
+                Text(
+                    quantidadeEmDestaque(texto, corDestaque()),
+                    style = estilo,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.width(6.dp))
-                Text(aviso, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        if (aviso != null) AvisoAoSair(aviso, Modifier.padding(top = 4.dp))
+    }
+}
+
+/**
+ * O que falta marcar com a quantidade em destaque (desde a 0.30): "Marque no mínimo **6 números**", o número e o
+ * que vem logo depois dele em negrito, na [cor]. Sem número ("Escolha o Time do Coração"), o texto como está.
+ */
+fun quantidadeEmDestaque(texto: String, cor: Color): AnnotatedString {
+    val m = Regex("""\d+ \S+""").find(texto) ?: return AnnotatedString(texto)
+    return buildAnnotatedString {
+        append(texto.substring(0, m.range.first))
+        withStyle(SpanStyle(color = cor, fontWeight = FontWeight.Bold)) { append(m.value) }
+        append(texto.substring(m.range.last + 1))
+    }
+}
+
+/**
+ * O aviso de que a aposta é descartada ao sair (desde a 0.30, numa faixa âmbar, com o texto na cor do texto, para
+ * não se misturar com o título e o que falta marcar; na 0.29, uma linha cinza).
+ */
+@Composable
+private fun AvisoAoSair(aviso: String, modifier: Modifier = Modifier) {
+    val cor = corApuracao()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .background(cor.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
+            .padding(start = 10.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+    ) {
+        Icon(Icons.Outlined.Info, contentDescription = null, tint = cor, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(aviso, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -873,11 +914,8 @@ private fun VolanteEditavel(
             GradeColunas(
                 m,
                 situacao = { c, n -> if (r.numeros.getOrNull(c) == n) SituacaoNumero.MARCADO else SituacaoNumero.LIVRE },
-                aoTocar = { c, n ->
-                    val cols = MutableList(Volante.COLUNAS_SUPER_SETE) { i -> r.numeros.getOrNull(i) ?: -1 }
-                    cols[c] = n
-                    mudar(r.copy(numeros = cols))
-                },
+                // Tocar no número marcado desmarca a coluna (desde a 0.30).
+                aoTocar = { c, n -> mudar(r.copy(numeros = Volante.marcarColuna(r.numeros, c, n))) },
             )
         }
         Formato.LOTECA -> {
@@ -886,11 +924,8 @@ private fun VolanteEditavel(
                 m,
                 rotulos = r.jogosLoteca,
                 palpites = r.palpitesLoteca,
-                aoEscolher = { j, op ->
-                    val lista = MutableList(Volante.JOGOS_LOTECA) { i -> r.palpitesLoteca.getOrNull(i) ?: "" }
-                    lista[j] = op
-                    mudar(r.copy(palpitesLoteca = lista))
-                },
+                // Tocar no palpite marcado desmarca o jogo (desde a 0.30).
+                aoEscolher = { j, op -> mudar(r.copy(palpitesLoteca = Volante.marcarPalpite(r.palpitesLoteca, j, op))) },
             )
         }
         Formato.FEDERAL -> {

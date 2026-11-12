@@ -13,11 +13,9 @@ import io.github.marcosfaria94.bolao.domain.Tarjas
 import io.github.marcosfaria94.bolao.ui.aposta.CONCURSOS_DA_TEIMOSINHA
 import io.github.marcosfaria94.bolao.ui.aposta.avisoAoSair
 import io.github.marcosfaria94.bolao.ui.aposta.temNumeroMarcado
-import io.github.marcosfaria94.bolao.ui.home.GrupoEmAndamento
 import io.github.marcosfaria94.bolao.ui.jogos.linhasInvertidas
 import io.github.marcosfaria94.bolao.ui.jogos.regras
 import io.github.marcosfaria94.bolao.ui.jogos.rotuloDaFaixa
-import io.github.marcosfaria94.bolao.ui.painel.alternarEspeciais
 import io.github.marcosfaria94.bolao.ui.painel.avisoDeRepeticao
 import io.github.marcosfaria94.bolao.ui.painel.textoDaExclusaoDoFavorito
 import org.junit.Assert.assertEquals
@@ -89,24 +87,6 @@ class Novidades029Test {
         // A Mega-Sena sem as apostas com mais números: uma linha por faixa.
         val mega = linhasInvertidas(Modalidade.MEGA_SENA, Probabilidades.tabela(Modalidade.MEGA_SENA, mais = false)[0])
         assertEquals(listOf("6 (Sena)" to listOf("1 em 50.063.860"), "5 (Quina)" to listOf("1 em 154.518"), "4 (Quadra)" to listOf("1 em 2.332")), mega)
-    }
-
-    @Test
-    fun especialNaoFicaColadoNoNormal() {
-        fun g(m: Modalidade, c: Int, dia: Int) = GrupoEmAndamento(m, c, LocalDate.of(2026, 12, 1).plusDays(dia.toLong()), emptyList())
-        val mega = g(Modalidade.MEGA_SENA, 3015, 0)
-        val virada = g(Modalidade.MEGA_SENA, 3100, 31)
-        val quina = g(Modalidade.QUINA, 7200, 40)
-        val loto = g(Modalidade.LOTOFACIL, 3800, 1)
-        // A Mega e a Mega da Virada juntas: a Quina (o próximo de outra modalidade) vai para o meio.
-        assertEquals(listOf(mega, quina, virada), alternarEspeciais(listOf(mega, virada, quina)))
-        // Já separados: nada muda.
-        assertEquals(listOf(mega, loto, virada), alternarEspeciais(listOf(mega, loto, virada)))
-        // Sem outro para o meio: ficam juntos.
-        assertEquals(listOf(loto, mega, virada), alternarEspeciais(listOf(loto, mega, virada)))
-        // Dois concursos normais da mesma modalidade não mudam.
-        val mega2 = g(Modalidade.MEGA_SENA, 3016, 3)
-        assertEquals(listOf(mega, mega2, loto), alternarEspeciais(listOf(mega, mega2, loto)))
     }
 
     @Test

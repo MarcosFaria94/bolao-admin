@@ -171,6 +171,17 @@ object Volante {
     fun cabeMaisUm(m: Modalidade, p: Palpite): Boolean = m.formato == Formato.NUMEROS && p.numeros.size < maximo(m)
 
     /**
+     * Super Sete: marca o número [n] na coluna [c] (troca o que estava nela) ou, se ele já estava marcado, desmarca a
+     * coluna (desde a 0.30; antes, tocar de novo no número marcado não fazia nada). Coluna sem número = -1.
+     */
+    fun marcarColuna(numeros: List<Int>, c: Int, n: Int): List<Int> =
+        List(COLUNAS_SUPER_SETE) { i -> numeros.getOrNull(i) ?: -1 }.toMutableList().also { it[c] = if (it[c] == n) -1 else n }
+
+    /** Loteca: o palpite [op] no jogo [j] ou, se já era ele, nenhum (desde a 0.30, como na Super Sete). */
+    fun marcarPalpite(palpites: List<String>, j: Int, op: String): List<String> =
+        List(JOGOS_LOTECA) { i -> palpites.getOrNull(i) ?: "" }.toMutableList().also { it[j] = if (it[j] == op) "" else op }
+
+    /**
      * Marca ou desmarca um número, sem passar da quantidade da aposta simples (ou, com [mais] números
      * permitidos, do máximo da modalidade).
      */

@@ -352,8 +352,8 @@ class TelasTest {
         assertEquals(SecaoAjuste.NOTIFICACOES, SecaoAjuste.de("toque"))
         assertEquals("Notificações", SecaoAjuste.NOTIFICACOES.titulo(false))
         // Desde a 0.21 o Modo de teste saiu dos Ajustes (é uma sessão à parte, na tela das sessões).
-        // Desde a 0.24 o Backup também fica no Celular.
-        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.BACKUP), SecaoAjuste.grupos(false).first { it.first == "CELULAR" }.second)
+        // Desde a 0.24 o Backup também fica no Celular; desde a 0.30, a Biometria.
+        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.BIOMETRIA, SecaoAjuste.BACKUP), SecaoAjuste.grupos(false).first { it.first == "CELULAR" }.second)
         assertTrue(SecaoAjuste.grupos(true).none { SecaoAjuste.TESTE in it.second })
     }
 
@@ -403,7 +403,7 @@ class TelasTest {
         // O individual: o "Apagar tudo" no fim do "Apostas"; sem o grupo Segurança.
         assertEquals(listOf(SecaoAjuste.MODO, SecaoAjuste.PARAMETROS, SecaoAjuste.EXTINCAO), SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second)
         assertEquals(listOf("APOSTAS", "CELULAR"), SecaoAjuste.grupos(true).map { it.first })
-        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.BACKUP), SecaoAjuste.grupos(true).first { it.first == "CELULAR" }.second)
+        assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.BIOMETRIA, SecaoAjuste.BACKUP), SecaoAjuste.grupos(true).first { it.first == "CELULAR" }.second)
         assertEquals(listOf("BOLÃO", "SEGURANÇA", "CELULAR"), SecaoAjuste.grupos(false).map { it.first })
         // O endereço antigo do "Aporte e preços" (avisos de antes da 0.23) abre os Parâmetros.
         assertEquals(SecaoAjuste.PARAMETROS, SecaoAjuste.de("valores"))
@@ -422,7 +422,7 @@ class TelasTest {
         val e = Estado(apostas = listOf(q))
         // Registrada e sem comprovante do bolão para enviar: OK.
         assertNull(pendenciaDoJogo(e, q))
-        assertEquals("Falta registrar", pendenciaDoJogo(e, q.copy(registrada = false)))
+        assertEquals("Aposta não registrada", pendenciaDoJogo(e, q.copy(registrada = false)))
         assertEquals("Sem comprovante", pendenciaDoJogo(e, q.copy(pendenteDeAnexo = true)))
         val pdf = Arquivo("c.pdf", "c.pdf", "application/pdf", 0)
         assertEquals("A conferir", pendenciaDoJogo(e, q.copy(pendenteDeAnexo = true, comprovante = pdf)))

@@ -1,5 +1,8 @@
 package io.github.marcosfaria94.bolao.ui.painel
 
+import io.github.marcosfaria94.bolao.ui.tema.corDestaque
+import androidx.compose.material.icons.outlined.AutoAwesome
+import io.github.marcosfaria94.bolao.ui.comum.TarjaModalidade
 import androidx.compose.foundation.background
 import io.github.marcosfaria94.bolao.ui.aposta.coresDaBola
 import io.github.marcosfaria94.bolao.ui.aposta.CoresDaBola
@@ -81,7 +84,6 @@ import io.github.marcosfaria94.bolao.ui.aposta.Brasao
 import io.github.marcosfaria94.bolao.ui.aposta.nomeDoTime
 import io.github.marcosfaria94.bolao.ui.aposta.tituloDaAposta
 import io.github.marcosfaria94.bolao.ui.comum.CoresEmblema
-import io.github.marcosfaria94.bolao.ui.comum.TarjaDoConcurso
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.data.Operacoes
@@ -104,7 +106,6 @@ import androidx.compose.ui.semantics.semantics
 import io.github.marcosfaria94.bolao.ui.comum.Icones
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.home.GrupoEmAndamento
-import io.github.marcosfaria94.bolao.ui.home.emOrdemDeSorteioEK1
 import io.github.marcosfaria94.bolao.ui.home.jogosEmAndamento
 import io.github.marcosfaria94.bolao.ui.home.pendenciaDoJogo
 import io.github.marcosfaria94.bolao.domain.indices.ResultadoK
@@ -173,6 +174,9 @@ const val ROTA_PAINEL = "meus-jogos"
  * - a estrelinha de cada aposta guarda o jogo nos favoritos ([Favoritos]) e a seção "JOGOS FAVORITOS", no
  *   fim, lista os favoritos por modalidade: "Apostar" registra o jogo no próximo concurso; segurando, dá para
  *   escolher vários (ou todos de uma modalidade) e apostar de uma vez.
+ *
+ * Desde a 0.30: os jogos por modalidade ([porModalidade]: a tarja uma vez só e os concursos embaixo, o especial
+ * dentro da modalidade dele); cada concurso começa fechado, com o selo de quantas apostas logo depois do número.
  */
 @Composable
 fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String) -> Unit, apostar: () -> Unit) {
@@ -182,8 +186,10 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
     val indices = remember { ctx.bolao.indices }
     val itens by indices.itens.collectAsStateWithLifecycle()
     val hoje = LocalDate.now()
-    // Desde a 0.29 o concurso especial não fica colado no concurso normal da mesma modalidade ([alternarEspeciais]).
-    val grupos = alternarEspeciais(emOrdemDeSorteioEK1(jogosEmAndamento(estado, hoje)) { indicesDoConcurso(itens[it.modalidade], it)?.k1 })
+    // Desde a 0.30, por modalidade (o concurso especial, como a Mega da Virada, fica dentro da modalidade dele): as
+    // modalidades pelo sorteio mais próximo e, no mesmo dia, pelo maior k1; os concursos de cada uma, o mais próximo primeiro.
+    val modalidades = porModalidade(jogosEmAndamento(estado, hoje)) { indicesDoConcurso(itens[it.modalidade], it)?.k1 }
+    val grupos = modalidades.flatMap { it.concursos }
     val todas = grupos.flatMap { it.apostas }
     // O "Compartilhar" manda só as apostas registradas (as que falta registrar ainda não valem).
     val registradas = todas.filter { it.registrada }
@@ -244,20 +250,27 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        grupos.forEachIndexed { i, g ->
-                            // Uma linha entre um concurso e outro (a tarja já marca o começo de cada um).
+                        modalidades.forEachIndexed { i, md ->
+                            // Uma linha entre uma modalidade e outra (a tarja já marca o começo de cada uma).
                             if (i > 0) HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
-                            key(g.modalidade, g.concurso, g.sorteio) {
-                                BlocoDoConcurso(
-                                    estado, g, itens[g.modalidade], hoje, abrir,
-                                    podem = podem,
-                                    selecao = apostasMarcadas,
-                                    aoSegurar = { a -> selApostas = setOf(a.id) },
-                                    aoMarcar = { ids, marcar ->
-                                        selApostas = apostasMarcadas.orEmpty().let { if (marcar) it + ids else it - ids.toSet() }
-                                    },
-                                    aoFavoritar = ::alternarFavorito,
-                                )
+                            key(md.modalidade) {
+                                // A tarja da modalidade uma vez só e, embaixo, os concursos dela (desde a 0.30).
+                                TarjaModalidade(md.modalidade, Modifier.fillMaxWidth(), altura = 42.dp, cantos = 0.dp)
+                                md.concursos.forEachIndexed { j, g ->
+                                    if (j > 0) HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                                    key(g.modalidade, g.concurso, g.sorteio) {
+                                        BlocoDoConcurso(
+                                            estado, g, itens[g.modalidade], hoje, abrir,
+                                            podem = podem,
+                                            selecao = apostasMarcadas,
+                                            aoSegurar = { a -> selApostas = setOf(a.id) },
+                                            aoMarcar = { ids, marcar ->
+                                                selApostas = apostasMarcadas.orEmpty().let { if (marcar) it + ids else it - ids.toSet() }
+                                            },
+                                            aoFavoritar = ::alternarFavorito,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -347,27 +360,28 @@ private fun BotaoDosFavoritos(quantos: Int, aoTocar: () -> Unit) {
     }
 }
 
+/** Uma modalidade no Painel (desde a 0.30): os concursos dela com jogos em andamento, o sorteio mais próximo primeiro. */
+data class ModalidadeDoPainel(val modalidade: Modalidade, val concursos: List<GrupoEmAndamento>)
+
 /**
- * O concurso especial não fica colado no concurso normal da mesma modalidade (desde a 0.29; a Mega-Sena e a Mega
- * da Virada lado a lado confundiam): quando ficam um embaixo do outro, o próximo concurso de outra modalidade
- * (pela ordem do Painel) passa para o meio deles. Sem outro para pôr no meio, ficam juntos (o especial tem a cor
- * própria, dourada, e a tarja dele).
+ * A ordem do Painel (desde a 0.30, pedido do usuário; na 0.29 cada concurso era um bloco e a Mega da Virada ficava
+ * separada da Mega-Sena, como outra modalidade): os concursos agrupados por modalidade (o concurso especial fica
+ * dentro da modalidade dele, como um concurso a mais); as modalidades pelo sorteio mais próximo (o do concurso
+ * mais próximo dela; sem data no fim) e, no mesmo dia, pelo maior k1 desse concurso ([k1]; sem k1, depois); dentro
+ * de cada modalidade, os concursos pelo sorteio mais próximo.
  */
-fun alternarEspeciais(grupos: List<GrupoEmAndamento>): List<GrupoEmAndamento> {
-    val r = grupos.toMutableList()
-    fun especial(g: GrupoEmAndamento) = Especiais.doConcurso(g.modalidade, g.concurso) != null
-    var i = 1
-    while (i < r.size) {
-        val a = r[i - 1]
-        val b = r[i]
-        if (a.modalidade == b.modalidade && especial(a) != especial(b)) {
-            val j = (i + 1 until r.size).firstOrNull { r[it].modalidade != a.modalidade }
-            if (j != null) r.add(i, r.removeAt(j))
+fun porModalidade(grupos: List<GrupoEmAndamento>, k1: (GrupoEmAndamento) -> Double?): List<ModalidadeDoPainel> =
+    grupos
+        .groupBy { it.modalidade }
+        .map { (m, lista) ->
+            ModalidadeDoPainel(m, lista.sortedWith(compareBy<GrupoEmAndamento> { it.sorteio == null }.thenBy { it.sorteio }.thenBy { it.concurso }))
         }
-        i++
-    }
-    return r
-}
+        .sortedWith(
+            compareBy<ModalidadeDoPainel> { it.concursos.first().sorteio == null }
+                .thenBy { it.concursos.first().sorteio }
+                .thenBy { -(k1(it.concursos.first()) ?: Double.NEGATIVE_INFINITY) }
+                .thenBy { it.modalidade.ordinal },
+        )
 
 /** Um favorito pronto para apostar: a aposta no próximo concurso e por que ainda não dá ([impedimento], null = dá). */
 data class PlanoDoFavorito(val favorito: Favorito, val aposta: Aposta, val impedimento: String?)
@@ -656,13 +670,15 @@ private fun LinhaDoResumo(item: ItemDoResumo, aoTocar: () -> Unit) {
             Icon(icone, contentDescription = null, tint = cor, modifier = Modifier.size(18.dp))
         }
         Spacer(Modifier.width(14.dp))
+        // Com a letra grande, um nome comprido ("Apostas não registradas", desde a 0.30) passa para a segunda linha.
         Text(
             item.tipo.rotulo,
             style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 21.sp),
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        Spacer(Modifier.width(8.dp))
         Text(
             if (item.quantidade > 99) "99+" else item.quantidade.toString(),
             style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, lineHeight = 21.sp),
@@ -708,17 +724,18 @@ private fun faixaDoConcurso(g: GrupoEmAndamento, cor: Color): Color {
 }
 
 /**
- * Um concurso (dentro do bloco dos jogos; desde a 0.19, com a modalidade separada das apostas). Desde a 0.27:
- * no alto, a tarja da modalidade de ponta a ponta (como as da Caixa; num concurso especial, a dele); embaixo,
- * na faixa clarinha, o concurso e os índices, o sorteio e o prêmio; depois, no fundo neutro, as apostas, cada
- * uma com as dezenas em bolas e OK ou Pendente. Um filete da cor da modalidade, à esquerda, acompanha o
- * concurso inteiro.
+ * Um concurso (dentro do bloco dos jogos; desde a 0.19, com a modalidade separada das apostas). Desde a 0.30 a tarja
+ * da modalidade fica uma vez só, em cima dos concursos dela ([ModalidadeDoPainel]); cada concurso começa pela faixa
+ * clarinha com o concurso, quantas apostas (em destaque, logo depois do número), o sorteio e o prêmio; depois, no
+ * fundo neutro, as apostas, cada uma com as dezenas em bolas e OK ou Pendente. Um filete da cor da modalidade (no
+ * concurso especial, dourado, com o nome dele em cima do número) acompanha o concurso inteiro, à esquerda.
  *
- * Desde a 0.28: tocar no alto (a tarja e o concurso) abre e fecha o concurso (drill-down; começa aberto; a
- * seta diz qual); fechado, só a tarja, o concurso e quantas apostas. Sem as lixeiras: segurar uma aposta abre
- * a seleção ([aoSegurar]); na seleção ([selecao] não nulo), a caixa do concurso marca ou desmarca todas as
- * apostas dele que podem sair do app ([aoMarcar]). A estrelinha de cada aposta guarda o jogo nos favoritos.
+ * Tocar na faixa abre e fecha o concurso (drill-down; desde a 0.30 começa fechado; a seta diz qual). Sem as
+ * lixeiras: segurar uma aposta abre a seleção ([aoSegurar]); na seleção ([selecao] não nulo), a caixa do concurso
+ * marca ou desmarca todas as apostas dele que podem sair do app ([aoMarcar]). A estrelinha de cada aposta guarda o
+ * jogo nos favoritos.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BlocoDoConcurso(
     estado: Estado,
@@ -734,8 +751,9 @@ private fun BlocoDoConcurso(
 ) {
     val cor = corDoConcurso(g)
     val faixa = faixaDoConcurso(g, cor)
+    val especial = Especiais.doConcurso(g.modalidade, g.concurso)
     val doConcurso = g.apostas.filter { it.id in podem }.map { it.id }
-    var aberto by rememberSaveable { mutableStateOf(true) }
+    var aberto by rememberSaveable { mutableStateOf(false) }
     val titulo = if (g.concurso > 0) "Concurso ${g.concurso}" else "Concurso"
     Column(
         Modifier
@@ -743,57 +761,52 @@ private fun BlocoDoConcurso(
             .drawBehind { drawRect(cor, size = Size(FILETE.toPx(), size.height)) }
             .padding(start = FILETE),
     ) {
-        // O alto do concurso (a tarja e a linha do concurso): tocar abre e fecha.
-        Column(
-            Modifier
+        // O alto do concurso: tocar abre e fecha.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClickLabel = if (aberto) "Fechar" else "Abrir") { aberto = !aberto },
+                .clickable(onClickLabel = if (aberto) "Fechar" else "Abrir") { aberto = !aberto }
+                .background(faixa)
+                .padding(start = if (selecao != null && doConcurso.isNotEmpty()) 0.dp else 12.dp, end = 4.dp, top = 10.dp, bottom = 12.dp),
         ) {
-            TarjaDoConcurso(g.modalidade, g.concurso, Modifier.fillMaxWidth(), altura = 42.dp, cantos = 0.dp)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(faixa)
-                    .padding(start = if (selecao != null && doConcurso.isNotEmpty()) 0.dp else 12.dp, end = 4.dp, top = 10.dp, bottom = 12.dp),
-            ) {
-                // Na seleção, a caixa do concurso: marca (ou desmarca) todas as apostas dele que podem sair.
-                if (selecao != null && doConcurso.isNotEmpty()) {
-                    val marcadas = doConcurso.count { it in selecao }
-                    TriStateCheckbox(
-                        state = when (marcadas) {
-                            0 -> ToggleableState.Off
-                            doConcurso.size -> ToggleableState.On
-                            else -> ToggleableState.Indeterminate
-                        },
-                        onClick = { aoMarcar(doConcurso, marcadas < doConcurso.size) },
-                        modifier = Modifier.semantics { contentDescription = "Selecionar: $titulo" },
-                    )
-                }
-                // Desde a 0.29: sem o k1, o k2 e as odds; o sorteio e o prêmio numa linha, com os ícones (sem os quadrinhos).
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Na seleção, a caixa do concurso: marca (ou desmarca) todas as apostas dele que podem sair.
+            if (selecao != null && doConcurso.isNotEmpty()) {
+                val marcadas = doConcurso.count { it in selecao }
+                TriStateCheckbox(
+                    state = when (marcadas) {
+                        0 -> ToggleableState.Off
+                        doConcurso.size -> ToggleableState.On
+                        else -> ToggleableState.Indeterminate
+                    },
+                    onClick = { aoMarcar(doConcurso, marcadas < doConcurso.size) },
+                    modifier = Modifier.semantics { contentDescription = "Selecionar: $titulo" },
+                )
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // O concurso especial dentro da modalidade (desde a 0.30): o nome dele, em dourado, em cima do número.
+                if (especial != null) NomeDoEspecial(especial.nome)
+                // Com a letra grande (ou a caixa da seleção), o selo desce para a linha de baixo.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         titulo,
                         style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 23.sp),
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.align(Alignment.CenterVertically),
                     )
-                    DadosDoConcurso(sorteioDoConcurso(g, hoje), premioDoConcurso(g, item))
-                    if (!aberto) {
-                        Text(
-                            if (g.apostas.size == 1) "1 aposta" else "${g.apostas.size} apostas",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    SeloDasApostas(g.apostas.size, Modifier.align(Alignment.CenterVertically))
                 }
-                Icon(
-                    if (aberto) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                    contentDescription = (if (aberto) "Fechar o " else "Abrir o ") + titulo.lowercase(),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 10.dp).size(26.dp),
-                )
+                // Desde a 0.29: sem o k1, o k2 e as odds; o sorteio e o prêmio numa linha, com os ícones (sem os quadrinhos).
+                DadosDoConcurso(sorteioDoConcurso(g, hoje), premioDoConcurso(g, item))
             }
+            Icon(
+                if (aberto) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                contentDescription = (if (aberto) "Fechar o " else "Abrir o ") + titulo.lowercase(),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 10.dp).size(26.dp),
+            )
         }
         if (!aberto) return@Column
         g.apostas.forEachIndexed { i, a ->
@@ -815,6 +828,46 @@ private fun BlocoDoConcurso(
                 aoFavoritar = { aoFavoritar(a) },
             )
         }
+    }
+}
+
+/** "1 aposta" ou "3 apostas": quantas apostas o concurso tem (desde a 0.30, o selo ao lado do número do concurso). */
+fun textoDasApostas(n: Int): String = if (n == 1) "1 aposta" else "$n apostas"
+
+/**
+ * O selo de quantas apostas o concurso tem (desde a 0.30, logo depois do número, em destaque: a cor de destaque
+ * do painel, dourado no escuro e azul-marinho no claro; até a 0.29, um texto cinza embaixo, só com o concurso
+ * fechado).
+ */
+@Composable
+private fun SeloDasApostas(n: Int, modifier: Modifier = Modifier) {
+    Text(
+        textoDasApostas(n),
+        style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.5.sp, lineHeight = 17.sp),
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onPrimary,
+        maxLines = 1,
+        softWrap = false,
+        modifier = modifier
+            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 3.dp),
+    )
+}
+
+/** O nome do concurso especial em cima do número (desde a 0.30): o brilho e "MEGA DA VIRADA", em dourado. */
+@Composable
+private fun NomeDoEspecial(nome: String) {
+    val cor = corDestaque()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = cor, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(5.dp))
+        Text(
+            nome.uppercase(),
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp, letterSpacing = 0.8.sp),
+            fontWeight = FontWeight.Bold,
+            color = cor,
+            maxLines = 1,
+        )
     }
 }
 

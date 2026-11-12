@@ -39,6 +39,8 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.HistoryEdu
 import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.Fingerprint
+import io.github.marcosfaria94.bolao.seguranca.Biometria
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Restore
@@ -147,6 +149,8 @@ enum class SecaoAjuste(val id: String) {
     BACKUP("backup"),
     /** A apuração automática (avisos, bateria, inicialização) e o toque do prêmio, numa tela só. */
     NOTIFICACOES("notificacoes"),
+    /** O bloqueio do app com a biometria (desde a 0.30, no grupo Celular): pedir ou não, e depois de quanto tempo fora. */
+    BIOMETRIA("biometria"),
     /** Fora da lista desde a 0.26: o app confere sozinho, ao abrir, se há versão nova ([AtualizacaoViewModel]). */
     ATUALIZACAO("atualizacao"),
     TESTE("teste"),
@@ -166,6 +170,7 @@ enum class SecaoAjuste(val id: String) {
         AUDITORIA -> "Auditoria"
         BACKUP -> "Backup"
         NOTIFICACOES -> "Notificações"
+        BIOMETRIA -> "Biometria"
         ATUALIZACAO -> "Atualização"
         TESTE -> "Modo de teste"
         EXTINCAO -> if (individual) "Apagar tudo" else "Extinção do Bolão"
@@ -200,7 +205,8 @@ enum class SecaoAjuste(val id: String) {
                 else -> "SEGURANÇA" to listOf(TERMO, INTEGRIDADE, AUDITORIA)
             },
             // Sem a Atualização desde a 0.26 (pedido do usuário): o app confere sozinho ao abrir e mostra a janela da versão nova.
-            "CELULAR" to listOf(NOTIFICACOES, BACKUP),
+            // A Biometria desde a 0.30 (pedido do usuário; antes o app sempre pedia, sem ajuste).
+            "CELULAR" to listOf(NOTIFICACOES, BIOMETRIA, BACKUP),
         )
     }
 }
@@ -214,6 +220,7 @@ private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
     SecaoAjuste.AUDITORIA -> Icons.Outlined.PictureAsPdf
     SecaoAjuste.BACKUP -> Icons.Outlined.Backup
     SecaoAjuste.NOTIFICACOES -> Icons.Outlined.NotificationsActive
+    SecaoAjuste.BIOMETRIA -> Icons.Outlined.Fingerprint
     SecaoAjuste.ATUALIZACAO -> Icons.Outlined.SystemUpdate
     SecaoAjuste.TESTE -> Icons.Outlined.Science
     SecaoAjuste.EXTINCAO -> Icons.Outlined.DeleteForever
@@ -246,6 +253,8 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
     }
     val liberada = remember(conferido) { Notificador.permitido(ctx) && SegundoPlano.bateriaLivre(ctx) }
     val toqueLigado = remember(conferido, estado) { Toque.config(ctx).ligado }
+    val bloqueio = remember(conferido) { Biometria.bloqueio(ctx) }
+    val celularComBloqueio = remember(conferido) { Biometria.disponivel(ctx) }
     val individual = estado.individual
 
     fun situacao(s: SecaoAjuste): Pair<String, TomItem> = when (s) {
@@ -261,6 +270,11 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
             !liberada -> "Falta liberar" to TomItem.ALERTA
             toqueLigado -> "Toque ligado" to TomItem.NORMAL
             else -> "Toque desligado" to TomItem.NORMAL
+        }
+        SecaoAjuste.BIOMETRIA -> when {
+            !celularComBloqueio -> SEM_BLOQUEIO_NO_CELULAR to TomItem.ALERTA
+            bloqueio.pedir -> "Ligada" to TomItem.NORMAL
+            else -> "Desligada" to TomItem.NORMAL
         }
         SecaoAjuste.ATUALIZACAO -> when {
             etapa is EtapaAtualizacao.Verificando -> "Verificando..." to TomItem.NORMAL
@@ -508,6 +522,7 @@ fun AjustesSecaoTela(estado: Estado, secao: SecaoAjuste, atualizacao: Atualizaca
                         Secao("Apuração automática") { ApuracaoComOAppFechado() }
                         Secao("Toque do prêmio") { ToqueDoPremio() }
                     }
+                    SecaoAjuste.BIOMETRIA -> BiometriaDoCelular()
                     // Ficam direto na lista (não têm tela).
                     SecaoAjuste.ATUALIZACAO, SecaoAjuste.TESTE -> Unit
                     SecaoAjuste.EXTINCAO -> Extincao(estado)

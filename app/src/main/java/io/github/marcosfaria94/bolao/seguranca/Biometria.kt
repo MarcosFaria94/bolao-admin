@@ -20,6 +20,39 @@ object Biometria {
     fun disponivel(context: Context): Boolean =
         BiometricManager.from(context).canAuthenticate(AUTENTICADORES) == BiometricManager.BIOMETRIC_SUCCESS
 
+    /**
+     * O bloqueio do app (desde a 0.30, em Ajustes > Biometria, no grupo Celular: vale para o app todo, não para a
+     * sessão): [pedir] a biometria ao abrir o app e de novo depois de [minutos] fora dele. Até a 0.29 era sempre
+     * ligado, com 3 minutos.
+     */
+    data class Bloqueio(val pedir: Boolean, val minutos: Int)
+
+    private const val PREFS = "biometria"
+    private const val PEDIR = "pedir"
+    private const val MINUTOS = "minutos"
+
+    /** Os tempos fora do app que dá para escolher (em minutos) até a biometria ser pedida de novo. */
+    val TEMPOS: List<Int> = listOf(1, 3, 10, 30)
+
+    /** O tempo de sempre (o das versões até a 0.29): ir ao app da Caixa ou ao WhatsApp e voltar logo não pede de novo. */
+    const val MINUTOS_PADRAO = 3
+
+    fun bloqueio(context: Context): Bloqueio {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return Bloqueio(p.getBoolean(PEDIR, true), p.getInt(MINUTOS, MINUTOS_PADRAO).takeIf { it in TEMPOS } ?: MINUTOS_PADRAO)
+    }
+
+    fun pedir(context: Context, sim: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(PEDIR, sim).apply()
+    }
+
+    fun minutos(context: Context, minutos: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(MINUTOS, minutos).apply()
+    }
+
+    /** O app fica bloqueado até a biometria? Ligada nos Ajustes e o celular com biometria ou bloqueio de tela. */
+    fun bloqueia(context: Context): Boolean = bloqueio(context).pedir && disponivel(context)
+
     /** Pede a autorização. true = autorizado; false = cancelado, erro ou sem biometria. */
     suspend fun autorizar(activity: FragmentActivity, titulo: String, subtitulo: String? = null): Boolean {
         if (!disponivel(activity)) return false

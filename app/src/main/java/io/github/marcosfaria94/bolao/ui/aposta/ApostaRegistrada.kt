@@ -637,11 +637,7 @@ private fun ResultadoManual(a: Aposta, atual: Concurso, aoMudar: (Concurso) -> U
         Formato.COLUNAS -> GradeColunas(
             m,
             situacao = { c, n -> if (atual.dezenas.getOrNull(c) == n) SituacaoNumero.MARCADO else SituacaoNumero.LIVRE },
-            aoTocar = { c, n ->
-                val cols = MutableList(Volante.COLUNAS_SUPER_SETE) { i -> atual.dezenas.getOrNull(i) ?: -1 }
-                cols[c] = n
-                aoMudar(atual.copy(dezenas = cols))
-            },
+            aoTocar = { c, n -> aoMudar(atual.copy(dezenas = Volante.marcarColuna(atual.dezenas, c, n))) },
         )
         Formato.LOTECA -> {
             val resultados = (0 until Volante.JOGOS_LOTECA).map { atual.jogosLoteca.getOrNull(it)?.resultado.orEmpty() }
@@ -651,7 +647,8 @@ private fun ResultadoManual(a: Aposta, atual: Concurso, aoMudar: (Concurso) -> U
                 palpites = resultados,
                 aoEscolher = { j, op ->
                     val jogos = (0 until Volante.JOGOS_LOTECA).map { i ->
-                        val r = if (i == j) op else resultados[i]
+                        // Tocar no resultado marcado desmarca o jogo (desde a 0.30, como no volante).
+                        val r = if (i == j) (if (resultados[i] == op) "" else op) else resultados[i]
                         val (g1, g2) = when (r) {
                             "1" -> 1 to 0
                             "2" -> 0 to 1

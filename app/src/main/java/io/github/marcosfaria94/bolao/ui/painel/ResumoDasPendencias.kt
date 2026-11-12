@@ -7,7 +7,8 @@ import io.github.marcosfaria94.bolao.data.Pendencias
 
 /** Os tipos de pendência do resumo do Painel de Jogos, na ordem em que aparecem. */
 enum class TipoDoResumo(val rotulo: String) {
-    REGISTRAR("Falta registrar"),
+    /** Desde a 0.30, "Apostas não registradas" (até a 0.29, "Falta registrar"). */
+    REGISTRAR("Apostas não registradas"),
     SEM_COMPROVANTE("Sem comprovante"),
     CONFERIR("A conferir"),
     ENVIAR("Enviar ao grupo"),
