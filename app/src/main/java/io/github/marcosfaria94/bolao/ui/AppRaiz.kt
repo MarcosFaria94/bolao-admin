@@ -125,6 +125,9 @@ import io.github.marcosfaria94.bolao.ui.comum.BarraTitulo
 import io.github.marcosfaria94.bolao.ui.comum.ComprovanteTela
 import io.github.marcosfaria94.bolao.ui.comum.Icones
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
+import io.github.marcosfaria94.bolao.ui.painel.FavoritosTela
+import io.github.marcosfaria94.bolao.ui.painel.TITULO_FAVORITOS
+import io.github.marcosfaria94.bolao.ui.painel.ROTA_FAVORITOS
 import io.github.marcosfaria94.bolao.ui.extincao.ExtincaoTela
 import io.github.marcosfaria94.bolao.ui.extrato.ExtratoTela
 import io.github.marcosfaria94.bolao.ui.home.HomeTela
@@ -170,12 +173,12 @@ private fun paginaDa(aba: Aba, atual: Int): Int {
 }
 
 /** Telas que não limpam o filtro do Histórico: o próprio "Filtrar", os Comprovantes e o Painel de Jogos. */
-private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_PAINEL)
+private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_PAINEL, ROTA_FAVORITOS)
 
 /** Telas sem a seta de voltar na barra de cima (fecham deslizando o dedo, puxando para baixo ou pelo voltar do celular). */
 private val SEM_SETA = setOf(
     "aporte", "rateio", "extrato", "extrato/{mes}", ROTA_FILTRO, "saldo", ROTA_COMPROVANTES, ROTA_PAINEL, ROTA_SECAO_AJUSTES, "integridade",
-    ROTA_INDICES, ROTA_SESSOES,
+    ROTA_INDICES, ROTA_SESSOES, ROTA_FAVORITOS,
 )
 
 /** A página do jogo (o volante, a aposta aberta ou os Detalhes): nos Detalhes, o título "← Aposta" também volta. */
@@ -387,6 +390,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         ROTA_FILTRO -> "Filtrar"
         ROTA_COMPROVANTES -> "Comprovantes"
         ROTA_PAINEL -> "Painel de Jogos"
+        ROTA_FAVORITOS -> TITULO_FAVORITOS
         ROTA_SESSOES -> TITULO_SESSOES
         ROTA_SECAO_AJUSTES -> SecaoAjuste.de(e?.arguments?.getString("secao"))?.titulo(estado.individual) ?: "Ajustes"
         "aporte" -> "Aporte"
@@ -431,7 +435,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
 
     // O Painel de Jogos abre com as cores próprias (azul-marinho e dourado, como o ícone): o esquema
     // muda só enquanto ele está na tela (a barra do título e o fundo também).
-    val doPainel = rota == ROTA_PAINEL
+    // Desde a 0.29, também os jogos favoritos (que abrem pelo Painel, com a mesma disposição).
+    val doPainel = rota == ROTA_PAINEL || rota == ROTA_FAVORITOS
     val esquema = MaterialTheme.colorScheme
     val escuro = isSystemInDarkTheme()
     val cores = remember(esquema, doPainel, escuro) { if (doPainel) coresDoPainel(esquema, escuro) else esquema }
@@ -447,7 +452,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     subtitulo = nomeDaSessao.takeIf { ehAba && variasSessoes && !teste },
                     tituloVolta = rota in ROTAS_DO_JOGO,
                     corTitulo = if (doPainel) MaterialTheme.colorScheme.primary else Color.Unspecified,
-                    antesDoTitulo = if (doPainel) {
+                    antesDoTitulo = if (rota == ROTA_PAINEL) {
                         { IconeDoPainel(32.dp) }
                     } else {
                         null
@@ -519,15 +524,17 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                 }
             }
         },
-        snackbarHost = { SnackbarHost(LocalAvisos.current) },
+        // Os avisos (registrado, descartado...) ficam no alto da tela desde a 0.29, logo abaixo da barra do título
+        // (até a 0.28, no rodapé): ver o SnackbarHost em cima do NavHost.
         // Nas abas a barra de baixo já cuida da margem do sistema; nas outras telas, o conteúdo cuida.
         contentWindowInsets = if (ehAba) WindowInsets(0, 0, 0, 0) else WindowInsets.navigationBars,
     ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
         // Troca de tela instantânea, sem o esmaecer (fade) padrão da navegação.
         NavHost(
             nav,
             startDestination = ROTA_ABAS,
-            modifier = Modifier.padding(padding),
+            modifier = Modifier.fillMaxSize(),
             enterTransition = { EnterTransition.None },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
@@ -593,6 +600,12 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) {
                         PainelDeJogosTela(estado, resumo, abrir = ::abrir, apostar = { irParaAba(Aba.JOGOS) })
                     }
+                }
+            }
+            // Os jogos favoritos (desde a 0.29, o botão embaixo de "MEUS JOGOS" no Painel): fecham como o Painel.
+            composable(ROTA_FAVORITOS) { e ->
+                TelaDeCima(nav, e) {
+                    Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { FavoritosTela(estado) }
                 }
             }
             // As sessões (o "Alternar sessão" da barra de cima, desde a 0.21): puxar para baixo ou deslizar para os
@@ -689,6 +702,9 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             composable("apuracao/{id}") { e ->
                 TelaDeCima(nav, e) { PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty(), ::abrir) { fechar(nav, e) } }
             }
+        }
+        // Os avisos no alto da tela (desde a 0.29).
+        SnackbarHost(LocalAvisos.current, Modifier.align(Alignment.TopCenter))
         }
     }
     }

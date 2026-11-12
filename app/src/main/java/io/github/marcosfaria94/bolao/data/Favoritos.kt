@@ -100,6 +100,16 @@ object Favoritos {
     )
 
     /**
+     * As apostas já registradas no concurso da aposta [a] com o mesmo jogo (desde a 0.29: apostar um favorito
+     * que já foi apostado naquele concurso avisa que a aposta é repetida). Sem o concurso, nenhuma.
+     */
+    fun repetidas(e: Estado, a: Aposta): List<Aposta> = if (a.concurso <= 0) emptyList() else e.apostas.filter { b ->
+        b.id != a.id && b.registrada && b.modalidade == a.modalidade && b.concurso == a.concurso &&
+            mesmos(a.modalidade, a.numeros, b.numeros) && a.trevos.sorted() == b.trevos.sorted() &&
+            Conferencia.normalizar(a.extra.orEmpty()) == Conferencia.normalizar(b.extra.orEmpty())
+    }
+
+    /**
      * Apostar os favoritos (consolidar em aposta, desde a 0.28): registra as [apostas] (feitas por [aposta]),
      * uma por uma, como o "Registrar" do volante; no bolão, cada uma fica esperando o comprovante da Caixa.
      * Devolve o estado e as apostas registradas.

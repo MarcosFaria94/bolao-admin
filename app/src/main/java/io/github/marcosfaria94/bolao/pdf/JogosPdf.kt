@@ -182,7 +182,9 @@ object JogosPdf {
         var yy = y + FOLGA
         pg.texto(x + FOLGA, yy + 10f, 11f, Fonte.HELVETICA_NEGRITO, "Aposta Nº${a.numero}", TEXTO)
         yy += 13f
-        val cor = rgb(a.modalidade.cor)
+        // As cores oficiais das bolas (desde a 0.29: a Timemania amarela com o número verde; os trevos da +Milionária dourados).
+        val bola = Tarjas.bola(a.modalidade)
+        val trevo = Tarjas.trevo(a.modalidade)
         val itens = c.bolas.map { it to false } + c.quadrados.map { it to true }
         if (itens.isNotEmpty()) {
             yy += 6f
@@ -191,10 +193,11 @@ object JogosPdf {
                 val coluna = i % porLinha
                 val bx = x + FOLGA + coluna * (BOLA + ENTRE_BOLAS)
                 val by = yy + linha * (BOLA + ENTRE_BOLAS)
-                if (quadrado) pg.retanguloArredondado(bx, by, BOLA, BOLA, 5f, cor) else pg.circulo(bx + BOLA / 2f, by + BOLA / 2f, BOLA / 2f, cor)
+                val b = if (quadrado) trevo else bola
+                if (quadrado) pg.retanguloArredondado(bx, by, BOLA, BOLA, 5f, rgb(b.fundo)) else pg.circulo(bx + BOLA / 2f, by + BOLA / 2f, BOLA / 2f, rgb(b.fundo))
                 val tamanho = if (texto.length > 2) 7.5f else 9f
                 val w = Tipografia.largura(texto, Fonte.HELVETICA_NEGRITO, tamanho)
-                pg.texto(bx + (BOLA - w) / 2f, by + BOLA / 2f + tamanho * 0.36f, tamanho, Fonte.HELVETICA_NEGRITO, texto, 0xFFFFFF)
+                pg.texto(bx + (BOLA - w) / 2f, by + BOLA / 2f + tamanho * 0.36f, tamanho, Fonte.HELVETICA_NEGRITO, texto, rgb(b.numero))
             }
             val linhas = linhasDeBolas(c)
             yy += linhas * BOLA + (linhas - 1) * ENTRE_BOLAS

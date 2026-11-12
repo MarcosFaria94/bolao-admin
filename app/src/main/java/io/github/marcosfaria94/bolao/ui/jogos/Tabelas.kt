@@ -1,10 +1,10 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
@@ -21,11 +21,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -34,92 +37,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
-
-/**
- * As partes de uma tabela larga (desde a 0.28, os Detalhes dividem as tabelas em outras menores, que cabem na
- * tela): [total] colunas em grupos de no máximo [maximo], do mesmo tamanho ou quase (4 = 2 + 2; 5 = 3 + 2;
- * 7 = 3 + 2 + 2). Cada parte é a faixa de índices das colunas.
- */
-fun partesDaTabela(total: Int, maximo: Int = COLUNAS_POR_TABELA): List<IntRange> =
-    if (total <= 0) emptyList() else partesIguais(total, (total + maximo - 1) / maximo)
-
-/** [total] colunas em [quantas] partes do mesmo tamanho ou quase (as primeiras com uma a mais). */
-private fun partesIguais(total: Int, quantas: Int): List<IntRange> {
-    val base = total / quantas
-    val resto = total % quantas
-    var inicio = 0
-    return (0 until quantas).map { i ->
-        val tamanho = base + if (i < resto) 1 else 0
-        (inicio until inicio + tamanho).also { inicio += tamanho }
-    }
-}
-
-/**
- * As partes de uma tabela que cabem na largura [disponivel] (desde a 0.28; com a letra grande do celular, as
- * tabelas se dividem mais): o menor número de tabelas, com as colunas divididas por igual ([partesDaTabela]),
- * em que cada uma cabe: a primeira coluna ([primeira]), as colunas da parte ([larguras]) e, por cima delas, o
- * título do grupo ([titulo]; 0 = sem). No máximo [maximo] colunas por tabela; uma coluna que sozinha não cabe
- * fica numa tabela só dela (que rola para os lados). As medidas em qualquer unidade (a mesma para todas).
- */
-fun partesQueCabem(larguras: List<Float>, primeira: Float, titulo: Float, disponivel: Float, maximo: Int = COLUNAS_POR_TABELA): List<IntRange> {
-    val n = larguras.size
-    if (n == 0) return emptyList()
-    fun cabe(p: IntRange): Boolean = primeira + maxOf(p.sumOf { larguras[it].toDouble() }.toFloat(), titulo) <= disponivel + 0.5f
-    for (k in (n + maximo - 1) / maximo..n) {
-        val partes = partesIguais(n, k)
-        if (partes.all(::cabe)) return partes
-    }
-    return partesIguais(n, n)
-}
-
-/**
- * Uma tabela dividida em tabelas menores que cabem na largura da tela ([partesQueCabem]; desde a 0.28), uma
- * embaixo da outra, todas com a primeira coluna ([primeira]); com [grupo], o título das colunas ("Probabilidade
- * de acerto (1 em)") fica por cima, uma vez só (pode quebrar a linha: não alarga as tabelas). A letra das
- * tabelas cresce com a do celular só até [ESCALA_MAXIMA_DA_TABELA], para as colunas caberem na tela.
- */
-@Composable
-fun TabelasDivididas(
-    primeira: String,
-    grupo: String?,
-    colunas: List<String>,
-    linhas: List<Pair<String, List<String>>>,
-    modifier: Modifier = Modifier,
-) {
-    LetraDaTabela {
-        val medidor = rememberTextMeasurer()
-        val densidade = LocalDensity.current
-        val celula = MaterialTheme.typography.bodyMedium
-        val cabecalho = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-        val folga = with(densidade) { (FOLGA_DA_CELULA * 2).toPx() }
-        fun largura(texto: String, negrito: Boolean): Float =
-            medidor.measure(texto, if (negrito) cabecalho else celula, maxLines = 1, softWrap = false).size.width.toFloat()
-        val medidas = remember(primeira, colunas, linhas, celula, cabecalho, densidade) {
-            val l0 = maxOf(largura(primeira, true), linhas.maxOfOrNull { largura(it.first, true) } ?: 0f) + folga
-            val ls = colunas.mapIndexed { j, c -> maxOf(largura(c, true), linhas.maxOfOrNull { largura(it.second.getOrElse(j) { "" }, false) } ?: 0f) + folga }
-            l0 to ls
-        }
-        Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (grupo != null) {
-                Text(grupo, style = cabecalho, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            BoxWithConstraints {
-                val disponivel = with(densidade) { maxWidth.toPx() }
-                val partes = partesQueCabem(medidas.second, medidas.first, 0f, disponivel)
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    partes.forEach { parte ->
-                        TabelaRolavel(
-                            primeira = primeira,
-                            grupos = emptyList(),
-                            colunas = colunas.slice(parte),
-                            linhas = linhas.map { (rotulo, valores) -> rotulo to parte.map { valores.getOrElse(it) { "" } } },
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
 
 /** Até quanto a letra das tabelas dos Detalhes cresce com a letra grande do celular (desde a 0.28). */
 const val ESCALA_MAXIMA_DA_TABELA = 1.1f
@@ -138,17 +55,23 @@ private fun LetraDaTabela(conteudo: @Composable () -> Unit) {
 /** O espaço de cada lado do texto nas células das tabelas. */
 private val FOLGA_DA_CELULA = 8.dp
 
-/** Quantas colunas de valores (além da primeira) cada tabela dos Detalhes tem, no máximo (desde a 0.28). */
-const val COLUNAS_POR_TABELA = 3
-
 /**
  * A rolagem para os lados da tabela não passa adiante (desde a 0.28): no fim da tabela, o resto do arrasto
- * não vai para a página, que antes saía dos Detalhes (ou voltava para o volante) quando o dedo seguia
- * arrastando a tabela.
+ * (e do arremesso) não vai para a página, que antes saía dos Detalhes (ou voltava para o volante) quando o
+ * dedo seguia arrastando a tabela.
  */
 private val SemPassarAdiante = object : NestedScrollConnection {
     override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = Offset(available.x, 0f)
     override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = Velocity(available.x, 0f)
+}
+
+/**
+ * O arrasto para os lados em cima da tabela fica com ela (desde a 0.29): mesmo onde ela não rola (a primeira
+ * coluna, ou uma tabela que cabe inteira), deslizar o dedo para os lados não leva a página junto, que saía da
+ * tela. O arrasto para cima e para baixo continua rolando a página.
+ */
+private fun Modifier.prenderArrastoLateral(): Modifier = pointerInput(Unit) {
+    detectHorizontalDragGestures { mudanca, _ -> mudanca.consume() }
 }
 
 /**
@@ -158,9 +81,11 @@ private val SemPassarAdiante = object : NestedScrollConnection {
  * primeira coluna e os valores das outras. A largura de cada coluna é a do texto mais comprido dela; as
  * linhas são listradas para ler melhor.
  *
- * Desde a 0.28 os Detalhes dividem as tabelas em outras menores ([partesDaTabela]): a tabela ocupa a largura
- * toda (as colunas crescem por igual) e só rola para os lados quando não cabe (letra muito grande), com a
- * primeira coluna parada e sem levar a página junto ([SemPassarAdiante]).
+ * A tabela ocupa a largura toda (cabendo, as colunas crescem por igual) e, quando não cabe, rola para os lados
+ * com a primeira coluna parada. Desde a 0.29 é uma tabela só (na 0.28 os Detalhes as dividiam em tabelas
+ * menores, uma embaixo da outra) e o arrasto para os lados em cima dela nunca sai da tela
+ * ([prenderArrastoLateral], [SemPassarAdiante]). A letra cresce com a do celular só até
+ * [ESCALA_MAXIMA_DA_TABELA].
  */
 @Composable
 fun TabelaRolavel(
@@ -169,7 +94,7 @@ fun TabelaRolavel(
     colunas: List<String>,
     linhas: List<Pair<String, List<String>>>,
     modifier: Modifier = Modifier,
-) {
+) = LetraDaTabela {
     val medidor = rememberTextMeasurer()
     val densidade = LocalDensity.current
     val celula = MaterialTheme.typography.bodyMedium
@@ -179,7 +104,7 @@ fun TabelaRolavel(
         medidor.measure(texto, if (negrito) cabecalho else celula, maxLines = 1, softWrap = false).size.width.toDp()
     }
     // As medidas: a largura de cada coluna e a altura das linhas (acompanham a letra do celular).
-    val (naturalPrimeira, naturais) = remember(primeira, grupos, colunas, linhas, celula, cabecalho) {
+    val (naturalPrimeira, naturais) = remember(primeira, grupos, colunas, linhas, celula, cabecalho, densidade) {
         val l0 = maxOf(largura(primeira, true), linhas.maxOfOrNull { largura(it.first, true) } ?: 0.dp) + folga * 2
         val ls = colunas.mapIndexed { j, c ->
             maxOf(largura(c, true), linhas.maxOfOrNull { largura(it.second.getOrElse(j) { "" }, false) } ?: 0.dp) + folga * 2
@@ -200,15 +125,15 @@ fun TabelaRolavel(
         }
         l0 to ls.toList()
     }
-    val alturaLinha = remember(celula) { with(densidade) { medidor.measure("0", celula).size.height.toDp() } + 14.dp }
-    val alturaCabecalho = remember(cabecalho) { with(densidade) { medidor.measure("A", cabecalho).size.height.toDp() } + 14.dp }
+    val alturaLinha = remember(celula, densidade) { with(densidade) { medidor.measure("0", celula).size.height.toDp() } + 14.dp }
+    val alturaCabecalho = remember(cabecalho, densidade) { with(densidade) { medidor.measure("A", cabecalho).size.height.toDp() } + 14.dp }
     val comGrupos = grupos.any { it.first.isNotBlank() }
     val fundoCabecalho = MaterialTheme.colorScheme.surfaceContainerHighest
     val listra = MaterialTheme.colorScheme.surfaceContainerHigh
     fun fundoDa(i: Int): Color = if (i % 2 == 1) listra else Color.Transparent
     val linha = MaterialTheme.colorScheme.outlineVariant
 
-    BoxWithConstraints(modifier) {
+    BoxWithConstraints(modifier.prenderArrastoLateral()) {
         // Cabendo, a tabela ocupa a largura toda: a sobra vai para todas as colunas por igual.
         val natural = naturais.fold(naturalPrimeira) { s, x -> s + x }
         val cabe = natural <= maxWidth
@@ -229,9 +154,26 @@ fun TabelaRolavel(
                     }
                 }
             }
-            // As outras (rolando para os lados só quando a tabela não cabe).
-            val rolagem = if (cabe) Modifier else Modifier.nestedScroll(SemPassarAdiante).horizontalScroll(rememberScrollState())
-            Box(Modifier.weight(1f).then(rolagem)) {
+            // As outras: rolam para os lados quando a tabela não cabe (sem levar a página junto, nem no fim). Desde a
+            // 0.29, enquanto há colunas escondidas à direita, a borda direita esmaece (mostra que a tabela continua).
+            val rolagem = rememberScrollState()
+            val fundo = MaterialTheme.colorScheme.surfaceContainerLow
+            val esmaecer = with(densidade) { 28.dp.toPx() }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .drawWithContent {
+                        drawContent()
+                        if (rolagem.canScrollForward) {
+                            drawRect(
+                                Brush.horizontalGradient(listOf(fundo.copy(alpha = 0f), fundo), startX = size.width - esmaecer, endX = size.width),
+                                topLeft = Offset(size.width - esmaecer, 0f),
+                            )
+                        }
+                    }
+                    .nestedScroll(SemPassarAdiante)
+                    .horizontalScroll(rolagem, enabled = !cabe),
+            ) {
                 Column {
                     if (comGrupos) {
                         Row {

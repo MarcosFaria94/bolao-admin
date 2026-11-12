@@ -14,6 +14,22 @@ import io.github.marcosfaria94.bolao.ui.comum.soltarDasPaginas
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
+import io.github.marcosfaria94.bolao.domain.Tarjas
+import io.github.marcosfaria94.bolao.ui.aposta.coresDaBola
+import io.github.marcosfaria94.bolao.ui.aposta.CoresDaBola
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,7 +78,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -94,7 +109,6 @@ import io.github.marcosfaria94.bolao.ui.aposta.SecaoVolante
 import io.github.marcosfaria94.bolao.ui.aposta.novaAposta
 import io.github.marcosfaria94.bolao.ui.aposta.proximaAposta
 import io.github.marcosfaria94.bolao.ui.aposta.rascunhoDa
-import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
 import io.github.marcosfaria94.bolao.ui.comum.CartaoQueAbre
 import io.github.marcosfaria94.bolao.ui.comum.TarjaModalidade
 import io.github.marcosfaria94.bolao.ui.aposta.valorSemQuebra
@@ -112,7 +126,6 @@ import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.bola3D
 import io.github.marcosfaria94.bolao.ui.comum.estiloNaBola
 import io.github.marcosfaria94.bolao.ui.tema.corDestaque
-import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import java.time.Instant
 import java.time.LocalDate
 
@@ -531,9 +544,13 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
             else -> UltimoResultado(m, outro?.takeIf { it.numero == pedido }, atualizando = true, oUltimo = false)
         }
         CartaoQueAbre(TITULO_REGRAS) {
-            regras(m, estado, mais).forEach { (r, v) -> LinhaValor(r, v) }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                regras(m, estado, mais).forEach { (r, v) -> LinhaDaRegra(r, v) }
+            }
         }
-        CartaoQueAbre(TITULO_PROBABILIDADES) { TabelaDeProbabilidades(m, estado, mais) }
+        // Desde a 0.29: o preço de cada aposta num cartão só dele (era a primeira tabela das Probabilidades).
+        CartaoQueAbre(TITULO_PRECO) { TabelaDePreco(m, estado, mais) }
+        CartaoQueAbre(TITULO_PROBABILIDADES) { TabelaDeProbabilidades(m, mais) }
         if (mais && Probabilidades.gruposDePremios(m) != null) {
             CartaoQueAbre(TITULO_QUANTIDADE) { TabelaDeQuantidade(m) }
         }
@@ -542,83 +559,159 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
 }
 
 const val TITULO_REGRAS = "Regras"
+const val TITULO_PRECO = "Preço"
 const val TITULO_PROBABILIDADES = "Probabilidades"
 const val TITULO_QUANTIDADE = "Quantidade de prêmios"
 
 /**
- * As probabilidades, como na tabela da Caixa, divididas em tabelas que cabem na tela (desde a 0.28; na 0.27 era
- * uma tabela só, larga, rolando para os lados): a primeira com os números jogados, a quantidade de jogos (as
- * apostas simples) e o preço; depois, os números jogados e o "1 em X" das faixas, no máximo 3 por tabela
- * (na Mega-Sena, Sena, Quina e Quadra numa tabela só). Com a letra grande, as tabelas se dividem mais, para
- * caber na largura da tela ([TabelasDivididas]).
+ * Uma linha das Regras (desde a 0.29): o rótulo à esquerda, inteiro, e o valor à direita, que quebra a linha
+ * quando não cabe sem empurrar o rótulo (na 0.28, "Premiação" se partia junto com o valor da Timemania).
  */
 @Composable
-private fun TabelaDeProbabilidades(m: Modalidade, estado: Estado, mais: Boolean) {
+private fun LinhaDaRegra(rotulo: String, valor: String) {
+    Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Text(
+            rotulo,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            softWrap = false,
+        )
+        Spacer(Modifier.width(16.dp))
+        // Os nomes e os valores não se partem no fim da linha ("Time do / Coração", "R$ / 6,00").
+        Text(semQuebrarNomes(valor), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
+    }
+}
+
+/** Os valores das Regras sem quebra dentro dos nomes ("Time do Coração", "Mês de Sorte") e do dinheiro (desde a 0.29). */
+fun semQuebrarNomes(texto: String): String = valorSemQuebra(texto)
+    .replace("Time do Coração", "Time\u00A0do\u00A0Coração")
+    .replace("Mês de Sorte", "Mês\u00A0de\u00A0Sorte")
+
+/** O rótulo da primeira coluna das tabelas: os números jogados (e os trevos, na +Milionária). */
+private fun primeiraColuna(m: Modalidade): String = if (m.trevos > 0) "Números + trevos" else "Números"
+
+/** O rótulo de uma linha das tabelas: "6", "6 + 2" (+Milionária) ou "7" (as 7 colunas da Super Sete). */
+private fun rotuloDaLinha(m: Modalidade, l: Probabilidades.LinhaDaTabela): String =
+    if (m.trevos > 0) "${l.numeros} + ${l.trevos}" else if (m.formato == Formato.COLUNAS) "7" else "${l.numeros}"
+
+/**
+ * O preço de cada aposta (desde a 0.29, no cartão "Preço", entre as Regras e as Probabilidades; na 0.28 era a
+ * primeira tabela das Probabilidades): os números jogados, quantas apostas simples cabem neles e o preço.
+ */
+@Composable
+private fun TabelaDePreco(m: Modalidade, estado: Estado, mais: Boolean) {
     val preco = estado.config.preco(m)
     val linhas = remember(m, mais) { Probabilidades.tabela(m, mais) }
+    TabelaRolavel(
+        primeira = primeiraColuna(m),
+        grupos = emptyList(),
+        colunas = listOf(COLUNA_QTD_DE_JOGOS, COLUNA_PRECO),
+        linhas = linhas.map { l -> rotuloDaLinha(m, l) to listOf(Probabilidades.milhares(l.apostasSimples), valorSemQuebra(Dinheiro.rs(preco * l.apostasSimples))) },
+    )
+    if (!mais && Volante.aceitaMais(m)) {
+        Text("* $NOTA_DAS_APOSTAS_COM_MAIS", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+private const val NOTA_DAS_APOSTAS_COM_MAIS =
+    "Com as apostas com mais números ligadas (Ajustes > Parâmetros), a tabela mostra também as apostas com mais números."
+
+/**
+ * As probabilidades, como na tabela da Caixa (desde a 0.29, uma tabela só, que rola para os lados quando não
+ * cabe; na 0.28, dividida em tabelas menores): os números jogados e, embaixo do título "Probabilidade de
+ * acerto (1 em)", o "1 em X" de cada faixa. Com uma linha só (a aposta simples: sem as apostas com mais
+ * números, ou na Timemania, que só tem ela), a tabela vira de lado ([linhasInvertidas]): "Acertos" e
+ * "Probabilidade", uma linha por faixa.
+ */
+@Composable
+private fun TabelaDeProbabilidades(m: Modalidade, mais: Boolean) {
+    val linhas = remember(m, mais) { Probabilidades.tabela(m, mais) }
     val colunas = Probabilidades.colunas(m)
-    val primeira = if (m.trevos > 0) "Números + trevos" else "Números"
-    fun rotulo(l: Probabilidades.LinhaDaTabela) = if (m.trevos > 0) "${l.numeros} + ${l.trevos}" else if (m.formato == Formato.COLUNAS) "7" else "${l.numeros}"
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        TabelasDivididas(
-            primeira = primeira,
-            grupo = null,
-            colunas = listOf(COLUNA_QTD_DE_JOGOS, COLUNA_PRECO),
-            linhas = linhas.map { l -> rotulo(l) to listOf(Probabilidades.milhares(l.apostasSimples), valorSemQuebra(Dinheiro.rs(preco * l.apostasSimples))) },
+    if (linhas.size == 1) {
+        TabelaRolavel(
+            primeira = if (m.trevos > 0) primeiraColuna(m) else COLUNA_ACERTOS,
+            grupos = emptyList(),
+            colunas = listOf(COLUNA_PROBABILIDADE),
+            linhas = linhasInvertidas(m, linhas[0]),
         )
-        TabelasDivididas(
-            primeira = primeira,
-            grupo = PROBABILIDADE_DE_ACERTO,
-            colunas = colunas,
-            linhas = linhas.map { l -> rotulo(l) to colunas.indices.map { j -> l.umEm.getOrNull(j)?.let { Probabilidades.milhares(it) } ?: "—" } },
-        )
-    }
-    val notas = Probabilidades.observacoesDaTabela(m) + if (!mais && Volante.aceitaMais(m)) {
-        listOf("Com as apostas com mais números ligadas (Ajustes > Parâmetros), a tabela mostra também as apostas com mais números.")
     } else {
-        emptyList()
+        TabelaRolavel(
+            primeira = primeiraColuna(m),
+            grupos = listOf(PROBABILIDADE_DE_ACERTO to colunas.size),
+            colunas = colunas,
+            linhas = linhas.map { l -> rotuloDaLinha(m, l) to colunas.indices.map { j -> l.umEm.getOrNull(j)?.let { Probabilidades.milhares(it) } ?: "—" } },
+        )
     }
+    val notas = Probabilidades.observacoesDaTabela(m) + if (!mais && Volante.aceitaMais(m)) listOf(NOTA_DAS_APOSTAS_COM_MAIS) else emptyList()
     notas.forEach { obs ->
         Text("* $obs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
-/** As colunas da primeira tabela das probabilidades (desde a 0.28). */
+/**
+ * A tabela de probabilidades de lado (desde a 0.29, pedido para a Timemania; vale para toda tabela de uma linha
+ * só): uma linha por faixa, com os acertos ([rotuloDaFaixa]) e "1 em X".
+ */
+fun linhasInvertidas(m: Modalidade, l: Probabilidades.LinhaDaTabela): List<Pair<String, List<String>>> =
+    Probabilidades.colunas(m).mapIndexed { j, c ->
+        rotuloDaFaixa(m, c) to listOf(l.umEm.getOrNull(j)?.let { Probabilidades.texto(it) } ?: "—")
+    }
+
+/**
+ * O nome da faixa na tabela de lado: os acertos ("7" para "7 acertos", "7" para "7 colunas"), com o nome da
+ * faixa quando ela tem um ("6 (Sena)"); o Time do Coração, o Mês de Sorte e as faixas da +Milionária ("6 + 2")
+ * ficam como estão.
+ */
+fun rotuloDaFaixa(m: Modalidade, coluna: String): String {
+    val numero = coluna.substringBefore(" ")
+    return when {
+        coluna.endsWith(" acertos") || coluna.endsWith(" colunas") -> numero
+        m == Modalidade.MEGA_SENA || m == Modalidade.DUPLA_SENA || m == Modalidade.QUINA ->
+            mapOf("Sena" to 6, "Quina" to 5, "Quadra" to 4, "Terno" to 3, "Duque" to 2)[coluna]?.let { "$it ($coluna)" } ?: coluna
+        else -> coluna
+    }
+}
+
+/** As colunas das tabelas (desde a 0.28/0.29). */
 const val COLUNA_QTD_DE_JOGOS = "Qtd de jogos"
 const val COLUNA_PRECO = "Preço"
+const val COLUNA_ACERTOS = "Acertos"
+const val COLUNA_PROBABILIDADE = "Probabilidade"
 
 /** O título das colunas das faixas nas tabelas de probabilidades. */
 const val PROBABILIDADE_DE_ACERTO = "Probabilidade de acerto (1 em)"
 
-/** "6 acertos": o título de cada tabela da quantidade de prêmios (desde a 0.28). */
+/** "6 acertos": o botão de cada tabela da quantidade de prêmios (desde a 0.28, o título dela). */
 fun tituloDaQuantidade(acertando: Int): String = "$acertando acertos"
 
 /**
- * A "Quantidade de prêmios a receber acertando", como a da Caixa (só com as apostas com mais números), dividida
- * em tabelas (desde a 0.28): uma para cada quantidade de acertos ("6 acertos", "5 acertos", "4 acertos" na
- * Mega-Sena), com os números jogados e quantos prêmios de cada faixa a aposta recebe (no máximo 3 faixas por
- * tabela e, com a letra grande, menos, para caber na tela; o resto continua logo embaixo).
+ * A "Quantidade de prêmios a receber acertando", como a da Caixa (só com as apostas com mais números). Desde a
+ * 0.29, os botões "6 acertos", "5 acertos" e "4 acertos" (na Mega-Sena; nas outras modalidades, os acertos
+ * delas) trocam a tabela, que é uma só: os números jogados e quantos prêmios de cada faixa a aposta recebe
+ * acertando aquilo (rola para os lados quando não cabe).
  */
 @Composable
 private fun TabelaDeQuantidade(m: Modalidade) {
     val grupos = Probabilidades.gruposDePremios(m) ?: return
     val numeros = remember(m) { (m.qtdAposta..Volante.maximo(m)).toList() }
     val quantidades = remember(m) { numeros.map { n -> Probabilidades.quantidadeDePremios(m, n) } }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        grupos.forEachIndexed { g, grupo ->
-            Text(
-                tituloDaQuantidade(grupo.acertando),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = if (g > 0) 8.dp else 0.dp),
-            )
-            TabelasDivididas(
-                primeira = "Números",
-                grupo = null,
-                colunas = grupo.faixas.map { Probabilidades.nomeDaFaixa(m, it) },
-                linhas = numeros.mapIndexed { i, n -> "$n" to grupo.faixas.indices.map { j -> Probabilidades.milhares(quantidades[i][g][j]) } },
-            )
-        }
+    var escolhido by rememberSaveable(m) { mutableIntStateOf(0) }
+    val g = escolhido.coerceIn(grupos.indices)
+    val grupo = grupos[g]
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SeletorDeAcertos(grupos.map { it.acertando }, g) { escolhido = it }
+        Text(
+            "Quantos prêmios de cada faixa a aposta recebe acertando ${grupo.acertando} números:",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TabelaRolavel(
+            primeira = "Números",
+            grupos = emptyList(),
+            colunas = grupo.faixas.map { Probabilidades.nomeDaFaixa(m, it) },
+            linhas = numeros.mapIndexed { i, n -> "$n" to grupo.faixas.indices.map { j -> Probabilidades.milhares(quantidades[i][g][j]) } },
+        )
     }
     val nota = when (m) {
         Modalidade.DUPLA_SENA -> "Em cada um dos 2 sorteios."
@@ -627,6 +720,53 @@ private fun TabelaDeQuantidade(m: Modalidade) {
     }
     nota?.let {
         Text("* $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+/**
+ * Os botões que trocam a tabela da quantidade de prêmios (desde a 0.29): um por quantidade de acertos, lado a
+ * lado, o escolhido destacado. Com até 3, "6 acertos" numa linha; com mais (Lotofácil, Quina...), o número
+ * grande e "acertos" embaixo, para caberem na largura da tela.
+ */
+@Composable
+private fun SeletorDeAcertos(acertos: List<Int>, escolhido: Int, aoEscolher: (Int) -> Unit) {
+    val forma = RoundedCornerShape(12.dp)
+    val umaLinha = acertos.size <= 3
+    // Sem a medida intrínseca da altura (o TextoQueCabe não aceita): todos com a mesma altura mínima.
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        acertos.forEachIndexed { i, n ->
+            val sim = i == escolhido
+            val fundo = if (sim) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest
+            val texto = if (sim) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = if (umaLinha) 44.dp else 52.dp)
+                    .clip(forma)
+                    .background(fundo)
+                    .clickable { aoEscolher(i) }
+                    .clearAndSetSemantics {
+                        contentDescription = tituloDaQuantidade(n)
+                        role = Role.Tab
+                        selected = sim
+                        onClick { aoEscolher(i); true }
+                    }
+                    .padding(horizontal = 2.dp, vertical = 6.dp),
+            ) {
+                if (umaLinha) {
+                    Text(tituloDaQuantidade(n), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = texto, maxLines = 1, softWrap = false)
+                } else {
+                    Text("$n", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = texto, maxLines = 1)
+                    // Diminui para caber com a letra grande do celular (5 botões na Lotofácil).
+                    TextoQueCabe("acertos", MaterialTheme.typography.labelSmall, cor = texto, menor = 8.sp)
+                }
+            }
+        }
     }
 }
 
@@ -724,7 +864,8 @@ private fun UltimoResultado(m: Modalidade, u: Concurso?, atualizando: Boolean, o
                 "Concurso ${u.numero}" + (u.data?.let { " · ${Datas.relativa(it, hoje)}" } ?: ""),
                 style = MaterialTheme.typography.bodyLarge,
             )
-            val cor = corModalidade(m.cor)
+            // As cores oficiais das bolas (desde a 0.29: a Timemania amarela com o número verde).
+            val cor = coresDaBola(m)
             if (m == Modalidade.DUPLA_SENA && u.segundoSorteio.isNotEmpty()) {
                 // Desde a 0.27: cada sorteio com os números e a premiação dele (as faixas 1 a 4 são do 1º; 5 a 8, do 2º).
                 SorteioDaDupla("1º sorteio", u.dezenas.map(m::rotulo), u.faixas.filter { it.faixa <= 4 }, cor)
@@ -743,7 +884,7 @@ private fun UltimoResultado(m: Modalidade, u: Concurso?, atualizando: Boolean, o
 
 /** Um sorteio da Dupla Sena nos Detalhes: o título, os números e a premiação dele. */
 @Composable
-private fun SorteioDaDupla(titulo: String, numeros: List<String>, faixas: List<FaixaPremio>, cor: Color) {
+private fun SorteioDaDupla(titulo: String, numeros: List<String>, faixas: List<FaixaPremio>, cor: CoresDaBola) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Bolas(numeros, cor)
@@ -778,9 +919,10 @@ private fun Premiacao(faixas: List<FaixaPremio>) {
 }
 
 /**
- * As regras resumidas (desde a 0.27, no formato pedido pelo usuário): Volante, Aposta (de quantos a quantos
- * números), Preço (de quanto a quanto), Sorteio (quantos números) e Premiação (a partir de quantos acertos).
- * Com as apostas com mais números ([mais]), a aposta e o preço vão até o máximo da modalidade.
+ * As regras resumidas (desde a 0.27, no formato pedido pelo usuário): Volante ("De 01 a 60"), Aposta ("De 6 a 20
+ * números"), Preço ("De R$ 6,00 a R$ 232.560,00"), Sorteio (quantos números) e Premiação (a partir de quantos
+ * acertos). Com as apostas com mais números ([mais]), a aposta e o preço vão até o máximo da modalidade. Desde
+ * a 0.29 as faixas começam com "De" (até a 0.28, "01 a 60", "6 a 20 números").
  */
 fun regras(m: Modalidade, estado: Estado, mais: Boolean): List<Pair<String, String>> {
     val simples = estado.config.preco(m)
@@ -788,17 +930,18 @@ fun regras(m: Modalidade, estado: Estado, mais: Boolean): List<Pair<String, Stri
     val maior = if (comMais) simples * Volante.apostasSimples(m, Volante.maximo(m), Volante.maximoTrevos(m)) else simples
     val preco = when {
         m.precoVariavel -> "Variável"
-        maior > simples -> "${Dinheiro.rs(simples)} a ${Dinheiro.rs(maior)}"
+        maior > simples -> "De ${Dinheiro.rs(simples)} a ${Dinheiro.rs(maior)}"
         else -> Dinheiro.rs(simples)
     }
-    fun faixa(de: Int, ate: Int, nome: String) = if (ate > de) "$de a $ate $nome" else "$de $nome"
+    // Desde a 0.29: "De 6 a 20 números" (até a 0.28, "6 a 20 números").
+    fun faixa(de: Int, ate: Int, nome: String) = if (ate > de) "De $de a $ate $nome" else "$de $nome"
     return when (m.formato) {
         Formato.NUMEROS -> {
             val numeros = faixa(m.qtdAposta, if (comMais) Volante.maximo(m) else m.qtdAposta, "números")
             listOf(
-                "Volante" to "${m.rotulo(m.menor)} a ${m.rotulo(m.maior)}" + if (m.trevos > 0) " e trevos de 1 a 6" else "",
+                "Volante" to "De ${m.rotulo(m.menor)} a ${m.rotulo(m.maior)}" + if (m.trevos > 0) " e trevos de 1 a 6" else "",
                 "Aposta" to numeros + when {
-                    m.trevos > 0 -> " e " + faixa(m.trevos, if (comMais) Volante.maximoTrevos(m) else m.trevos, "trevos")
+                    m.trevos > 0 -> " e " + faixa(m.trevos, if (comMais) Volante.maximoTrevos(m) else m.trevos, "trevos").replaceFirst("De ", "de ")
                     m.extra == Extra.TIME_DO_CORACAO -> " e o Time do Coração"
                     m.extra == Extra.MES_DE_SORTE -> " e o Mês de Sorte"
                     else -> ""
@@ -814,7 +957,7 @@ fun regras(m: Modalidade, estado: Estado, mais: Boolean): List<Pair<String, Stri
             )
         }
         Formato.COLUNAS -> listOf(
-            "Volante" to "7 colunas de 0 a 9",
+            "Volante" to "7 colunas, de 0 a 9",
             "Aposta" to "7 números (1 por coluna)",
             "Preço" to preco,
             "Sorteio" to "7 números (1 por coluna)",
@@ -861,15 +1004,15 @@ private fun RotuloValor(rotulo: String, valor: String) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Bolas(numeros: List<String>, cor: Color) {
+private fun Bolas(numeros: List<String>, cor: CoresDaBola) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         numeros.forEach { n ->
             // Os números sorteados em bolas 3D (só os números: as modalidades usam as tarjas desde a 0.27).
             Box(
-                Modifier.size(38.dp).bola3D(cor),
+                Modifier.size(38.dp).bola3D(cor.fundo).let { if (cor.comContorno) it.border(1.5.dp, cor.contorno, CircleShape) else it },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(n, style = estiloNaBola(38.dp), fontWeight = FontWeight.Bold, fontSize = 16.sp, textAlign = TextAlign.Center)
+                Text(n, style = estiloNaBola(38.dp, cor.numero), fontWeight = FontWeight.Bold, fontSize = 16.sp, textAlign = TextAlign.Center)
             }
         }
     }
@@ -877,13 +1020,13 @@ private fun Bolas(numeros: List<String>, cor: Color) {
 
 /** Números sorteados do último concurso, no formato de cada modalidade. */
 @Composable
-private fun Resultado(m: Modalidade, c: Concurso, cor: Color) {
+private fun Resultado(m: Modalidade, c: Concurso, cor: CoresDaBola) {
     when (m.formato) {
         Formato.NUMEROS -> {
             Bolas(c.dezenas.map(m::rotulo), cor)
             if (c.trevos.isNotEmpty()) {
                 Text("Trevos", style = MaterialTheme.typography.labelLarge)
-                Bolas(c.trevos.map { it.toString() }, cor)
+                Bolas(c.trevos.map { it.toString() }, coresDaBola(Tarjas.trevo(m)))
             }
             c.timeOuMes?.let {
                 Text((if (m.extra == Extra.MES_DE_SORTE) "Mês de Sorte: " else "Time do Coração: ") + it, style = MaterialTheme.typography.bodyMedium)

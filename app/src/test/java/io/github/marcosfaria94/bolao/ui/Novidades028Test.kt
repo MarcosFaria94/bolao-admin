@@ -16,8 +16,6 @@ import io.github.marcosfaria94.bolao.domain.Especiais
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.ui.aposta.textoDoBotaoFavorito
 import io.github.marcosfaria94.bolao.ui.jogos.erroDoConcurso
-import io.github.marcosfaria94.bolao.ui.jogos.partesDaTabela
-import io.github.marcosfaria94.bolao.ui.jogos.partesQueCabem
 import io.github.marcosfaria94.bolao.ui.jogos.tituloDaQuantidade
 import io.github.marcosfaria94.bolao.ui.painel.impedimentoDoFavorito
 import io.github.marcosfaria94.bolao.ui.painel.mensagemDosFavoritos
@@ -97,28 +95,7 @@ class Novidades028Test {
 
     @Test
     fun tabelasDivididas() {
-        assertEquals(listOf(0..2), partesDaTabela(3))
-        assertEquals(listOf(0..0), partesDaTabela(1))
-        assertEquals(listOf(0..1, 2..3), partesDaTabela(4))
-        assertEquals(listOf(0..2, 3..4), partesDaTabela(5))
-        assertEquals(listOf(0..2, 3..4, 5..6), partesDaTabela(7))
-        assertEquals(listOf(0..2, 3..5, 6..7, 8..9), partesDaTabela(10))
-        assertTrue(partesDaTabela(0).isEmpty())
-        // Todas as colunas, uma vez cada, na ordem.
-        for (n in 1..12) assertEquals((0 until n).toList(), partesDaTabela(n).flatMap { it.toList() })
-        // Cabendo na largura: as partes iguais de no máximo 3; não cabendo (letra grande), mais partes.
-        val l = listOf(80f, 80f, 80f, 80f)
-        assertEquals(listOf(0..1, 2..3), partesQueCabem(l, 60f, 0f, 320f))
-        assertEquals(listOf(0..1, 2..3), partesQueCabem(l, 60f, 0f, 220f))
-        assertEquals(listOf(0..0, 1..1, 2..2, 3..3), partesQueCabem(l, 60f, 0f, 200f))
-        // O título do grupo também precisa caber (as colunas crescem até ele).
-        assertEquals(listOf(0..1, 2..3), partesQueCabem(l, 60f, 150f, 220f))
-        assertEquals(listOf(0..0, 1..1, 2..2, 3..3), partesQueCabem(l, 60f, 170f, 220f))
-        // Uma coluna que sozinha não cabe fica numa tabela só dela.
-        assertEquals(listOf(0..0, 1..1), partesQueCabem(listOf(500f, 50f), 60f, 0f, 300f))
-        // A Mega-Sena (3 faixas) numa tabela só, quando cabe.
-        assertEquals(listOf(0..2), partesQueCabem(listOf(90f, 70f, 60f), 50f, 200f, 316f))
-        assertTrue(partesQueCabem(emptyList(), 50f, 0f, 300f).isEmpty())
+        // Desde a 0.29 as tabelas não se dividem mais (uma tabela só, que rola para os lados).
         assertEquals("6 acertos", tituloDaQuantidade(6))
         assertEquals("Não foi possível consultar o concurso 2949 na Caixa.", erroDoConcurso(2949))
     }
@@ -186,8 +163,8 @@ class Novidades028Test {
         assertNull(impedimentoDoFavorito(e, f, 3090, false))
         assertTrue(impedimentoDoFavorito(e, f, 0, false)!!.startsWith("Sem os dados do próximo concurso da Mega-Sena"))
         assertEquals("O concurso 3090 da Mega-Sena já foi sorteado: aguarde o resultado.", impedimentoDoFavorito(e, f, 3090, true))
-        assertEquals("Jogo favorito", textoDoBotaoFavorito(1))
-        assertEquals("Jogos favoritos (3)", textoDoBotaoFavorito(3))
+        assertEquals("Fazer jogo favorito", textoDoBotaoFavorito(1))
+        assertEquals("Fazer jogo favorito (3)", textoDoBotaoFavorito(3))
         // A +Milionária com trevos a mais.
         val mm = aposta(Modalidade.MAIS_MILIONARIA, listOf(3, 11, 19, 27, 38, 49), trevos = listOf(1, 2, 3))
         val comMm = Favoritos.favoritar(e, mm, 2)

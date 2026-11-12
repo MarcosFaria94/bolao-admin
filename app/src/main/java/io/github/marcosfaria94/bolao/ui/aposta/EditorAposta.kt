@@ -8,6 +8,17 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import kotlin.math.roundToInt
+import io.github.marcosfaria94.bolao.ui.painel.tirouFavorito
+import io.github.marcosfaria94.bolao.ui.painel.FAVORITO_GUARDADO
+import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
+import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.Slider
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,7 +69,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -102,30 +112,81 @@ import io.github.marcosfaria94.bolao.ui.tema.Dourado
  * que falta marcar ([textoDoVolante]: "Marque 5 números", "Aposta completa"...), em verde quando o volante
  * está pronto. Desde a 0.27, na mesma linha do "Aposta Nº1", no canto direito, o preço da aposta ([preco],
  * que acompanha os números a mais); o lápis dos dados do concurso saiu (o app pega tudo da Caixa).
+ *
+ * Desde a 0.29: o "Aposta Nº1" tem o tamanho do preço, na mesma linha, com a estrelinha dos favoritos na frente
+ * ([favorito]: cheia quando o jogo do volante é um favorito; null = a modalidade não tem favoritos); o texto
+ * embaixo ocupa a largura toda (não quebra mais ao lado do preço) e, abaixo dele, o aviso de que a aposta é
+ * descartada ao sair com o volante incompleto ([aviso]; até a 0.28 era uma caixa embaixo do volante).
  */
 @Composable
-private fun TituloDoVolante(numero: Int, texto: String, pronto: Boolean, preco: String, carregando: Boolean) {
-    Row(verticalAlignment = Alignment.Top) {
-        Column(Modifier.weight(1f)) {
+private fun TituloDoVolante(
+    numero: Int,
+    texto: String,
+    pronto: Boolean,
+    preco: String,
+    carregando: Boolean,
+    favorito: Boolean?,
+    aoFavoritar: () -> Unit,
+    aviso: String?,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (favorito != null) {
+                IconButton(onClick = aoFavoritar, modifier = Modifier.padding(end = 2.dp).size(40.dp)) {
+                    Icon(
+                        if (favorito) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (favorito) TIRAR_O_JOGO_DOS_FAVORITOS else FAVORITAR_O_JOGO,
+                        tint = if (favorito) Dourado else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(30.dp),
+                    )
+                }
+            }
             Text(
                 "Aposta Nº$numero",
-                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp),
+                // O mesmo tamanho do preço da etiqueta (EtiquetaDePreco).
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 26.sp),
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
             )
-            if (texto.isNotEmpty()) {
-                Text(
-                    texto,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 21.sp),
-                    fontWeight = if (pronto) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (pronto) corEntrada() else MaterialTheme.colorScheme.onSurfaceVariant,
+            if (carregando) {
+                CircularProgressIndicator(Modifier.padding(start = 8.dp).size(18.dp), strokeWidth = 2.dp)
+            }
+            EtiquetaDePreco(valorSemQuebra(preco), Modifier.padding(start = 8.dp))
+        }
+        if (texto.isNotEmpty()) {
+            Text(
+                texto,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 21.sp),
+                fontWeight = if (pronto) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (pronto) corEntrada() else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (aviso != null) {
+            Row(verticalAlignment = Alignment.Top) {
+                Icon(
+                    Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp).size(16.dp),
                 )
+                Spacer(Modifier.width(6.dp))
+                Text(aviso, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        if (carregando) {
-            CircularProgressIndicator(Modifier.padding(top = 4.dp).size(18.dp), strokeWidth = 2.dp)
-        }
-        EtiquetaDePreco(valorSemQuebra(preco), Modifier.padding(start = 8.dp))
     }
 }
+
+/** A estrelinha do volante (desde a 0.29): guarda o jogo do volante nos favoritos ou tira. */
+const val FAVORITAR_O_JOGO = "Favoritar o jogo"
+const val TIRAR_O_JOGO_DOS_FAVORITOS = "Tirar o jogo dos favoritos"
+
+/** A estrelinha com o volante incompleto. */
+const val COMPLETE_PARA_FAVORITAR = "Complete o jogo para guardar nos favoritos."
+
+/** O aviso de que a aposta é descartada ao sair com o volante incompleto. */
+fun avisoAoSair(federal: Boolean): String = "Se sair agora, a aposta é descartada: complete o " + (if (federal) "bilhete." else "volante.")
 
 /** "1 número" ou "5 números". */
 private fun quantos(n: Int, um: String, varios: String): String = if (n == 1) "1 $um" else "$n $varios"
@@ -278,6 +339,41 @@ fun SecaoVolante(
             mudarPalpite(f.palpite)
         }, aoFechar = { escolhendoFavorito = false })
     }
+    // "Fazer jogo favorito" (desde a 0.29): com algum número já marcado, pergunta antes de trocar o jogo.
+    var substituir by remember { mutableStateOf(false) }
+    fun usarFavorito() {
+        if (favoritos.size == 1) mudarPalpite(favoritos[0].palpite) else escolhendoFavorito = true
+    }
+    if (substituir) {
+        DialogoConfirmar(
+            titulo = SUBSTITUIR_O_JOGO,
+            texto = "Os números marcados no volante dão lugar aos do jogo favorito.",
+            confirmar = "Substituir",
+            aoConfirmar = {
+                substituir = false
+                usarFavorito()
+            },
+            aoFechar = { substituir = false },
+        )
+    }
+    // A estrelinha do volante (desde a 0.29): cheia quando o jogo do volante já é um favorito.
+    val favoritoDoVolante = if (Favoritos.aceita(m)) Favoritos.doJogo(estado, r) else null
+    fun alternarFavorito() {
+        val antes = favoritoDoVolante
+        escopo.launch {
+            when {
+                antes != null -> {
+                    repo.atualizar { Favoritos.remover(it, antes.id) }
+                    tirouFavorito(avisos, antes) { f -> repo.atualizar { Favoritos.devolver(it, f) } }
+                }
+                !Favoritos.podeFavoritar(atual) -> avisos.showSnackbar(COMPLETE_PARA_FAVORITAR)
+                else -> {
+                    repo.atualizar { Favoritos.favoritar(it, atual, System.currentTimeMillis()) }
+                    avisos.showSnackbar(FAVORITO_GUARDADO)
+                }
+            }
+        }
+    }
 
     // Sem o número do concurso (ou com um que já foi sorteado): busca o próximo na Caixa assim que a tela abre.
     // Desde a 0.27 não há mais o lápis para preencher à mão: sem resposta da Caixa, o "Tentar de novo".
@@ -392,6 +488,10 @@ fun SecaoVolante(
                 pronto = completo,
                 preco = if (federal && r.valor <= 0) "—" else Dinheiro.rs(r.valor),
                 carregando = consulta == Consulta.Carregando,
+                favorito = if (Favoritos.aceita(m)) favoritoDoVolante != null else null,
+                aoFavoritar = ::alternarFavorito,
+                // Logo abaixo do que falta marcar (desde a 0.29): o que acontece ao sair com o volante incompleto.
+                aviso = if (!ficaEmAndamento(r)) avisoAoSair(federal) else null,
             )
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 VolanteEditavel(m, r, mais, ja, { mudarAtual(it) }, ::mudarPalpite)
@@ -411,24 +511,30 @@ fun SecaoVolante(
                             mudarPalpite(Volante.completar(m, r.palpite, ja = ja))
                         }
                     } else {
-                        Button(
-                            onClick = { conferirERegistrar() },
-                            enabled = pronta && bloqueio == null && !registrando && !conferindo,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            if (registrando || conferindo) {
-                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            } else {
-                                Text(if (comMaisUm) textoRegistrarCurto(apostas) else textoRegistrar(apostas), maxLines = 1)
-                            }
-                        }
-                        if (comMaisUm) {
-                            FilledTonalButton(
-                                onClick = { mudarPalpite(Volante.maisUm(m, atual.palpite)) },
-                                enabled = Volante.cabeMaisUm(m, r.palpite) && !registrando && !conferindo,
-                                modifier = Modifier.weight(1f).semantics { contentDescription = MAIS_UM_DESCRICAO },
+                        // Desde a 0.29 o "+1" é só a beirada do "Registrar" (na 0.27 e 0.28, metade do lugar).
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                            Button(
+                                onClick = { conferirERegistrar() },
+                                enabled = pronta && bloqueio == null && !registrando && !conferindo,
+                                shape = if (comMaisUm) FORMA_DO_REGISTRAR else ButtonDefaults.shape,
+                                modifier = Modifier.weight(1f),
                             ) {
-                                Text(MAIS_UM, maxLines = 1, fontWeight = FontWeight.Bold)
+                                if (registrando || conferindo) {
+                                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Text(if (comMaisUm) textoRegistrarCurto(apostas) else textoRegistrar(apostas), maxLines = 1)
+                                }
+                            }
+                            if (comMaisUm) {
+                                Button(
+                                    onClick = { mudarPalpite(Volante.maisUm(m, atual.palpite)) },
+                                    enabled = Volante.cabeMaisUm(m, r.palpite) && !registrando && !conferindo,
+                                    shape = FORMA_DO_MAIS_UM,
+                                    contentPadding = PaddingValues(start = 6.dp, end = 10.dp),
+                                    modifier = Modifier.width(52.dp).semantics { contentDescription = MAIS_UM_DESCRICAO },
+                                ) {
+                                    Text(MAIS_UM, maxLines = 1, softWrap = false, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -450,7 +556,8 @@ fun SecaoVolante(
                 // vai direto; com mais, a lista para escolher.
                 if (favoritos.isNotEmpty()) {
                     OutlinedButton(
-                        onClick = { if (favoritos.size == 1) mudarPalpite(favoritos[0].palpite) else escolhendoFavorito = true },
+                        // Com algum número marcado, pergunta antes de trocar o jogo (desde a 0.29).
+                        onClick = { if (temNumeroMarcado(r)) substituir = true else usarFavorito() },
                         enabled = !registrando && !conferindo,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
@@ -463,10 +570,6 @@ fun SecaoVolante(
         }
     }
 
-    // Logo abaixo do "Completar": o que acontece ao sair com o volante incompleto.
-    if (!ficaEmAndamento(r)) {
-        Aviso("Se sair agora, a aposta é descartada: complete o " + (if (federal) "bilhete." else "volante."))
-    }
     // O concurso do volante já foi sorteado e o resultado ainda não chegou: sem registro até os dados chegarem.
     if (bloqueio != null) {
         Aviso(bloqueio, alerta = true)
@@ -589,8 +692,25 @@ fun textoRegistrar(apostas: Int): String = if (apostas > 1) "Registrar $apostas 
 /** O mesmo, mais curto, dividindo o lugar com o "+1" (desde a 0.27): "Registrar" ou "Registrar (4)". */
 fun textoRegistrarCurto(apostas: Int): String = if (apostas > 1) "Registrar ($apostas)" else "Registrar"
 
-/** O botão do volante que preenche um jogo favorito (desde a 0.28): "Jogo favorito" ou "Jogos favoritos (3)". */
-fun textoDoBotaoFavorito(quantos: Int): String = if (quantos == 1) "Jogo favorito" else "Jogos favoritos ($quantos)"
+/**
+ * O botão do volante que preenche um jogo favorito: desde a 0.29, "Fazer jogo favorito" ou, com mais de um
+ * favorito, "Fazer jogo favorito (3)" (até a 0.28, "Jogo favorito" ou "Jogos favoritos (3)").
+ */
+fun textoDoBotaoFavorito(quantos: Int): String = if (quantos == 1) "Fazer jogo favorito" else "Fazer jogo favorito ($quantos)"
+
+/** A pergunta antes de trocar os números do volante pelos de um favorito (desde a 0.29). */
+const val SUBSTITUIR_O_JOGO = "Substituir o jogo atual?"
+
+/** O volante já tem algum número marcado (na Super Sete, alguma coluna). */
+fun temNumeroMarcado(r: Aposta): Boolean = when (r.modalidade.formato) {
+    Formato.COLUNAS -> r.numeros.any { it in 0..9 }
+    Formato.NUMEROS -> r.numeros.isNotEmpty()
+    else -> false
+}
+
+/** As formas do "Registrar" e do "+1" juntos (desde a 0.29): o "+1" é a beirada direita do botão. */
+private val FORMA_DO_REGISTRAR = RoundedCornerShape(topStart = CornerSize(50), bottomStart = CornerSize(50), topEnd = CornerSize(6.dp), bottomEnd = CornerSize(6.dp))
+private val FORMA_DO_MAIS_UM = RoundedCornerShape(topStart = CornerSize(6.dp), bottomStart = CornerSize(6.dp), topEnd = CornerSize(50), bottomEnd = CornerSize(50))
 
 /** O título da janela que escolhe o jogo favorito do volante. */
 const val ESCOLHA_O_FAVORITO = "Escolha o jogo favorito"
@@ -802,29 +922,33 @@ private fun VolanteEditavel(
 /** O nome da opção da teimosinha no volante (com o parâmetro ligado). */
 const val TITULO_TEIMOSINHA = "Teimosinha"
 
-/** O campo da quantidade de concursos da teimosinha. */
+/** O controle da quantidade de concursos da teimosinha (desde a 0.29, um controle deslizante; antes, um campo). */
 const val CAMPO_DA_TEIMOSINHA = "Nº de concursos"
 
+/** De quantos a quantos concursos o controle da teimosinha vai (desde a 0.29). */
+val CONCURSOS_DA_TEIMOSINHA = 2..10
+
 /**
- * A teimosinha no volante (desde a 0.22, com o parâmetro ligado): a chave e, ligada, o campo com o
- * número de concursos seguidos em que a aposta se repete (de 2 a 24). No registro vira uma aposta por
- * concurso. [total]: quanto o registro desconta (todas as apostas).
+ * A teimosinha no volante (desde a 0.22, com o parâmetro ligado): a chave e, ligada, o número de concursos
+ * seguidos em que a aposta se repete. Desde a 0.29, um controle deslizante de 2 a 10 concursos (até a 0.28, um
+ * campo para digitar, de 2 a 24). No registro vira uma aposta por concurso. [total]: quanto o registro desconta
+ * (todas as apostas).
  */
 @Composable
 private fun OpcaoTeimosinha(r: Aposta, total: Long, aoMudar: (Aposta) -> Unit) {
     val ligada = r.teimosinha != 0
-    // O que está digitado (a aposta guarda 1 enquanto o campo está vazio ou com um número que não vale).
-    var texto by rememberSaveable(r.id) { mutableStateOf(if (r.teimosinha >= 2) r.teimosinha.toString() else "") }
+    val faixa = CONCURSOS_DA_TEIMOSINHA
+    // Um número de concursos de antes, fora do controle (o campo ia até 24): fica no limite dele.
+    if (ligada && r.teimosinha !in faixa) {
+        LaunchedEffect(r.id, r.teimosinha) { aoMudar(r.copy(teimosinha = r.teimosinha.coerceIn(faixa))) }
+    }
     Column {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .toggleable(value = ligada, role = Role.Switch) { v ->
-                    texto = if (v) "2" else ""
-                    aoMudar(r.copy(teimosinha = if (v) 2 else 0))
-                }
+                .toggleable(value = ligada, role = Role.Switch) { v -> aoMudar(r.copy(teimosinha = if (v) faixa.first else 0)) }
                 .padding(vertical = 6.dp),
         ) {
             Column(Modifier.weight(1f)) {
@@ -843,20 +967,25 @@ private fun OpcaoTeimosinha(r: Aposta, total: Long, aoMudar: (Aposta) -> Unit) {
             Switch(checked = ligada, onCheckedChange = null)
         }
         if (ligada) {
-            OutlinedTextField(
-                value = texto,
-                onValueChange = { novo ->
-                    texto = novo.filter(Char::isDigit).take(2)
-                    val n = texto.toIntOrNull() ?: 0
-                    aoMudar(r.copy(teimosinha = if (n >= 2) n else 1))
+            val valor = r.teimosinha.coerceIn(faixa)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                Text(CAMPO_DA_TEIMOSINHA, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Text("$valor concursos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = valor.toFloat(),
+                onValueChange = { v ->
+                    val n = v.roundToInt().coerceIn(faixa)
+                    if (n != r.teimosinha) aoMudar(r.copy(teimosinha = n))
                 },
-                label = { Text(CAMPO_DA_TEIMOSINHA) },
-                supportingText = { Text("De 2 a ${Operacoes.MAXIMO_DA_TEIMOSINHA} concursos seguidos.") },
-                isError = r.teimosinha !in 2..Operacoes.MAXIMO_DA_TEIMOSINHA,
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                modifier = Modifier.fillMaxWidth(),
+                valueRange = faixa.first.toFloat()..faixa.last.toFloat(),
+                steps = faixa.last - faixa.first - 1,
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = CAMPO_DA_TEIMOSINHA },
             )
+            Row(Modifier.fillMaxWidth()) {
+                Text("${faixa.first}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                Text("${faixa.last}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

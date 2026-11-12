@@ -118,14 +118,17 @@ fun Modifier.bola3D(cor: Color): Modifier = drawBehind {
 @Composable
 private fun Dp.emSp(): TextUnit = with(LocalDensity.current) { this@emSp.toSp() }
 
-/** Letra branca com uma sombra leve embaixo, para ler bem sobre a bola 3D. */
+/**
+ * Letra branca com uma sombra leve embaixo, para ler bem sobre a bola 3D ([cor]: desde a 0.29, a do número da
+ * modalidade, verde na bola amarela da Timemania, com a sombra mais fraca).
+ */
 @Composable
-fun estiloNaBola(tamanho: Dp): TextStyle {
+fun estiloNaBola(tamanho: Dp, cor: Color = Color.White): TextStyle {
     val d = LocalDensity.current
     return TextStyle(
-        color = Color.White,
+        color = cor,
         shadow = Shadow(
-            color = Color.Black.copy(alpha = 0.40f),
+            color = Color.Black.copy(alpha = if (cor == Color.White) 0.40f else 0.15f),
             offset = Offset(0f, with(d) { (tamanho * 0.025f).toPx() }),
             blurRadius = with(d) { (tamanho * 0.05f).toPx() },
         ),

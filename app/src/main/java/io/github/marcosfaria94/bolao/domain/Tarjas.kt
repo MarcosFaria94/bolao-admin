@@ -34,6 +34,38 @@ object Tarjas {
         Modalidade.FEDERAL -> Cores(0xFF346F99, 0xFF295C79, 0xFF68B6E4, BRANCO, BRANCO)
     }
 
+    // ---------- as bolas dos números (desde a 0.29) ----------
+
+    /** O amarelo e o verde da Timemania (as cores da marca dela). */
+    const val AMARELO_TIMEMANIA = 0xFFFBE41C
+    const val VERDE_TIMEMANIA = 0xFF00853F
+
+    /** O dourado e o azul-marinho da +Milionária (os trevos). */
+    private const val DOURADO_MILIONARIA = 0xFFE2B33C
+    private const val AZUL_MILIONARIA = 0xFF1F2264
+
+    /** A cor de uma bola de número: o fundo, o número e o contorno (0 = sem contorno). */
+    data class Bola(val fundo: Long, val numero: Long, val contorno: Long = 0)
+
+    /**
+     * As bolas dos números de cada modalidade (desde a 0.29, revisadas com as cores oficiais): no volante, no
+     * Painel de Jogos, nos Detalhes e no PDF. A Timemania é amarela com o número e o contorno verdes (até a 0.28
+     * as bolas dela eram verdes, e a marca é amarela e verde); as outras, a cor da modalidade com o número branco.
+     */
+    fun bola(m: Modalidade): Bola = when (m) {
+        Modalidade.TIMEMANIA -> Bola(AMARELO_TIMEMANIA, VERDE_TIMEMANIA, VERDE_TIMEMANIA)
+        else -> Bola(m.cor, BRANCO)
+    }
+
+    /** Os trevos: na +Milionária, dourados com o número azul-marinho (como a marca dela); nas outras, como as bolas. */
+    fun trevo(m: Modalidade): Bola = if (m == Modalidade.MAIS_MILIONARIA) Bola(DOURADO_MILIONARIA, AZUL_MILIONARIA) else bola(m)
+
+    /**
+     * A cor da modalidade no Painel de Jogos (o filete e a faixa de cada concurso; desde a 0.29): a da tarja na
+     * Timemania (o amarelo; até a 0.28, verde) e a da modalidade nas outras.
+     */
+    fun destaque(m: Modalidade): Long = if (m == Modalidade.TIMEMANIA) AMARELO_TIMEMANIA else m.cor
+
     /** O nome na tarja, como a Caixa escreve: em minúsculas. */
     fun nome(m: Modalidade): String = when (m) {
         Modalidade.MEGA_SENA -> "mega-sena"

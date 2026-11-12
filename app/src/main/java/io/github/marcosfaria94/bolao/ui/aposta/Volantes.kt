@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.marcosfaria94.bolao.domain.Modalidade
+import io.github.marcosfaria94.bolao.domain.Tarjas
 import io.github.marcosfaria94.bolao.domain.Volante
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 
@@ -46,11 +46,26 @@ private fun colunasDoVolante(m: Modalidade): Int = when (m) {
  */
 enum class SituacaoNumero { LIVRE, MARCADO, ACERTO, ERRO, SORTEADO }
 
+/**
+ * As cores das bolas marcadas da modalidade (desde a 0.29, as oficiais: [Tarjas.bola]): o fundo, o número e o
+ * contorno (na Timemania, amarela com o número e o contorno verdes; nas outras, o contorno é a própria cor).
+ */
+class CoresDaBola(val fundo: Color, val numero: Color, val contorno: Color, val comContorno: Boolean)
+
+/** As [CoresDaBola] de uma bola de [Tarjas]. */
+fun coresDaBola(b: Tarjas.Bola): CoresDaBola {
+    val fundo = corModalidade(b.fundo)
+    return CoresDaBola(fundo, corModalidade(b.numero), if (b.contorno != 0L) corModalidade(b.contorno) else fundo, b.contorno != 0L)
+}
+
+/** As cores das bolas (números) da modalidade [m]. */
+fun coresDaBola(m: Modalidade): CoresDaBola = coresDaBola(Tarjas.bola(m))
+
 @Composable
 private fun Celula(
     texto: String,
     situacao: SituacaoNumero,
-    cor: Color,
+    cor: CoresDaBola,
     forma: Shape,
     modifier: Modifier = Modifier,
     aoTocar: (() -> Unit)? = null,
@@ -58,9 +73,9 @@ private fun Celula(
     val esquema = MaterialTheme.colorScheme
     val (fundo, textoCor, borda) = when (situacao) {
         SituacaoNumero.LIVRE -> Triple(esquema.surfaceContainerHigh, esquema.onSurface, null)
-        SituacaoNumero.MARCADO, SituacaoNumero.ACERTO -> Triple(cor, Color.White, null)
-        SituacaoNumero.ERRO -> Triple(esquema.surfaceContainerHigh, esquema.onSurfaceVariant, BorderStroke(2.dp, cor.copy(alpha = 0.6f)))
-        SituacaoNumero.SORTEADO -> Triple(esquema.surfaceContainerHigh, cor, BorderStroke(2.dp, cor))
+        SituacaoNumero.MARCADO, SituacaoNumero.ACERTO -> Triple(cor.fundo, cor.numero, if (cor.comContorno) BorderStroke(1.5.dp, cor.contorno) else null)
+        SituacaoNumero.ERRO -> Triple(esquema.surfaceContainerHigh, esquema.onSurfaceVariant, BorderStroke(2.dp, cor.contorno.copy(alpha = 0.6f)))
+        SituacaoNumero.SORTEADO -> Triple(esquema.surfaceContainerHigh, cor.contorno, BorderStroke(2.dp, cor.contorno))
     }
     var mod = modifier
         .aspectRatio(1f)
@@ -87,7 +102,7 @@ fun GradeNumeros(
     aoTocar: ((Int) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val cor = corModalidade(m.cor)
+    val cor = coresDaBola(m)
     val colunas = colunasDoVolante(m)
     val numeros = Volante.universo(m).toList()
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -117,7 +132,7 @@ fun GradeTrevos(
     aoTocar: ((Int) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val cor = corModalidade(m.cor)
+    val cor = coresDaBola(Tarjas.trevo(m))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = modifier.fillMaxWidth()) {
         Volante.TREVOS.forEach { t ->
             Celula(
@@ -140,7 +155,7 @@ fun GradeColunas(
     aoTocar: ((coluna: Int, numero: Int) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val cor = corModalidade(m.cor)
+    val cor = coresDaBola(m)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
             (1..Volante.COLUNAS_SUPER_SETE).forEach { c ->
@@ -179,7 +194,7 @@ fun GradeLoteca(
     aoEscolher: ((jogo: Int, opcao: String) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val cor = corModalidade(m.cor)
+    val cor = coresDaBola(m)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         (0 until Volante.JOGOS_LOTECA).forEach { j ->
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {

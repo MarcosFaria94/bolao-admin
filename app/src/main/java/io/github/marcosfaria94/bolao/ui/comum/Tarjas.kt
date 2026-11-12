@@ -2,6 +2,7 @@ package io.github.marcosfaria94.bolao.ui.comum
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -212,7 +214,9 @@ fun EtiquetaDePreco(preco: String, modifier: Modifier = Modifier) {
 
 /**
  * Um cartão que abre e fecha tocando no título (drill-down; desde a 0.27, nos Detalhes do jogo: Regras,
- * Probabilidades e Quantidade de prêmios). Começa fechado ([inicial]); a seta diz se abre ou fecha.
+ * Probabilidades e Quantidade de prêmios). Começa fechado ([inicial]); a seta diz se abre ou fecha. Desde a
+ * 0.29, aberto, tocar em qualquer lugar dele (as tabelas também) fecha; os botões de dentro continuam com o
+ * toque deles, e arrastar uma tabela para os lados não fecha.
  */
 @Composable
 fun CartaoQueAbre(
@@ -238,7 +242,13 @@ fun CartaoQueAbre(
             )
         }
         if (aberto) {
-            Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) { conteudo() }
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    // O toque que nenhum botão de dentro pegou fecha o cartão (o arrasto das tabelas não é toque).
+                    .pointerInput(Unit) { detectTapGestures { aberto = false } }
+                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            ) { conteudo() }
         }
     }
 }

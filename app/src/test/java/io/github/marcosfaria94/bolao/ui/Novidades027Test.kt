@@ -195,9 +195,9 @@ class Novidades027Test {
         val e = Estado()
         assertEquals(
             listOf(
-                "Volante" to "01 a 60",
-                "Aposta" to "6 a 20 números",
-                "Preço" to "R$ 6,00 a R$ 232.560,00",
+                "Volante" to "De 01 a 60",
+                "Aposta" to "De 6 a 20 números",
+                "Preço" to "De R$ 6,00 a R$ 232.560,00",
                 "Sorteio" to "6 números",
                 "Premiação" to "A partir de 4 números",
             ),
@@ -205,7 +205,7 @@ class Novidades027Test {
         )
         assertEquals(listOf("6 números", "R$ 6,00"), regras(Modalidade.MEGA_SENA, e, mais = false).map { it.second }.slice(1..2))
         assertEquals("2 sorteios de 6 números", regras(Modalidade.DUPLA_SENA, e, false).first { it.first == "Sorteio" }.second)
-        assertEquals("6 a 12 números e 2 a 6 trevos", regras(Modalidade.MAIS_MILIONARIA, e, true).first { it.first == "Aposta" }.second)
+        assertEquals("De 6 a 12 números e de 2 a 6 trevos", regras(Modalidade.MAIS_MILIONARIA, e, true).first { it.first == "Aposta" }.second)
         assertEquals("10 números e o Time do Coração", regras(Modalidade.TIMEMANIA, e, true).first { it.first == "Aposta" }.second)
         assertEquals("A partir de 13 jogos", regras(Modalidade.LOTECA, e, true).last().second)
     }
