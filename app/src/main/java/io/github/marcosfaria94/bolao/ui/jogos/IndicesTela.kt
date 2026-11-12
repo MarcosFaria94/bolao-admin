@@ -36,7 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Indices
 import io.github.marcosfaria94.bolao.domain.Dinheiro
-import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
+import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
@@ -252,7 +252,7 @@ private fun Exemplo(item: Indices.Item) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                EmblemaModalidade(item.modalidade, item.k?.numero, tamanho = 46.dp)
+                SeloModalidade(item.modalidade, 46.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(item.modalidade.nome, style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, lineHeight = 22.sp))

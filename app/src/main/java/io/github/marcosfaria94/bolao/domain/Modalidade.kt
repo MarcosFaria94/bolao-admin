@@ -42,16 +42,27 @@ enum class Modalidade(
     SUPER_SETE("SS", "Super Sete", "supersete", 300, 0xFF7FA329, Formato.COLUNAS, 0, 9, 7, 7),
     MAIS_MILIONARIA("MI", "+Milionária", "maismilionaria", 600, 0xFF2E3078, Formato.NUMEROS, 1, 50, 6, 6, trevos = 2),
     LOTECA("LO", "Loteca", "loteca", 400, 0xFFFB1F00, Formato.LOTECA, qtdAposta = 14),
+    /**
+     * A Loteria Federal saiu do app na 0.27 (pedido do usuário): não aparece nos Jogos, nos Indicadores
+     * nem nos Parâmetros, e não dá para fazer aposta nova. Continua aqui só para ler apostas e backups
+     * de versões antigas (a conferência delas continua funcionando).
+     */
     FEDERAL("FE", "Loteria Federal", "federal", 0, 0xFF103099, Formato.FEDERAL);
 
     /** Preço variável: o valor é digitado na hora (Federal). */
     val precoVariavel: Boolean get() = this == FEDERAL
+
+    /** A modalidade aparece no app (todas, menos a Federal, desde a 0.27). */
+    val ativa: Boolean get() = this != FEDERAL
 
     /** Lotomania mostra "00" a "99"; as outras, "01" em diante com dois dígitos. */
     fun rotulo(numero: Int): String = numero.toString().padStart(2, '0')
 
     companion object {
         fun porSigla(sigla: String): Modalidade? = entries.firstOrNull { it.sigla == sigla }
+
+        /** As modalidades do app (sem a Federal, desde a 0.27), na ordem do enum. */
+        val ATIVAS: List<Modalidade> by lazy { entries.filter { it.ativa } }
     }
 }
 

@@ -1,7 +1,7 @@
 Fontes embutidas no app (licença SIL Open Font License 1.1):
 
 - VT323 (Peter Hull) — comprovantes no estilo de impressora térmica
-- Jost (Owen Earl / indestructible type*) — imagem dos acertos
+- Jost (Owen Earl / indestructible type*) — imagem dos acertos e tarjas das modalidades (jost-extrabold.ttf: só os caracteres latinos)
 
 ==================== VT323 ====================
 Copyright 2011, The VT323 Project Authors (peter.hull@oikoi.com)

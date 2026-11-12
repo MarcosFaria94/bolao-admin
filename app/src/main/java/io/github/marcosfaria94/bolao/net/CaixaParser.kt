@@ -80,6 +80,8 @@ object CaixaParser {
             premioEstimadoProximo = centavos(o.dbl("valorEstimadoProximoConcurso"))?.takeIf { it > 0 },
             numeroConcursoEspecial = o.int("numeroConcursoFinal_0_5")?.takeIf { it > 0 },
             acumuladoEspecial = centavos(o.dbl("valorAcumuladoConcursoEspecial"))?.takeIf { it > 0 },
+            acumuladoProximo = centavos(o.dbl("valorAcumuladoProximoConcurso"))?.takeIf { it > 0 },
+            acumuladoFinal05 = centavos(o.dbl("valorAcumuladoConcurso_0_5"))?.takeIf { it > 0 },
             registro = runCatching { RegistroK.deJson(o) }.getOrNull(),
         )
     }

@@ -12,6 +12,7 @@ import io.github.marcosfaria94.bolao.data.Repositorio
 import io.github.marcosfaria94.bolao.data.novoId
 import io.github.marcosfaria94.bolao.data.palpite
 import io.github.marcosfaria94.bolao.domain.Concurso
+import io.github.marcosfaria94.bolao.domain.ConcursoEspecial
 import io.github.marcosfaria94.bolao.domain.Formato
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Volante
@@ -22,16 +23,31 @@ import java.time.LocalDate
 /**
  * A aposta em andamento da modalidade (a mais recente), que o volante da página do jogo abre.
  * Sem nenhuma, o volante começa vazio, numa aposta nova.
+ *
+ * Desde a 0.27, os concursos especiais têm a página deles: com [especial] (o número do concurso), só a
+ * aposta em andamento desse concurso; sem ele, nenhuma dos concursos especiais que aparecem à parte nos
+ * Jogos ([separados]).
  */
-fun rascunhoDa(estado: Estado, m: Modalidade): Aposta? = Operacoes.rascunhos(estado).firstOrNull { it.modalidade == m }
+fun rascunhoDa(estado: Estado, m: Modalidade, especial: Int? = null, separados: Set<Int> = emptySet()): Aposta? =
+    Operacoes.rascunhos(estado).firstOrNull {
+        it.modalidade == m && if (especial != null) it.concurso == especial else it.concurso !in separados
+    }
 
 /**
  * Aposta nova da modalidade, com o volante vazio e o preço de Ajustes. Se o [ultimo] concurso
  * (dos índices) já diz qual é o próximo (de hoje em diante), ele já vem preenchido; na Loteca o
  * editor busca na Caixa também os jogos do concurso.
  */
-fun novaAposta(estado: Estado, m: Modalidade, ultimo: Concurso?, hoje: LocalDate, agora: Long): Aposta {
+fun novaAposta(estado: Estado, m: Modalidade, ultimo: Concurso?, hoje: LocalDate, agora: Long, especial: ConcursoEspecial? = null): Aposta {
     val atual = m != Modalidade.LOTECA && proximoAtual(ultimo, hoje)
+    // Concurso especial (desde a 0.27): o número, o dia e o prêmio anunciados pela Caixa.
+    if (especial != null) {
+        return novaAposta(estado, m, null, hoje, agora).copy(
+            concurso = especial.concurso,
+            dataSorteio = especial.dia,
+            premioEstimado = especial.premioEstimado,
+        )
+    }
     return Aposta(
         id = novoId(),
         numero = 0,

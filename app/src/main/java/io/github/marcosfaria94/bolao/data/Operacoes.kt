@@ -658,6 +658,20 @@ object Operacoes {
         return x
     }
 
+    /**
+     * As lixeiras do Painel de Jogos (desde a 0.27): exclui de uma vez as apostas [ids] que ainda podem sair do
+     * app ([podeDescartar]: as que falta registrar, as que esperam o comprovante da Caixa ou a conferência e,
+     * no modo individual, qualquer uma); as já conferidas ficam. Da mais nova para a mais velha, para a
+     * numeração do mês fechar sem buracos.
+     */
+    fun descartarApostas(e: Estado, ids: Collection<String>): Estado {
+        var x = e
+        e.apostas.filter { it.id in ids && podeDescartar(e, it) }
+            .sortedWith(compareBy<Aposta> { it.registrada }.thenByDescending { it.dataAposta }.thenByDescending { it.numero })
+            .forEach { x = descartarAposta(x, it.id) }
+        return x
+    }
+
     /** Fecha o buraco do número [livre] no [mes], se todas as apostas depois dele ainda puderem mudar de número. */
     private fun renumerarApostas(e: Estado, mes: YearMonth, livre: Int): Estado {
         val depois = e.apostas.filter { it.registrada && YearMonth.from(it.dataAposta) == mes && it.numero > livre }

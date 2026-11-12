@@ -51,9 +51,14 @@ data class Concurso(
     val proximaData: LocalDate? = null,
     /** Prêmio estimado do próximo concurso, em centavos. */
     val premioEstimadoProximo: Long? = null,
-    /** Número do próximo concurso especial (final 0 ou 5 na Mega, etc.), quando a Caixa informa. */
+    /** Número do próximo concurso de final 0 ou 5 (numeroConcursoFinal_0_5), quando a Caixa informa. */
     val numeroConcursoEspecial: Int? = null,
+    /** Acumulado para o concurso especial da modalidade (Mega da Virada...), em centavos. */
     val acumuladoEspecial: Long? = null,
+    /** Acumulado para o próximo concurso (a faixa principal que ninguém ganhou), em centavos (desde a 0.27). */
+    val acumuladoProximo: Long? = null,
+    /** Acumulado para o próximo concurso de final 0 ou 5 ([numeroConcursoEspecial]), em centavos (desde a 0.27). */
+    val acumuladoFinal05: Long? = null,
     /** Campos brutos da API usados nos índices k1 e k2. */
     val registro: RegistroK? = null,
 ) {

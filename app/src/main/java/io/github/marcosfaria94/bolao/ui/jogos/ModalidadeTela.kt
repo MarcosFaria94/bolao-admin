@@ -78,8 +78,19 @@ import io.github.marcosfaria94.bolao.ui.aposta.SecaoVolante
 import io.github.marcosfaria94.bolao.ui.aposta.novaAposta
 import io.github.marcosfaria94.bolao.ui.aposta.proximaAposta
 import io.github.marcosfaria94.bolao.ui.aposta.rascunhoDa
-import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
 import io.github.marcosfaria94.bolao.ui.comum.LinhaValor
+import io.github.marcosfaria94.bolao.ui.comum.CartaoQueAbre
+import io.github.marcosfaria94.bolao.ui.comum.TarjaModalidade
+import io.github.marcosfaria94.bolao.ui.aposta.valorSemQuebra
+import io.github.marcosfaria94.bolao.domain.ConcursoEspecial
+import io.github.marcosfaria94.bolao.domain.Especiais
+import io.github.marcosfaria94.bolao.domain.FaixaPremio
+import io.github.marcosfaria94.bolao.domain.Volante
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import java.time.LocalTime
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.bola3D
@@ -109,6 +120,12 @@ import java.time.LocalDate
  * volante, vazio e no mesmo concurso, para mais apostas, e no alto fica o aviso do comprovante da Caixa
  * que falta ([AvisoDoComprovante]), com o botão que abre os Comprovantes.
  * [detalhes]: abre direto nos Detalhes (segurar a modalidade em Jogos); aí o voltar sai da página.
+ *
+ * Desde a 0.27: no alto, a tarja da modalidade (como as da Caixa) com o concurso e a chance; no quadro do
+ * prêmio, os valores acumulados que a Caixa informa (para o concurso, para o de final 0 ou 5 e para o
+ * concurso especial); registrar não leva mais a página para o alto (o lugar da tela fica onde estava).
+ * [especial]: a página de um concurso especial (a opção à parte nos Jogos, [Especiais]), com o volante
+ * e a aposta em andamento só dele.
  */
 @Composable
 fun ModalidadeTela(
@@ -118,6 +135,7 @@ fun ModalidadeTela(
     apostaId: String? = null,
     abrir: (String) -> Unit = {},
     detalhes: Boolean = false,
+    especial: Int? = null,
 ) {
     val app = LocalContext.current.bolao
     val indices = remember { app.indices }
@@ -128,6 +146,12 @@ fun ModalidadeTela(
     LaunchedEffect(Unit) { indices.atualizarAoEntrar() }
     val item: Indices.Item? = itens[m]
     val u = item?.ultimo
+    // A página de um concurso especial (desde a 0.27); a página normal deixa de fora as apostas em andamento
+    // dos especiais que aparecem à parte nos Jogos.
+    val esp: ConcursoEspecial? = especial?.let { Especiais.doConcurso(m, it) }
+    val separados = remember(itens) {
+        Especiais.aParte(Instant.now(), { itens[it]?.proximoNumero }).filter { it.modalidade == m }.map { it.concurso }.toSet()
+    }
     val hoje = LocalDate.now()
     val escopo = rememberCoroutineScope()
     // Duas páginas lado a lado: a do jogo (0) e os Detalhes (1).
@@ -173,11 +197,11 @@ fun ModalidadeTela(
         null
     } else {
         viewModel(key = "volante") {
-            val emAndamento = aberta ?: rascunhoDa(estado, m)
+            val emAndamento = aberta ?: rascunhoDa(estado, m, esp?.concurso, if (esp == null) separados else emptySet())
             ApostaEmEdicao(
                 app.repo,
                 app.escopo,
-                emAndamento ?: novaAposta(estado, m, app.indices.itens.value[m]?.ultimo, hoje, System.currentTimeMillis()),
+                emAndamento ?: novaAposta(estado, m, app.indices.itens.value[m]?.ultimo, hoje, System.currentTimeMillis(), especial = esp),
                 nova = emAndamento == null,
             )
         }
@@ -206,8 +230,11 @@ fun ModalidadeTela(
 
     // O quadro mostra o concurso da aposta; sem os dados dela, os do próximo concurso (da Caixa).
     val doProximo = registrada == null && (aposta.concurso == 0 || aposta.concurso == item?.proximoNumero)
+    // O concurso especial da aposta (o da página especial ou, quando ele já é o próximo, o da página normal).
+    val especialDaAposta = esp ?: Especiais.doConcurso(m, aposta.concurso)
     val premio = aposta.premioEstimado?.takeIf { it > 0 } ?: u?.premioEstimadoProximo?.takeIf { doProximo && it > 0 }
-    val sorteio = aposta.dataSorteio ?: u?.proximaData?.takeIf { doProximo }
+        ?: especialDaAposta?.premioEstimado
+    val sorteio = aposta.dataSorteio ?: u?.proximaData?.takeIf { doProximo } ?: especialDaAposta?.dia
     val emDestaque = doProximo && indices.destaque(itens)?.modalidade == m
     // O próximo concurso (da Caixa, guardado no celular) já foi sorteado e o resultado ainda não chegou.
     val situacao = indices.situacao(m, Instant.now(), itens, consultas)
@@ -230,7 +257,7 @@ fun ModalidadeTela(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            CabecalhoModalidade(m, aposta.concurso.takeIf { it > 0 } ?: item?.proximoNumero)
+            CabecalhoModalidade(m, aposta.concurso.takeIf { it > 0 } ?: item?.proximoNumero, especialDaAposta)
             QuadroPremio(
                 premio = premio,
                 sorteio = sorteio,
@@ -239,6 +266,8 @@ fun ModalidadeTela(
                 destaque = emDestaque,
                 consultando = premio == null && sorteio == null && atualizando,
                 aviso = avisoDoQuadro,
+                hora = especialDaAposta?.takeIf { it.dia == sorteio }?.hora,
+                acumulados = if (registrada == null) acumuladosDaPagina(m, u, doProximo, esp) else emptyList(),
             )
             if (registrada != null) {
                 SecaoApostaRegistrada(
@@ -254,7 +283,29 @@ fun ModalidadeTela(
                 // A aposta mudada (ou descartada) numa tela aberta por cima desta: a página acompanha.
                 val gravada = estado.apostas.firstOrNull { it.id == v.aposta.id }
                 LaunchedEffect(gravada) { if (v.conferirGravada(gravada)) aoSair() }
-                AvisoDoComprovante(semComprovante, aoAnexar = { abrir(Pendencias.ABA_COMPROVANTES) })
+                // O aviso do comprovante aparece no alto depois do registro: a rolagem desce o mesmo tanto, para o
+                // lugar da tela (o volante, o botão) ficar onde estava (desde a 0.27; antes a página voltava ao alto).
+                // A altura conta também o espaço entre os itens da página (o aviso é um item a mais).
+                val espaco = with(LocalDensity.current) { 12.dp.roundToPx() }
+                var alturaDoAviso by remember { mutableIntStateOf(0) }
+                if (semComprovante.isNotEmpty()) {
+                    Box(
+                        Modifier.onSizeChanged { novo ->
+                            val total = novo.height + espaco
+                            val diferenca = total - alturaDoAviso
+                            alturaDoAviso = total
+                            if (diferenca != 0) escopo.launch { rolagem.scrollBy(diferenca.toFloat()) }
+                        },
+                    ) {
+                        AvisoDoComprovante(semComprovante, aoAnexar = { abrir(Pendencias.ABA_COMPROVANTES) })
+                    }
+                } else if (alturaDoAviso != 0) {
+                    LaunchedEffect(Unit) {
+                        val diferenca = -alturaDoAviso
+                        alturaDoAviso = 0
+                        rolagem.scrollBy(diferenca.toFloat())
+                    }
+                }
                 SecaoVolante(
                     estado = estado,
                     r = v.aposta,
@@ -265,8 +316,8 @@ fun ModalidadeTela(
                     aoAtualizar = { indices.atualizar(forcar = true) },
                     aoRegistrar = { feita, feitas ->
                         // Desde a 0.25: o volante continua na página, vazio e no mesmo concurso, para a próxima aposta.
+                        // Desde a 0.27 a página não sobe mais para o alto (pedido do usuário).
                         v.recomecar(proximaAposta(estado, feita, LocalDate.now(), System.currentTimeMillis()), feitas)
-                        escopo.launch { rolagem.animateScrollTo(0) }
                     },
                 )
             }
@@ -284,19 +335,21 @@ fun bloqueioDaAposta(concurso: Int?): String =
     "Aposta bloqueada: o concurso" + (concurso?.let { " $it" } ?: "") + " já foi sorteado e o resultado ainda não chegou. " +
         "O registro é liberado quando os dados forem atualizados."
 
-/** Emblema (sigla e concurso), o nome bem grande e a chance do prêmio principal. */
+/**
+ * O alto da página do jogo (desde a 0.27): a tarja da modalidade (ou a do concurso especial), como as da
+ * Caixa, e embaixo o concurso e a chance do prêmio principal ("1 em 50.063.860"). Até a 0.26, a bola com a
+ * sigla e o concurso e o nome bem grande.
+ */
 @Composable
-private fun CabecalhoModalidade(m: Modalidade, concurso: Int?) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        EmblemaModalidade(m, concurso, tamanho = 68.dp)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            TextoQueCabe(
-                m.nome,
-                MaterialTheme.typography.displaySmall.copy(fontSize = 34.sp, lineHeight = 40.sp),
-                peso = FontWeight.Bold,
-                menor = 16.sp,
-                modifier = Modifier.fillMaxWidth(),
+private fun CabecalhoModalidade(m: Modalidade, concurso: Int?, especial: ConcursoEspecial?) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        TarjaModalidade(m, Modifier.fillMaxWidth(), altura = 58.dp, especial = especial)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 2.dp)) {
+            Text(
+                concurso?.let { "Concurso $it" } ?: "Concurso",
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 23.sp),
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
             )
             Probabilidades.faixas(m).firstOrNull()?.let {
                 Text(Probabilidades.texto(it.umEm), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -306,11 +359,40 @@ private fun CabecalhoModalidade(m: Modalidade, concurso: Int?) {
 }
 
 /**
+ * Os valores acumulados que a Caixa informa (desde a 0.27, no quadro do prêmio da página do jogo), como no
+ * site dela: o acumulado para o concurso da aposta, o do próximo concurso de final 0 ou 5 e o do concurso
+ * especial (Mega da Virada, Quina de São João...). Só os que a Caixa informa (maiores que zero) e só para o
+ * próximo concurso ([doProximo]); na página de um concurso especial ([esp]), o acumulado para ele.
+ */
+fun acumuladosDaPagina(m: Modalidade, u: Concurso?, doProximo: Boolean, esp: ConcursoEspecial?): List<Pair<String, Long>> {
+    if (u == null) return emptyList()
+    val nome = esp?.nome ?: Especiais.nomeDoEspecial(m)
+    val doEspecial = u.acumuladoEspecial?.let { v -> (if (nome != null) "Acumulado para a $nome" else "Acumulado para o concurso especial") to v }
+    if (esp != null) return listOfNotNull(doEspecial)
+    if (!doProximo) return emptyList()
+    return listOfNotNull(
+        u.acumuladoProximo?.let { v -> "Acumulado para o concurso ${u.proximoNumero ?: (u.numero + 1)}" to v },
+        u.acumuladoFinal05?.let { v -> u.numeroConcursoEspecial?.let { n -> "Acumulado para o concurso de final ${n % 10} ($n)" to v } },
+        doEspecial,
+    )
+}
+
+/**
  * O prêmio (de ponta a ponta) e o dia do sorteio, juntos num quadro; o concurso em destaque tem o
  * contorno dourado e a estrelinha.
  */
 @Composable
-private fun QuadroPremio(premio: Long?, sorteio: LocalDate?, hoje: LocalDate, federal: Boolean, destaque: Boolean, consultando: Boolean, aviso: String? = null) {
+private fun QuadroPremio(
+    premio: Long?,
+    sorteio: LocalDate?,
+    hoje: LocalDate,
+    federal: Boolean,
+    destaque: Boolean,
+    consultando: Boolean,
+    aviso: String? = null,
+    hora: LocalTime? = null,
+    acumulados: List<Pair<String, Long>> = emptyList(),
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = if (destaque) BorderStroke(2.dp, Dourado) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -343,7 +425,19 @@ private fun QuadroPremio(premio: Long?, sorteio: LocalDate?, hoje: LocalDate, fe
                 // A Caixa ainda não divulgou a estimativa: no lugar do valor grande, uma linha como a do sorteio.
                 RotuloValor("Prêmio", NAO_DIVULGADO)
             }
-            RotuloValor("Sorteio", sorteio?.let { Datas.sorteio(it, hoje) } ?: NAO_DIVULGADO)
+            RotuloValor("Sorteio", (sorteio?.let { Datas.sorteio(it, hoje) } ?: NAO_DIVULGADO) + (hora?.let { " às ${AgendaDaCaixa.hora(it)}" } ?: ""))
+            // Desde a 0.27: os acumulados que a Caixa informa (o do concurso, o de final 0 ou 5 e o do especial).
+            if (acumulados.isNotEmpty()) {
+                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    acumulados.forEach { (rotulo, valor) ->
+                        Column {
+                            Text(rotulo, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(valorSemQuebra(Dinheiro.rs(valor)), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
             // Desde a 0.20: o concurso já foi sorteado e o resultado ainda não chegou ao app.
             if (aviso != null) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
@@ -357,12 +451,16 @@ private fun QuadroPremio(premio: Long?, sorteio: LocalDate?, hoje: LocalDate, fe
 }
 
 /**
- * "Detalhes" do jogo, à direita da página: o último resultado (se acumulou, os números sorteados e
- * a premiação), as regras e as probabilidades. Voltar leva à página do jogo como ela estava (o
- * volante não muda).
+ * "Detalhes" do jogo, à direita da página: o último resultado (se acumulou, os números sorteados e a
+ * premiação; na Dupla Sena, cada sorteio com a sua premiação, desde a 0.27) e, desde a 0.27, as Regras, as
+ * Probabilidades (em tabela, como a do site da Caixa) e a Quantidade de prêmios, cada uma num cartão que
+ * abre e fecha tocando no título. Com as apostas com mais números ligadas (o parâmetro), a tabela de
+ * probabilidades tem uma linha para cada quantidade de números e aparece a da quantidade de prêmios; sem
+ * ele, só a linha da aposta simples. Voltar leva à página do jogo como ela estava (o volante não muda).
  */
 @Composable
 private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, atualizando: Boolean) {
+    val mais = estado.parametros.maisNumeros && Volante.aceitaMais(m)
     Column(
         Modifier
             .fillMaxSize()
@@ -371,26 +469,70 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         UltimoResultado(m, u, atualizando)
-
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Regras", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
-                regras(m, estado).forEach { (r, v) -> LinhaValor(r, v) }
-            }
+        CartaoQueAbre(TITULO_REGRAS) {
+            regras(m, estado, mais).forEach { (r, v) -> LinhaValor(r, v) }
         }
-
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Probabilidades", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
-                Probabilidades.faixas(m).forEach { f -> LinhaValor(f.nome, Probabilidades.texto(f.umEm)) }
-                Probabilidades.faixas(m).mapNotNull { it.observacao }.distinct().forEach { obs ->
-                    Text("* $obs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+        CartaoQueAbre(TITULO_PROBABILIDADES) { TabelaDeProbabilidades(m, estado, mais) }
+        if (mais && Probabilidades.gruposDePremios(m) != null) {
+            CartaoQueAbre(TITULO_QUANTIDADE) { TabelaDeQuantidade(m) }
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+const val TITULO_REGRAS = "Regras"
+const val TITULO_PROBABILIDADES = "Probabilidades"
+const val TITULO_QUANTIDADE = "Quantidade de prêmios"
+
+/** A tabela de probabilidades, como a da Caixa: números jogados, valor da aposta e "1 em X" de cada faixa. */
+@Composable
+private fun TabelaDeProbabilidades(m: Modalidade, estado: Estado, mais: Boolean) {
+    val preco = estado.config.preco(m)
+    val linhas = remember(m, mais) { Probabilidades.tabela(m, mais) }
+    val colunas = Probabilidades.colunas(m)
+    TabelaRolavel(
+        primeira = if (m.trevos > 0) "Números + trevos" else "Números",
+        grupos = listOf("" to 1, "Probabilidade de acerto (1 em)" to colunas.size),
+        colunas = listOf("Valor da aposta") + colunas,
+        linhas = linhas.map { l ->
+            val rotulo = if (m.trevos > 0) "${l.numeros} + ${l.trevos}" else if (m.formato == Formato.COLUNAS) "7" else "${l.numeros}"
+            rotulo to (listOf(valorSemQuebra(Dinheiro.rs(preco * l.apostasSimples))) + l.umEm.map { v -> v?.let { Probabilidades.milhares(it) } ?: "—" })
+        },
+    )
+    val notas = Probabilidades.observacoesDaTabela(m) + if (!mais && Volante.aceitaMais(m)) {
+        listOf("Com as apostas com mais números ligadas (Ajustes > Parâmetros), a tabela mostra também as apostas com mais números.")
+    } else {
+        emptyList()
+    }
+    notas.forEach { obs ->
+        Text("* $obs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+/**
+ * A tabela "Quantidade de prêmios a receber acertando", como a da Caixa (só com as apostas com mais números):
+ * para cada quantidade de números jogados, quantos prêmios de cada faixa a aposta recebe acertando 6, 5 ou 4
+ * dos números sorteados (na Mega-Sena).
+ */
+@Composable
+private fun TabelaDeQuantidade(m: Modalidade) {
+    val grupos = Probabilidades.gruposDePremios(m) ?: return
+    val linhas = remember(m) {
+        (m.qtdAposta..Volante.maximo(m)).map { n -> "$n" to Probabilidades.quantidadeDePremios(m, n).flatten().map { Probabilidades.milhares(it) } }
+    }
+    TabelaRolavel(
+        primeira = "Números",
+        grupos = grupos.map { g -> "Acertando ${g.acertando}" to g.faixas.size },
+        colunas = grupos.flatMap { g -> g.faixas.map { Probabilidades.nomeDaFaixa(m, it) } },
+        linhas = linhas,
+    )
+    val nota = when (m) {
+        Modalidade.DUPLA_SENA -> "Em cada um dos 2 sorteios."
+        Modalidade.DIA_DE_SORTE -> "Sem contar o Mês de Sorte."
+        else -> null
+    }
+    nota?.let {
+        Text("* $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
@@ -420,66 +562,125 @@ private fun UltimoResultado(m: Modalidade, u: Concurso?, atualizando: Boolean) {
                 "Concurso ${u.numero}" + (u.data?.let { " · ${Datas.relativa(it, hoje)}" } ?: ""),
                 style = MaterialTheme.typography.bodyLarge,
             )
-            Resultado(m, u, corModalidade(m.cor))
-            if (u.faixas.isNotEmpty()) {
-                HorizontalDivider()
-                Text("Premiação", style = MaterialTheme.typography.titleMedium)
-                u.faixas.sortedBy { it.faixa }.forEach { f ->
-                    Column {
-                        Text(
-                            f.descricao.ifBlank { "${f.faixa}ª faixa" } + if (f.ganhadores > 0 && f.valor > 0) " · ${Dinheiro.rs(f.valor)}" else "",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            when (f.ganhadores) {
-                                0 -> "Não houve ganhadores"
-                                1 -> "1 aposta ganhadora"
-                                else -> "${Dinheiro.formatar(f.ganhadores * 100L).substringBefore(",")} apostas ganhadoras"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+            val cor = corModalidade(m.cor)
+            if (m == Modalidade.DUPLA_SENA && u.segundoSorteio.isNotEmpty()) {
+                // Desde a 0.27: cada sorteio com os números e a premiação dele (as faixas 1 a 4 são do 1º; 5 a 8, do 2º).
+                SorteioDaDupla("1º sorteio", u.dezenas.map(m::rotulo), u.faixas.filter { it.faixa <= 4 }, cor)
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                SorteioDaDupla("2º sorteio", u.segundoSorteio.map(m::rotulo), u.faixas.filter { it.faixa > 4 }, cor)
+            } else {
+                Resultado(m, u, cor)
+                if (u.faixas.isNotEmpty()) {
+                    HorizontalDivider()
+                    Premiacao(u.faixas)
                 }
             }
         }
     }
 }
 
-/** Como funciona a aposta simples (regras resumidas). */
-private fun regras(m: Modalidade, estado: Estado): List<Pair<String, String>> {
-    val preco = "Preço" to if (m.precoVariavel) "variável" else Dinheiro.rs(estado.config.preco(m))
-    return when (m.formato) {
-        Formato.NUMEROS -> listOf(
-            "Volante" to "${m.rotulo(m.menor)} a ${m.rotulo(m.maior)}" + if (m.trevos > 0) " + trevos de 1 a 6" else "",
-            "Aposta simples" to "${m.qtdAposta} dezenas" + when {
-                m.trevos > 0 -> " + ${m.trevos} trevos"
-                m.extra == Extra.TIME_DO_CORACAO -> " + Time do Coração"
-                m.extra == Extra.MES_DE_SORTE -> " + Mês de Sorte"
-                else -> ""
-            },
-            "Sorteio" to if (m.sorteios > 1) "${m.sorteios} sorteios de ${m.qtdSorteada} dezenas" else "${m.qtdSorteada} dezenas",
-            preco,
-            "Premiação" to premiacao(m),
-        )
-        Formato.COLUNAS -> listOf("Volante" to "7 colunas de 0 a 9", "Aposta simples" to "1 número por coluna", preco, "Premiação" to premiacao(m))
-        Formato.LOTECA -> listOf("Volante" to "14 jogos de futebol", "Aposta simples" to "1 palpite por jogo (1, X ou 2)", preco, "Premiação" to premiacao(m))
-        Formato.FEDERAL -> listOf("Bilhete" to "5 algarismos, inteiro ou em frações", preco, "Premiação" to premiacao(m))
+/** Um sorteio da Dupla Sena nos Detalhes: o título, os números e a premiação dele. */
+@Composable
+private fun SorteioDaDupla(titulo: String, numeros: List<String>, faixas: List<FaixaPremio>, cor: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Bolas(numeros, cor)
+        if (faixas.isNotEmpty()) Premiacao(faixas)
     }
 }
 
+/** "Premiação" e cada faixa: o nome, o valor e quantas apostas ganharam. */
+@Composable
+private fun Premiacao(faixas: List<FaixaPremio>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Premiação", style = MaterialTheme.typography.titleMedium)
+        faixas.sortedBy { it.faixa }.forEach { f ->
+            Column {
+                Text(
+                    f.descricao.ifBlank { "${f.faixa}ª faixa" } + if (f.ganhadores > 0 && f.valor > 0) " · ${Dinheiro.rs(f.valor)}" else "",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    when (f.ganhadores) {
+                        0 -> "Não houve ganhadores"
+                        1 -> "1 aposta ganhadora"
+                        else -> "${Dinheiro.formatar(f.ganhadores * 100L).substringBefore(",")} apostas ganhadoras"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * As regras resumidas (desde a 0.27, no formato pedido pelo usuário): Volante, Aposta (de quantos a quantos
+ * números), Preço (de quanto a quanto), Sorteio (quantos números) e Premiação (a partir de quantos acertos).
+ * Com as apostas com mais números ([mais]), a aposta e o preço vão até o máximo da modalidade.
+ */
+fun regras(m: Modalidade, estado: Estado, mais: Boolean): List<Pair<String, String>> {
+    val simples = estado.config.preco(m)
+    val comMais = mais && Volante.aceitaMais(m)
+    val maior = if (comMais) simples * Volante.apostasSimples(m, Volante.maximo(m), Volante.maximoTrevos(m)) else simples
+    val preco = when {
+        m.precoVariavel -> "Variável"
+        maior > simples -> "${Dinheiro.rs(simples)} a ${Dinheiro.rs(maior)}"
+        else -> Dinheiro.rs(simples)
+    }
+    fun faixa(de: Int, ate: Int, nome: String) = if (ate > de) "$de a $ate $nome" else "$de $nome"
+    return when (m.formato) {
+        Formato.NUMEROS -> {
+            val numeros = faixa(m.qtdAposta, if (comMais) Volante.maximo(m) else m.qtdAposta, "números")
+            listOf(
+                "Volante" to "${m.rotulo(m.menor)} a ${m.rotulo(m.maior)}" + if (m.trevos > 0) " e trevos de 1 a 6" else "",
+                "Aposta" to numeros + when {
+                    m.trevos > 0 -> " e " + faixa(m.trevos, if (comMais) Volante.maximoTrevos(m) else m.trevos, "trevos")
+                    m.extra == Extra.TIME_DO_CORACAO -> " e o Time do Coração"
+                    m.extra == Extra.MES_DE_SORTE -> " e o Mês de Sorte"
+                    else -> ""
+                },
+                "Preço" to preco,
+                "Sorteio" to (if (m.sorteios > 1) "${m.sorteios} sorteios de ${m.qtdSorteada} números" else "${m.qtdSorteada} números") + when {
+                    m.trevos > 0 -> " e ${m.trevos} trevos"
+                    m.extra == Extra.TIME_DO_CORACAO -> " e o Time do Coração"
+                    m.extra == Extra.MES_DE_SORTE -> " e o Mês de Sorte"
+                    else -> ""
+                },
+                "Premiação" to premiacao(m),
+            )
+        }
+        Formato.COLUNAS -> listOf(
+            "Volante" to "7 colunas de 0 a 9",
+            "Aposta" to "7 números (1 por coluna)",
+            "Preço" to preco,
+            "Sorteio" to "7 números (1 por coluna)",
+            "Premiação" to premiacao(m),
+        )
+        Formato.LOTECA -> listOf(
+            "Volante" to "14 jogos de futebol",
+            "Aposta" to "14 palpites (1, X ou 2)",
+            "Preço" to preco,
+            "Sorteio" to "Os resultados dos 14 jogos",
+            "Premiação" to premiacao(m),
+        )
+        Formato.FEDERAL -> listOf("Bilhete" to "5 algarismos, inteiro ou em frações", "Preço" to preco, "Premiação" to premiacao(m))
+    }
+}
+
+/** A partir de quantos acertos a aposta é premiada. */
 private fun premiacao(m: Modalidade): String = when (m) {
-    Modalidade.MEGA_SENA -> "Acertar 4, 5 ou 6"
-    Modalidade.LOTOFACIL -> "Acertar 11 a 15"
-    Modalidade.QUINA -> "Acertar 2 a 5"
-    Modalidade.LOTOMANIA -> "Acertar 15 a 20, ou nenhum"
-    Modalidade.TIMEMANIA -> "Acertar 3 a 7, ou o Time do Coração"
-    Modalidade.DUPLA_SENA -> "Acertar 3 a 6 em qualquer sorteio"
-    Modalidade.DIA_DE_SORTE -> "Acertar 4 a 7, ou o Mês de Sorte"
-    Modalidade.SUPER_SETE -> "Acertar 3 a 7 colunas"
-    Modalidade.MAIS_MILIONARIA -> "A partir de 2 números + 1 trevo"
-    Modalidade.LOTECA -> "Acertar 13 ou 14 jogos"
+    Modalidade.MEGA_SENA -> "A partir de 4 números"
+    Modalidade.LOTOFACIL -> "A partir de 11 números"
+    Modalidade.QUINA -> "A partir de 2 números"
+    Modalidade.LOTOMANIA -> "A partir de 15 números, ou nenhum"
+    Modalidade.TIMEMANIA -> "A partir de 3 números, ou o Time do Coração"
+    Modalidade.DUPLA_SENA -> "A partir de 3 números"
+    Modalidade.DIA_DE_SORTE -> "A partir de 4 números, ou o Mês de Sorte"
+    Modalidade.SUPER_SETE -> "A partir de 3 colunas"
+    Modalidade.MAIS_MILIONARIA -> "A partir de 2 números e 1 trevo"
+    Modalidade.LOTECA -> "A partir de 13 jogos"
     Modalidade.FEDERAL -> "5 prêmios, aproximações e finais"
 }
 
@@ -501,7 +702,7 @@ private fun RotuloValor(rotulo: String, valor: String) {
 private fun Bolas(numeros: List<String>, cor: Color) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         numeros.forEach { n ->
-            // As bolas sorteadas no mesmo estilo 3D dos emblemas.
+            // Os números sorteados em bolas 3D (só os números: as modalidades usam as tarjas desde a 0.27).
             Box(
                 Modifier.size(38.dp).bola3D(cor),
                 contentAlignment = Alignment.Center,
@@ -517,14 +718,7 @@ private fun Bolas(numeros: List<String>, cor: Color) {
 private fun Resultado(m: Modalidade, c: Concurso, cor: Color) {
     when (m.formato) {
         Formato.NUMEROS -> {
-            if (m == Modalidade.DUPLA_SENA && c.segundoSorteio.isNotEmpty()) {
-                Text("1º sorteio", style = MaterialTheme.typography.labelLarge)
-                Bolas(c.dezenas.map(m::rotulo), cor)
-                Text("2º sorteio", style = MaterialTheme.typography.labelLarge)
-                Bolas(c.segundoSorteio.map(m::rotulo), cor)
-            } else {
-                Bolas(c.dezenas.map(m::rotulo), cor)
-            }
+            Bolas(c.dezenas.map(m::rotulo), cor)
             if (c.trevos.isNotEmpty()) {
                 Text("Trevos", style = MaterialTheme.typography.labelLarge)
                 Bolas(c.trevos.map { it.toString() }, cor)

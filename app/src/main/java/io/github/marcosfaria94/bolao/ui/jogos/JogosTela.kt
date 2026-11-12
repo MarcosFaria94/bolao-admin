@@ -55,6 +55,8 @@ import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Indices
 import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
 import io.github.marcosfaria94.bolao.domain.Modalidade
+import io.github.marcosfaria94.bolao.domain.ConcursoEspecial
+import io.github.marcosfaria94.bolao.domain.Especiais
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
@@ -71,6 +73,9 @@ import java.time.Instant
  * "Jogos" na barra de baixo, já nos Jogos ([paraOTopo]), volta a lista ao começo. Desde a 0.22: o título
  * grande "Escolha um jogo" e, embaixo, dois botões lado a lado: "Indicadores" (abre a página que explica
  * o k1 e o k2, [abrirIndices]) e "Dados em dia" (ou "Aguardando resultado"), que ao tocar mostra o texto.
+ * Desde a 0.27: cada jogo com a tarja da modalidade (como as da Caixa), sem a Loteria Federal, e os
+ * concursos especiais com apostas abertas (Mega da Virada...) como opções à parte, logo antes dos outros
+ * jogos ([Especiais.aParte]; tocar abre a página do especial, [abrirEspecial], com os Detalhes se segurar).
  */
 @Composable
 fun JogosTela(
@@ -79,6 +84,7 @@ fun JogosTela(
     abrirDetalhes: (Modalidade) -> Unit,
     paraOTopo: Int = 0,
     abrirIndices: () -> Unit = {},
+    abrirEspecial: (ConcursoEspecial, detalhes: Boolean) -> Unit = { _, _ -> },
 ) {
     val ctx = LocalContext.current
     val indices = remember { ctx.bolao.indices }
@@ -95,7 +101,8 @@ fun JogosTela(
         }
     }
     LaunchedEffect(agora) { indices.atualizar() }
-    val situacoes = Modalidade.entries.associateWith { indices.situacao(it, agora, itens, consultas) }
+    val situacoes = Modalidade.ATIVAS.associateWith { indices.situacao(it, agora, itens, consultas) }
+    val especiais = Especiais.aParte(agora, { itens[it]?.proximoNumero })
     val destaque = indices.destaque(itens)?.modalidade
     val lista = rememberLazyListState()
     VoltarAoTopo(lista, paraOTopo)
@@ -141,6 +148,14 @@ fun JogosTela(
             }
             // Preço de Ajustes diferente do dos parâmetros ou regras da Caixa que mudaram.
             items(avisos, key = { it.chave }) { a -> Aviso(a.titulo, alerta = true) }
+            // Os concursos especiais com apostas abertas (desde a 0.27), antes dos outros jogos.
+            items(especiais, key = { "especial-${it.modalidade.name}-${it.concurso}" }) { e ->
+                CartaoEspecial(
+                    e, itens[e.modalidade], estado,
+                    aoTocar = { abrirEspecial(e, false) },
+                    aoSegurar = { abrirEspecial(e, true) },
+                )
+            }
             items(indices.ordenados(itens), key = { it.modalidade.name }) { item ->
                 CartaoIndice(
                     item, estado, destaque = item.modalidade == destaque,

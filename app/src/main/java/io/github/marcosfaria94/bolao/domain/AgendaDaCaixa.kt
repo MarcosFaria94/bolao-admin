@@ -49,8 +49,8 @@ object AgendaDaCaixa {
     /** Sem a data do próximo sorteio (a Caixa não divulgou): pergunta de novo a cada... */
     val INTERVALO_SEM_DATA: Duration = Duration.ofHours(2)
 
-    /** Hora do sorteio da modalidade [m] no dia [dia]. */
-    fun horaDoSorteio(m: Modalidade, dia: LocalDate): LocalTime = when {
+    /** Hora do sorteio da modalidade [m] no dia [dia] (desde a 0.27, a do concurso especial, quando há um nesse dia). */
+    fun horaDoSorteio(m: Modalidade, dia: LocalDate): LocalTime = Especiais.hora(m, dia) ?: when {
         dia.dayOfWeek == DayOfWeek.SUNDAY -> HORA_DOMINGO
         m == Modalidade.FEDERAL -> HORA_FEDERAL
         else -> HORA_REGULAR

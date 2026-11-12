@@ -16,34 +16,27 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Casino
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -61,6 +54,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -82,10 +77,10 @@ import io.github.marcosfaria94.bolao.imagem.Recibos
 import io.github.marcosfaria94.bolao.net.CaixaApi
 import io.github.marcosfaria94.bolao.ui.comum.Animacoes
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
-import io.github.marcosfaria94.bolao.ui.comum.CampoData
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.CampoInteiro
 import io.github.marcosfaria94.bolao.ui.comum.DialogoSimNao
+import io.github.marcosfaria94.bolao.ui.comum.EtiquetaDePreco
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
@@ -93,13 +88,14 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
- * Título do volante: "Aposta Nº1" (o número que a aposta vai receber no mês) com o lápis discreto
- * ([aoEditar]) que abre os dados do concurso e, embaixo (desde a 0.22), o que falta marcar
- * ([textoDoVolante]: "Marque 5 números", "Aposta completa"...), em verde quando o volante está pronto.
+ * Título do volante: "Aposta Nº1" (o número que a aposta vai receber no mês) e, embaixo (desde a 0.22), o
+ * que falta marcar ([textoDoVolante]: "Marque 5 números", "Aposta completa"...), em verde quando o volante
+ * está pronto. Desde a 0.27, na mesma linha do "Aposta Nº1", no canto direito, o preço da aposta ([preco],
+ * que acompanha os números a mais); o lápis dos dados do concurso saiu (o app pega tudo da Caixa).
  */
 @Composable
-private fun TituloDoVolante(numero: Int, texto: String, pronto: Boolean, aoEditar: () -> Unit, carregando: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun TituloDoVolante(numero: Int, texto: String, pronto: Boolean, preco: String, carregando: Boolean) {
+    Row(verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
             Text(
                 "Aposta Nº$numero",
@@ -115,16 +111,9 @@ private fun TituloDoVolante(numero: Int, texto: String, pronto: Boolean, aoEdita
             }
         }
         if (carregando) {
-            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            CircularProgressIndicator(Modifier.padding(top = 4.dp).size(18.dp), strokeWidth = 2.dp)
         }
-        IconButton(onClick = aoEditar, modifier = Modifier.size(36.dp)) {
-            Icon(
-                Icons.Outlined.Edit,
-                contentDescription = "Alterar os dados do concurso",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
-            )
-        }
+        EtiquetaDePreco(valorSemQuebra(preco), Modifier.padding(start = 8.dp))
     }
 }
 
@@ -265,30 +254,27 @@ fun SecaoVolante(
     }
 
     var consulta by remember { mutableStateOf<Consulta>(Consulta.Nada) }
-    var editando by remember { mutableStateOf(false) }
     var confirmar by remember { mutableStateOf<String?>(null) }
     var conferindo by remember { mutableStateOf(false) }
     var registrando by remember { mutableStateOf(false) }
     var vendo by remember { mutableStateOf(false) }
 
     // Sem o número do concurso (ou com um que já foi sorteado): busca o próximo na Caixa assim que a tela abre.
+    // Desde a 0.27 não há mais o lápis para preencher à mão: sem resposta da Caixa, o "Tentar de novo".
     val proximoNosIndices = ctx.bolao.indices.itens.value[m]?.proximoNumero
+    suspend fun buscarConcurso() {
+        consulta = Consulta.Carregando
+        consulta = try {
+            val d = dadosNaCaixa(m)
+            if (atual.concurso == 0 || d.numero > atual.concurso) mudarAtual(atual.com(d))
+            Consulta.Ok("Dados do concurso ${d.numero} conferidos na Caixa.")
+        } catch (t: Throwable) {
+            if (atual.concurso == 0) Consulta.Erro("Não foi possível consultar a Caixa (${t.message}).") else Consulta.Nada
+        }
+    }
     LaunchedEffect(r.id) {
         val desatualizado = proximoNosIndices != null && Operacoes.concursoDesatualizado(atual, proximoNosIndices)
-        if (atual.concurso == 0 || desatualizado) {
-            consulta = Consulta.Carregando
-            consulta = try {
-                val d = dadosNaCaixa(m)
-                if (atual.concurso == 0 || d.numero > atual.concurso) mudarAtual(atual.com(d))
-                Consulta.Ok("Dados do concurso ${d.numero} conferidos na Caixa.")
-            } catch (t: Throwable) {
-                if (atual.concurso == 0) {
-                    Consulta.Erro("Não foi possível consultar a Caixa (${t.message}). Toque no lápis do volante para preencher os dados do concurso.")
-                } else {
-                    Consulta.Nada
-                }
-            }
-        }
+        if (atual.concurso == 0 || desatualizado) buscarConcurso()
     }
 
     // O volante (os números, os trevos, o time ou o mês): o que falta aparece embaixo do título.
@@ -300,8 +286,8 @@ fun SecaoVolante(
             if (r.bilheteFederal.isNullOrBlank()) add("Informe o número do bilhete.")
             if ((r.fracoesFederal ?: 0) !in 1..10) add("Informe de 1 a 10 frações.")
         }
-        if (r.concurso <= 0) add("Informe o número do concurso (no lápis do volante).")
-        if (r.valor <= 0) add(if (federal) "Informe o valor pago." else "Informe o preço da aposta (no lápis do volante).")
+        if (r.concurso <= 0) add("Falta o número do concurso: o app ainda não conseguiu consultar a Caixa.")
+        if (r.valor <= 0) add(if (federal) "Informe o valor pago." else "Informe o preço da aposta simples em Ajustes > Parâmetros.")
         if (comTeimosinha && r.teimosinha != 0 && r.teimosinha !in 2..Operacoes.MAXIMO_DA_TEIMOSINHA) {
             add("Teimosinha: informe de 2 a ${Operacoes.MAXIMO_DA_TEIMOSINHA} concursos.")
         }
@@ -368,23 +354,32 @@ fun SecaoVolante(
         }
     }
 
-    (consulta as? Consulta.Erro)?.let { Aviso(it.texto, alerta = true) }
+    (consulta as? Consulta.Erro)?.let {
+        Aviso(it.texto, alerta = true)
+        OutlinedButton(onClick = { escopo.launch { buscarConcurso() } }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(TENTAR_DE_NOVO)
+        }
+    }
 
     // Volante
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             TituloDoVolante(
                 numero,
                 texto = textoDoVolante(m, r.palpite, mais),
                 pronto = completo,
-                aoEditar = { editando = true },
+                preco = if (federal && r.valor <= 0) "—" else Dinheiro.rs(r.valor),
                 carregando = consulta == Consulta.Carregando,
             )
-            Column(Modifier.padding(end = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 VolanteEditavel(m, r, mais, ja, { mudarAtual(it) }, ::mudarPalpite)
                 if (comTeimosinha) OpcaoTeimosinha(r, total) { mudarAtual(it) }
-                // "Completar" enquanto falta marcar; com o volante pronto, no mesmo lugar, o "Registrar aposta".
+                // "Completar" enquanto falta marcar; com o volante pronto, no mesmo lugar, o "Registrar aposta". Com as
+                // apostas com mais números (desde a 0.27), o lugar se divide em "Registrar" e "+1" (mais um número sorteado).
                 var usouCompletar by rememberSaveable(r.id) { mutableStateOf(false) }
+                val comMaisUm = completo && mais && m.formato == Formato.NUMEROS
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -404,7 +399,16 @@ fun SecaoVolante(
                             if (registrando || conferindo) {
                                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                             } else {
-                                Text(textoRegistrar(apostas), maxLines = 1)
+                                Text(if (comMaisUm) textoRegistrarCurto(apostas) else textoRegistrar(apostas), maxLines = 1)
+                            }
+                        }
+                        if (comMaisUm) {
+                            FilledTonalButton(
+                                onClick = { mudarPalpite(Volante.maisUm(m, atual.palpite)) },
+                                enabled = Volante.cabeMaisUm(m, r.palpite) && !registrando && !conferindo,
+                                modifier = Modifier.weight(1f).semantics { contentDescription = MAIS_UM_DESCRICAO },
+                            ) {
+                                Text(MAIS_UM, maxLines = 1, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -412,9 +416,10 @@ fun SecaoVolante(
                         OutlinedButton(
                             enabled = !registrando && !conferindo,
                             onClick = {
+                                // Desde a 0.27 o Time do Coração também sai (até a 0.26 ficava: o time sorteado pelo
+                                // "Completar" não saía mais com o "Limpar").
                                 val vazio = Palpite(
                                     numeros = if (m.formato == Formato.COLUNAS) List(Volante.COLUNAS_SUPER_SETE) { -1 } else emptyList(),
-                                    extra = if (m.extra == Extra.TIME_DO_CORACAO) r.extra else null,
                                 )
                                 mudarPalpite(vazio)
                             },
@@ -468,19 +473,6 @@ fun SecaoVolante(
         OutlinedButton(onClick = { vendo = true }, enabled = pronta && !registrando && !conferindo, modifier = Modifier.fillMaxWidth()) {
             Text("Visualizar comprovante")
         }
-    }
-
-    if (editando) {
-        DialogoConcurso(
-            a = r,
-            precoAjustes = precoSimples,
-            aoSalvar = { novo ->
-                editando = false
-                mudarAtual(novo)
-                if (consulta is Consulta.Erro && novo.concurso > 0) consulta = Consulta.Nada
-            },
-            aoFechar = { editando = false },
-        )
     }
 
     if (vendo) {
@@ -561,6 +553,16 @@ fun textoFaltaComprovante(numeros: List<Int>): String {
 /** O botão do volante pronto: "Registrar aposta" ou, com a espelho ou a teimosinha, "Registrar 4 apostas". */
 fun textoRegistrar(apostas: Int): String = if (apostas > 1) "Registrar $apostas apostas" else "Registrar aposta"
 
+/** O mesmo, mais curto, dividindo o lugar com o "+1" (desde a 0.27): "Registrar" ou "Registrar (4)". */
+fun textoRegistrarCurto(apostas: Int): String = if (apostas > 1) "Registrar ($apostas)" else "Registrar"
+
+/** O botão que marca mais um número sorteado (com as apostas com mais números, desde a 0.27). */
+const val MAIS_UM = "+1"
+const val MAIS_UM_DESCRICAO = "Mais um número"
+
+/** O botão que consulta a Caixa de novo quando ela não respondeu (desde a 0.27, no lugar do lápis). */
+const val TENTAR_DE_NOVO = "Tentar de novo"
+
 /** O botão do volante bloqueado (o concurso já foi sorteado e o resultado não chegou): consulta a Caixa na hora. */
 const val ATUALIZAR_AGORA = "Atualizar agora"
 
@@ -584,110 +586,6 @@ fun mensagemDoRegistro(feitas: List<Aposta>, individual: Boolean): String {
         else -> " Anexe o comprovante da Caixa na aba Comprovantes."
     }
     return texto + lembrete
-}
-
-/**
- * Janela do lápis: número do concurso, dia do sorteio, prêmio e o preço da aposta (a Federal
- * tem o valor pago no próprio formulário). "Consultar a Caixa" preenche com o próximo concurso.
- */
-@Composable
-private fun DialogoConcurso(a: Aposta, precoAjustes: Long, aoSalvar: (Aposta) -> Unit, aoFechar: () -> Unit) {
-    val m = a.modalidade
-    val federal = m.formato == Formato.FEDERAL
-    val escopo = rememberCoroutineScope()
-    var concurso by remember { mutableStateOf(a.concurso.takeIf { it > 0 }) }
-    var sorteio by remember { mutableStateOf(a.dataSorteio) }
-    var premio by remember { mutableLongStateOf(a.premioEstimado ?: 0L) }
-    var preco by remember { mutableLongStateOf(a.valor) }
-    var jogos by remember { mutableStateOf(a.jogosLoteca) }
-    var consulta by remember { mutableStateOf<Consulta>(Consulta.Nada) }
-
-    AlertDialog(
-        onDismissRequest = aoFechar,
-        title = { Text("Dados do concurso") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                when (val c = consulta) {
-                    Consulta.Carregando -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(40.dp)) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Text("Consultando a Caixa...", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    else -> {
-                        TextButton(onClick = {
-                            consulta = Consulta.Carregando
-                            escopo.launch {
-                                consulta = try {
-                                    val d = dadosNaCaixa(m)
-                                    concurso = d.numero
-                                    d.sorteio?.let { sorteio = it }
-                                    d.premio?.let { premio = it }
-                                    d.jogosLoteca?.let { jogos = it }
-                                    Consulta.Ok("Dados do concurso ${d.numero} conferidos na Caixa.")
-                                } catch (t: Throwable) {
-                                    Consulta.Erro("Não foi possível consultar a Caixa (${t.message}).")
-                                }
-                            }
-                        }) {
-                            Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Consultar a Caixa")
-                        }
-                        when (c) {
-                            is Consulta.Ok -> Text(c.texto, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                            is Consulta.Erro -> Text(c.texto, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                            else -> Unit
-                        }
-                    }
-                }
-                CampoInteiro(
-                    valor = concurso,
-                    aoMudar = { concurso = it },
-                    rotulo = "Número do concurso",
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                CampoData(
-                    data = sorteio,
-                    aoMudar = { sorteio = it },
-                    rotulo = "Sorteio",
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                CampoDinheiro(
-                    centavos = premio,
-                    aoMudar = { premio = it },
-                    rotulo = if (federal) "1º prêmio" else "Prêmio estimado",
-                    ajuda = premio.takeIf { it > 0 }?.let { "No comprovante: ${Dinheiro.abreviar(it)}" },
-                    imeAction = if (federal) ImeAction.Done else ImeAction.Next,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (!federal) {
-                    CampoDinheiro(
-                        centavos = preco,
-                        aoMudar = { preco = it },
-                        rotulo = "Preço da aposta",
-                        ajuda = "Aposta simples (Ajustes): ${Dinheiro.rs(precoAjustes)}" +
-                            Volante.apostasSimples(m, a.numeros.size, a.trevos.size).takeIf { it > 1 }?.let { " × $it apostas simples" }.orEmpty(),
-                        imeAction = ImeAction.Done,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                aoSalvar(
-                    a.copy(
-                        concurso = concurso ?: 0,
-                        dataSorteio = sorteio,
-                        premioEstimado = premio.takeIf { it > 0 },
-                        valor = if (federal) a.valor else preco,
-                        jogosLoteca = jogos,
-                    ),
-                )
-            }) { Text("Salvar") }
-        },
-        dismissButton = { TextButton(onClick = aoFechar) { Text("Cancelar") } },
-    )
 }
 
 /**
@@ -754,16 +652,6 @@ private fun VolanteEditavel(
                 situacao = { if (it in r.numeros) SituacaoNumero.MARCADO else SituacaoNumero.LIVRE },
                 aoTocar = { n -> mudarPalpite(Volante.alternar(m, r.palpite, n, mais)) },
             )
-            if (mais && Volante.maximo(m) > m.qtdAposta) {
-                // Apostas com mais números: até onde dá para ir e quanto custa o que está marcado.
-                val simples = Volante.apostasSimples(m, r.numeros.size, r.trevos.size)
-                Text(
-                    "De ${m.qtdAposta} a ${Volante.maximo(m)} números" +
-                        (if (simples > 1 && r.valor > 0) " · $simples apostas simples: ${valorSemQuebra(Dinheiro.rs(r.valor))}" else ""),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
             if (m.trevos > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Trevos", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))

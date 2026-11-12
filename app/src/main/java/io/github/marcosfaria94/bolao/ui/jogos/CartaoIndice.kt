@@ -5,13 +5,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -24,7 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.HourglassTop
 import androidx.compose.material3.Icon
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -35,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,11 +42,13 @@ import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.indices.IndiceK
-import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
+import io.github.marcosfaria94.bolao.ui.comum.EtiquetaDePreco
+import io.github.marcosfaria94.bolao.ui.comum.TarjaModalidade
+import io.github.marcosfaria94.bolao.domain.ConcursoEspecial
+import io.github.marcosfaria94.bolao.domain.Especiais
 import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
-import io.github.marcosfaria94.bolao.ui.tema.Tarja
 import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 import java.time.LocalDate
 
@@ -59,7 +57,7 @@ const val CASAS_INDICE = 3
 
 fun textoIndice(v: Double?): String = v?.let { IndiceK.exibir(it, CASAS_INDICE) } ?: "—"
 
-/** Loteca e Federal não têm os parâmetros dos índices: não há k1 nem k2 para elas. */
+/** Loteca (e a Federal, das versões antigas) não têm os parâmetros dos índices: não há k1 nem k2 para elas. */
 fun semReferencia(m: Modalidade): Boolean = m == Modalidade.LOTECA || m == Modalidade.FEDERAL
 
 /**
@@ -107,15 +105,13 @@ fun avisoDoCartao(s: AgendaDaCaixa.Situacao?): String? = when (s?.estado) {
     else -> null
 }
 
-/** Largura da coluna da bola e do nome (igual em todos os cartões, para as bolas ficarem alinhadas). */
-private val LARGURA_BOLA = 72.dp
-
 /**
- * Uma modalidade na lista ordenada pelo k1 (Jogos): a bola (sigla e próximo concurso) com o nome
- * da modalidade embaixo; ao lado, o preço no canto de cima, "Prêmio: R$ 58,5 Milhões",
- * "Sorteio: Hoje" (desde a 0.20, "Em 3 dias" até 7 dias) e os índices. O concurso em destaque tem
- * contorno dourado e, no alto, a estrelinha com "CONCURSO EM DESTAQUE". Quando os dados não são certos
- * ([situacao]), o aviso ao lado do preço ([avisoDoCartao]).
+ * Uma modalidade na lista ordenada pelo k1 (Jogos). Desde a 0.27, no alto do cartão, de ponta a ponta, a
+ * tarja da modalidade como as da Caixa (até a 0.26, a bola com a sigla e o concurso); embaixo, o concurso,
+ * o preço no canto, "Prêmio: R$ 58,5 Milhões", "Sorteio: Hoje" ("Em 3 dias" até 7 dias) e os índices.
+ * O concurso em destaque tem contorno dourado e a estrelinha com "CONCURSO EM DESTAQUE". Quando os dados
+ * não são certos ([situacao]), o aviso ao lado do concurso ([avisoDoCartao]). Quando o próximo concurso é
+ * um concurso especial ([Especiais]), a tarja é a dele ("mega da virada").
  */
 @Composable
 fun CartaoIndice(
@@ -127,8 +123,70 @@ fun CartaoIndice(
     situacao: AgendaDaCaixa.Situacao? = null,
 ) {
     val m = item.modalidade
-    val u = item.ultimo
     val hoje = LocalDate.now()
+    CartaoDoJogo(
+        m = m,
+        especial = Especiais.doConcurso(m, item.proximoNumero),
+        concurso = item.proximoNumero,
+        preco = precoDoCartao(m, estado),
+        premio = premioDoCartao(item),
+        sorteio = item.ultimo?.proximaData?.let { Datas.sorteio(it, hoje) } ?: NAO_DIVULGADO,
+        aviso = avisoDoCartao(situacao),
+        destaque = destaque,
+        aoTocar = aoTocar,
+        aoSegurar = aoSegurar,
+    ) { IndicesNaLinha(item) }
+}
+
+/**
+ * Um concurso especial à parte nos Jogos (desde a 0.27): o mesmo cartão, com a tarja do especial ("mega da
+ * virada"), o concurso, o prêmio e o dia e a hora do sorteio anunciados pela Caixa, e as odds da modalidade
+ * (concurso especial não tem k1 nem k2). Tocar abre a página do especial; segurar, os Detalhes.
+ */
+@Composable
+fun CartaoEspecial(
+    e: ConcursoEspecial,
+    item: Indices.Item?,
+    estado: Estado,
+    aoTocar: () -> Unit,
+    aoSegurar: (() -> Unit)? = null,
+) {
+    val hoje = LocalDate.now()
+    CartaoDoJogo(
+        m = e.modalidade,
+        especial = e,
+        concurso = e.concurso,
+        preco = precoDoCartao(e.modalidade, estado),
+        premio = e.premioEstimado?.let { Dinheiro.porExtenso(it) } ?: NAO_DIVULGADO,
+        sorteio = Datas.sorteio(e.dia, hoje) + " às " + AgendaDaCaixa.hora(e.hora),
+        aviso = null,
+        destaque = false,
+        aoTocar = aoTocar,
+        aoSegurar = aoSegurar,
+    ) {
+        val odds = item?.odds?.let { "    odds  ${IndiceK.exibirOddsInteiras(it)}" }.orEmpty()
+        Text(SEM_INDICES_NO_ESPECIAL + odds, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** O que os cartões dos concursos especiais dizem no lugar do k1 e do k2. */
+const val SEM_INDICES_NO_ESPECIAL = "Concurso especial: sem k1 e k2"
+
+/** O cartão de um jogo nos Jogos: a tarja de ponta a ponta e, embaixo, o concurso, o preço, o prêmio, o sorteio e os índices. */
+@Composable
+private fun CartaoDoJogo(
+    m: Modalidade,
+    especial: ConcursoEspecial?,
+    concurso: Int?,
+    preco: String,
+    premio: String,
+    sorteio: String,
+    aviso: String?,
+    destaque: Boolean,
+    aoTocar: () -> Unit,
+    aoSegurar: (() -> Unit)?,
+    indices: @Composable () -> Unit,
+) {
     val cor = MaterialTheme.colorScheme.onSurface
     val vibrar = LocalHapticFeedback.current
     // Segurar abre os Detalhes só depois de um tempo maior que o padrão do celular (não abre sem querer).
@@ -157,68 +215,50 @@ fun CartaoIndice(
                 onLongClickLabel = if (aoSegurar != null) "Ver os detalhes" else null,
             ),
     ) {
-        Column(Modifier.padding(start = 8.dp, end = 12.dp, top = 12.dp, bottom = 12.dp)) {
+        // A tarja de ponta a ponta, no alto do cartão (o cartão arredonda os cantos de cima).
+        TarjaModalidade(m, Modifier.fillMaxWidth(), altura = 46.dp, especial = especial, cantos = 0.dp)
+        Column(Modifier.padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             if (destaque) {
-                TituloDestaque(Modifier.padding(start = 6.dp, bottom = 10.dp))
+                TituloDestaque(Modifier.padding(bottom = 4.dp))
             }
-            Row(verticalAlignment = Alignment.Top) {
-                // A bola e, embaixo dela (fora dela), o nome da modalidade.
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
-                    modifier = Modifier.width(LARGURA_BOLA),
-                ) {
-                    EmblemaModalidade(m, item.proximoNumero, tamanho = 58.dp)
-                    Text(
-                        m.nome,
-                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp, lineHeight = 16.sp),
-                        fontWeight = FontWeight.SemiBold,
-                        color = cor,
-                        textAlign = TextAlign.Center,
-                        maxLines = 2,
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    // O preço no canto de cima, à direita; à esquerda, o aviso quando os dados não são certos.
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        val aviso = avisoDoCartao(situacao)
-                        if (aviso != null) {
-                            Icon(Icons.Outlined.HourglassTop, contentDescription = null, tint = corDestaque(), modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(3.dp))
-                            TextoQueCabe(
-                                aviso,
-                                MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
-                                cor = corDestaque(),
-                                peso = FontWeight.SemiBold,
-                                menor = 9.sp,
-                                modifier = Modifier.weight(1f).padding(end = 6.dp),
-                            )
-                        } else {
-                            Spacer(Modifier.weight(1f))
-                        }
-                        EtiquetaPreco(precoDoCartao(m, estado))
-                    }
+            // O concurso e, à direita, o preço; quando os dados não são certos, o aviso no lugar do concurso.
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                if (aviso != null) {
+                    Icon(Icons.Outlined.HourglassTop, contentDescription = null, tint = corDestaque(), modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(3.dp))
                     TextoQueCabe(
-                        buildAnnotatedString {
-                            append("Prêmio: ")
-                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(premioDoCartao(item)) }
-                        },
-                        MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 23.sp, fontWeight = FontWeight.Normal),
-                        cor = cor,
-                        menor = 13.sp,
-                        modifier = Modifier.fillMaxWidth(),
+                        aviso,
+                        MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
+                        cor = corDestaque(),
+                        peso = FontWeight.SemiBold,
+                        menor = 9.sp,
+                        modifier = Modifier.weight(1f).padding(end = 6.dp),
                     )
-                    // "Sorteio:" e a data na mesma cor.
+                } else {
                     Text(
-                        "Sorteio: " + (u?.proximaData?.let { Datas.sorteio(it, hoje) } ?: NAO_DIVULGADO),
-                        style = MaterialTheme.typography.bodyLarge,
+                        concurso?.let { "Concurso $it" } ?: "Concurso",
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, lineHeight = 22.sp),
+                        fontWeight = FontWeight.Bold,
                         color = cor,
                         maxLines = 1,
+                        modifier = Modifier.weight(1f).padding(end = 6.dp),
                     )
-                    IndicesNaLinha(item)
                 }
+                EtiquetaDePreco(preco)
             }
+            TextoQueCabe(
+                buildAnnotatedString {
+                    append("Prêmio: ")
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(premio) }
+                },
+                MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 23.sp, fontWeight = FontWeight.Normal),
+                cor = cor,
+                menor = 13.sp,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // "Sorteio:" e a data na mesma cor.
+            Text("Sorteio: $sorteio", style = MaterialTheme.typography.bodyLarge, color = cor, maxLines = 1)
+            indices()
         }
     }
     }
@@ -256,23 +296,3 @@ fun IndicesNaLinha(item: Indices.Item, modifier: Modifier = Modifier) {
 
 /** Quanto segurar o cartão para abrir os Detalhes (o padrão do Android é 400 ms). */
 const val SEGURAR_PARA_DETALHES_MS = 700L
-
-/** Etiqueta do preço, no canto de cima do cartão: letra grande, com fundo próprio. */
-@Composable
-private fun EtiquetaPreco(preco: String) {
-    Box(
-        Modifier
-            .background(Tarja.fundo(), RoundedCornerShape(8.dp))
-            .padding(horizontal = 9.dp, vertical = 2.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            preco,
-            style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 26.sp),
-            color = Tarja.texto(),
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            softWrap = false,
-        )
-    }
-}

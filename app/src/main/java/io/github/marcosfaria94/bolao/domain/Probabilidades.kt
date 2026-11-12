@@ -91,6 +91,140 @@ object Probabilidades {
         )
     }
 
+    // ---------- tabelas dos Detalhes (desde a 0.27) ----------
+
+    /**
+     * Uma linha da tabela de probabilidades, como a do site da Caixa: quantos números (e trevos) foram
+     * jogados, quantas apostas simples cabem neles (o valor da aposta é o preço da simples vezes isso) e a
+     * chance de cada faixa ("1 em X"; null = não dá para acertar essa faixa com essa aposta).
+     */
+    data class LinhaDaTabela(val numeros: Int, val trevos: Int, val apostasSimples: Long, val umEm: List<Long?>)
+
+    /** Os nomes das colunas das faixas (na ordem de [tabela]). */
+    fun colunas(m: Modalidade): List<String> = when (m) {
+        Modalidade.MEGA_SENA -> listOf("Sena", "Quina", "Quadra")
+        Modalidade.LOTOFACIL -> (15 downTo 11).map { "$it acertos" }
+        Modalidade.QUINA -> listOf("Quina", "Quadra", "Terno", "Duque")
+        Modalidade.LOTOMANIA -> (20 downTo 15).map { "$it acertos" } + "0 acertos"
+        Modalidade.TIMEMANIA -> (7 downTo 3).map { "$it acertos" } + "Time do Coração"
+        Modalidade.DUPLA_SENA -> listOf("Sena", "Quina", "Quadra", "Terno")
+        Modalidade.DIA_DE_SORTE -> (7 downTo 4).map { "$it acertos" } + "Mês de Sorte"
+        Modalidade.SUPER_SETE -> (7 downTo 3).map { "$it colunas" }
+        Modalidade.MAIS_MILIONARIA -> listOf("6 + 2", "6 + 1 ou 0", "5 + 2", "5 + 1 ou 0", "4 + 2", "4 + 1 ou 0", "3 + 2", "3 + 1", "2 + 2", "2 + 1")
+        Modalidade.LOTECA -> listOf("14 acertos", "13 acertos")
+        Modalidade.FEDERAL -> listOf("1º prêmio", "Qualquer prêmio")
+    }
+
+    /** Quantos acertos cada coluna das modalidades de números pede (sem as colunas do time e do mês). */
+    private fun acertosDasColunas(m: Modalidade): List<Int> = when (m) {
+        Modalidade.MEGA_SENA -> listOf(6, 5, 4)
+        Modalidade.LOTOFACIL -> (15 downTo 11).toList()
+        Modalidade.QUINA -> listOf(5, 4, 3, 2)
+        Modalidade.LOTOMANIA -> (20 downTo 15).toList() + 0
+        Modalidade.TIMEMANIA -> (7 downTo 3).toList()
+        Modalidade.DUPLA_SENA -> listOf(6, 5, 4, 3)
+        Modalidade.DIA_DE_SORTE -> (7 downTo 4).toList()
+        else -> emptyList()
+    }
+
+    /** "1 em X" de acertar exatamente [k] dos números sorteados jogando [a] números ([casos] = 0: não dá). */
+    private fun umEmOuNada(casos: BigInteger, total: BigInteger): Long? = if (casos.signum() == 0) null else umEm(casos, total)
+
+    /**
+     * A tabela de probabilidades da modalidade (desde a 0.27, nos Detalhes, como a da Caixa). Com as apostas
+     * com mais números ([mais], o parâmetro), uma linha para cada quantidade de números que o volante aceita
+     * (na +Milionária, também de trevos); sem ele, só a da aposta simples.
+     */
+    fun tabela(m: Modalidade, mais: Boolean): List<LinhaDaTabela> {
+        val comMais = mais && Volante.aceitaMais(m)
+        val numeros = if (comMais) m.qtdAposta..Volante.maximo(m) else m.qtdAposta..m.qtdAposta
+        val trevos = if (comMais && m.trevos > 0) m.trevos..Volante.maximoTrevos(m) else m.trevos..m.trevos
+        return when {
+            m == Modalidade.MAIS_MILIONARIA -> numeros.flatMap { a -> trevos.map { b -> linhaMaisMilionaria(a, b) } }
+            m.formato == Formato.NUMEROS -> numeros.map { a ->
+                val n = m.maior - m.menor + 1
+                val total = c(n, m.qtdSorteada)
+                val dosNumeros = acertosDasColunas(m).map { k -> umEmOuNada(hiper(n, a, m.qtdSorteada, k), total) }
+                val extra = when (m.extra) {
+                    Extra.TIME_DO_CORACAO -> listOf<Long?>(80)
+                    Extra.MES_DE_SORTE -> listOf<Long?>(12)
+                    Extra.NENHUM -> emptyList()
+                }
+                LinhaDaTabela(a, m.trevos, Volante.apostasSimples(m, a, m.trevos), dosNumeros + extra)
+            }
+            // Super Sete, Loteca e Federal: só a aposta simples.
+            else -> listOf(LinhaDaTabela(m.qtdAposta, 0, 1, faixas(m).map { it.umEm }))
+        }
+    }
+
+    /** A +Milionária com [a] números e [b] trevos: cada faixa é números acertados e trevos acertados. */
+    private fun linhaMaisMilionaria(a: Int, b: Int): LinhaDaTabela {
+        val total = c(50, 6).multiply(c(6, 2))
+        fun casos(n: Int, ts: List<Int>): BigInteger = hiper(50, a, 6, n).multiply(ts.fold(BigInteger.ZERO) { s, t -> s.add(hiper(6, b, 2, t)) })
+        val faixas = listOf(
+            6 to listOf(2), 6 to listOf(1, 0), 5 to listOf(2), 5 to listOf(1, 0), 4 to listOf(2), 4 to listOf(1, 0),
+            3 to listOf(2), 3 to listOf(1), 2 to listOf(2), 2 to listOf(1),
+        )
+        return LinhaDaTabela(a, b, Volante.apostasSimples(Modalidade.MAIS_MILIONARIA, a, b), faixas.map { (n, ts) -> umEmOuNada(casos(n, ts), total) })
+    }
+
+    /** As observações da tabela de probabilidades (embaixo dela). */
+    fun observacoesDaTabela(m: Modalidade): List<String> = faixas(m).mapNotNull { it.observacao }.distinct() +
+        if (m == Modalidade.MAIS_MILIONARIA) listOf("6 + 2 = 6 números e 2 trevos; \"1 ou 0\" = 1 trevo ou nenhum") else emptyList()
+
+    /**
+     * Um grupo da tabela de quantidade de prêmios: acertando [acertando] dos números sorteados, quantos prêmios
+     * de cada faixa ([faixas], em acertos) a aposta recebe.
+     */
+    data class GrupoDePremios(val acertando: Int, val faixas: List<Int>)
+
+    /** A menor faixa de cada modalidade que tem a tabela de quantidade de prêmios (as de números, com mais números). */
+    private fun menorFaixa(m: Modalidade): Int? = when (m) {
+        Modalidade.MEGA_SENA -> 4
+        Modalidade.LOTOFACIL -> 11
+        Modalidade.QUINA -> 2
+        Modalidade.DUPLA_SENA -> 3
+        Modalidade.DIA_DE_SORTE -> 4
+        else -> null
+    }
+
+    /**
+     * Os grupos da tabela "Quantidade de prêmios a receber acertando" (como a da Caixa; desde a 0.27): só nas
+     * modalidades que aceitam mais números (sem a +Milionária, em que os trevos entram na conta). null = não há.
+     */
+    fun gruposDePremios(m: Modalidade): List<GrupoDePremios>? {
+        val menor = menorFaixa(m) ?: return null
+        if (!Volante.aceitaMais(m)) return null
+        return (m.qtdSorteada downTo menor).map { h -> GrupoDePremios(h, (h downTo menor).toList()) }
+    }
+
+    /** O nome de cada faixa na tabela de quantidade de prêmios: "Sena", "Quina"... ou "11 acertos". */
+    fun nomeDaFaixa(m: Modalidade, acertos: Int): String = when {
+        m == Modalidade.MEGA_SENA || m == Modalidade.DUPLA_SENA -> mapOf(6 to "Sena", 5 to "Quina", 4 to "Quadra", 3 to "Terno")[acertos]
+        m == Modalidade.QUINA -> mapOf(5 to "Quina", 4 to "Quadra", 3 to "Terno", 2 to "Duque")[acertos]
+        else -> null
+    } ?: "$acertos acertos"
+
+    /**
+     * Quantos prêmios de cada faixa uma aposta com [numeros] números recebe, em cada grupo de [gruposDePremios]:
+     * acertando h números, as apostas simples com t acertos são C(h, t) × C(números − h, simples − t).
+     */
+    fun quantidadeDePremios(m: Modalidade, numeros: Int): List<List<Long>> =
+        gruposDePremios(m).orEmpty().map { g ->
+            g.faixas.map { t -> Volante.combinacoes(g.acertando, t) * Volante.combinacoes(numeros - g.acertando, m.qtdAposta - t) }
+        }
+
+    /** "50.063.860": o número com o ponto dos milhares (as tabelas já dizem "1 em"). */
+    fun milhares(v: Long): String {
+        val s = v.toString()
+        val sb = StringBuilder()
+        for ((i, ch) in s.withIndex()) {
+            if (i > 0 && (s.length - i) % 3 == 0) sb.append('.')
+            sb.append(ch)
+        }
+        return sb.toString()
+    }
+
     /** "1 em 50.063.860". */
     fun texto(umEm: Long): String {
         val s = umEm.toString()

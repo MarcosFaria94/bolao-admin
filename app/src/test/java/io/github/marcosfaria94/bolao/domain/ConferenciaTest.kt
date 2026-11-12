@@ -125,7 +125,8 @@ class ConferenciaTest {
         assertEquals(6, completo.numeros.size)
         assertTrue(completo.numeros.containsAll(listOf(10, 20)))
         // Não deixa marcar além da quantidade da aposta simples.
-        assertEquals(completo, Volante.alternar(Modalidade.MEGA_SENA, completo, 59.takeIf { it !in completo.numeros } ?: 58))
+        // (Um número que não está marcado: até a 0.26, com o 58 e o 59 sorteados, o teste desmarcava o 58 e falhava por acaso.)
+        assertEquals(completo, Volante.alternar(Modalidade.MEGA_SENA, completo, (1..60).first { it !in completo.numeros }))
     }
 
     @Test

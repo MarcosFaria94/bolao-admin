@@ -68,6 +68,49 @@ class EscritorPdf {
             conteudo.append("${cor(corRgb)} RG ${n(espessura)} w ${n(x1)} ${n(altura - y1)} m ${n(x2)} ${n(altura - y2)} l S\n")
         }
 
+        /**
+         * Uma forma cheia (desde a 0.27, para as tarjas e as bolas do PDF dos jogos): o ponto de partida
+         * ([inicio] = x, y) e as curvas cúbicas (x1, y1, x2, y2, x3, y3), fechada no fim.
+         */
+        fun forma(inicio: FloatArray, curvas: List<FloatArray>, corRgb: Int) {
+            val sb = StringBuilder("${cor(corRgb)} rg ${n(inicio[0])} ${n(altura - inicio[1])} m ")
+            for (k in curvas) {
+                sb.append("${n(k[0])} ${n(altura - k[1])} ${n(k[2])} ${n(altura - k[3])} ${n(k[4])} ${n(altura - k[5])} c ")
+            }
+            conteudo.append(sb).append("h f\n")
+        }
+
+        /** Um polígono cheio (os pontos em x, y). */
+        fun poligono(pontos: List<Pair<Float, Float>>, corRgb: Int) {
+            if (pontos.size < 3) return
+            val sb = StringBuilder("${cor(corRgb)} rg ")
+            pontos.forEachIndexed { i, (x, y) -> sb.append("${n(x)} ${n(altura - y)} ${if (i == 0) "m" else "l"} ") }
+            conteudo.append(sb).append("h f\n")
+        }
+
+        /** Um retângulo cheio com os cantos arredondados ([raio]). */
+        fun retanguloArredondado(x: Float, y: Float, w: Float, h: Float, raio: Float, corRgb: Int) {
+            val r = minOf(raio, w / 2f, h / 2f)
+            val k = r * 0.5523f
+            forma(
+                floatArrayOf(x + r, y),
+                listOf(
+                    floatArrayOf(x + w - r, y, x + w - r, y, x + w - r, y),
+                    floatArrayOf(x + w - r + k, y, x + w, y + r - k, x + w, y + r),
+                    floatArrayOf(x + w, y + h - r, x + w, y + h - r, x + w, y + h - r),
+                    floatArrayOf(x + w, y + h - r + k, x + w - r + k, y + h, x + w - r, y + h),
+                    floatArrayOf(x + r, y + h, x + r, y + h, x + r, y + h),
+                    floatArrayOf(x + r - k, y + h, x, y + h - r + k, x, y + h - r),
+                    floatArrayOf(x, y + r, x, y + r, x, y + r),
+                    floatArrayOf(x, y + r - k, x + r - k, y, x + r, y),
+                ),
+                corRgb,
+            )
+        }
+
+        /** Um círculo cheio. */
+        fun circulo(cx: Float, cy: Float, r: Float, corRgb: Int) = retanguloArredondado(cx - r, cy - r, 2 * r, 2 * r, r, corRgb)
+
         /** Imagem ocupando o retângulo (x, y, w, h). */
         fun imagem(img: Imagem, x: Float, y: Float, w: Float, h: Float) {
             imagens += img.numero

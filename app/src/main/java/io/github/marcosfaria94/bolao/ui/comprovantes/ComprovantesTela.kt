@@ -74,7 +74,7 @@ import io.github.marcosfaria94.bolao.ui.comum.Aviso
 import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaDesenho
-import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
+import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.Desenhos
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
@@ -357,7 +357,7 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
                         semComprovante.forEachIndexed { i, a ->
                             if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             LinhaEsperando(
-                                emblema = { EmblemaModalidade(a.modalidade, a.concurso, 40.dp) },
+                                emblema = { SeloModalidade(a.modalidade, 40.dp) },
                                 titulo = "Aposta Nº${a.numero} · ${a.modalidade.nome}",
                                 texto = "Registrada ${Datas.relativa(a.dataAposta, LocalDate.now()).lowercase()} · ${Dinheiro.rs(a.valor)}",
                                 aoTocar = { abrir("aposta/${a.id}") },
@@ -504,7 +504,7 @@ private fun ConferirAposta(estado: Estado, a: Aposta, aoAbrir: () -> Unit) {
     val arq = a.comprovante ?: return
     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(onClick = aoAbrir)) {
-            EmblemaModalidade(a.modalidade, a.concurso, 40.dp)
+            SeloModalidade(a.modalidade, 40.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("Aposta Nº${a.numero} · ${a.modalidade.nome}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)

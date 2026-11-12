@@ -76,7 +76,26 @@ import io.github.marcosfaria94.bolao.ui.aposta.Brasao
 import io.github.marcosfaria94.bolao.ui.aposta.nomeDoTime
 import io.github.marcosfaria94.bolao.ui.aposta.tituloDaAposta
 import io.github.marcosfaria94.bolao.ui.comum.CoresEmblema
-import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
+import io.github.marcosfaria94.bolao.ui.comum.TarjaDoConcurso
+import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
+import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
+import io.github.marcosfaria94.bolao.data.Operacoes
+import io.github.marcosfaria94.bolao.domain.Modalidade
+import io.github.marcosfaria94.bolao.pdf.JogosPdf
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import io.github.marcosfaria94.bolao.ui.comum.Icones
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
@@ -104,7 +123,6 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.runtime.rememberCoroutineScope
-import io.github.marcosfaria94.bolao.imagem.ImagemDosJogos
 import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -127,6 +145,13 @@ const val ROTA_PAINEL = "meus-jogos"
  * fundo neutro, com as dezenas em bolas coloridas (como no volante) e, à direita, OK ou Pendente.
  * Tocar numa aposta abre a página dela; sem jogos, o "Apostar" vai para os Jogos ([apostar]). A raiz
  * cuida de voltar (puxando para baixo ou deslizando para o lado).
+ *
+ * Desde a 0.27: cada concurso com a tarja da modalidade (como as da Caixa) no lugar da bola; a lixeira em
+ * cada aposta e no concurso (apaga todos os jogos dele), com a confirmação; segurar uma aposta abre as
+ * caixas de seleção, para apagar várias de uma vez com uma confirmação só (o voltar do celular cancela).
+ * Só saem do app as apostas que ainda podem ser descartadas ([Operacoes.podeDescartar]: as que falta
+ * registrar e as que esperam o comprovante da Caixa ou a conferência; no modo individual, qualquer uma); as
+ * já conferidas ficam, sem a lixeira. O "Compartilhar" manda um PDF leve ([JogosPdf]) no lugar da imagem.
  */
 @Composable
 fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String) -> Unit, apostar: () -> Unit) {
@@ -140,6 +165,18 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
     // O "Compartilhar" manda só as apostas registradas (as que falta registrar ainda não valem).
     val registradas = todas.filter { it.registrada }
     val escopo = rememberCoroutineScope()
+    val repo = remember { ctx.bolao.repo }
+    val avisos = LocalAvisos.current
+    // A seleção (segurar uma aposta): null = sem seleção. Só as apostas que ainda podem sair do app.
+    var selecao by remember { mutableStateOf<Set<String>?>(null) }
+    val podem = todas.filter { Operacoes.podeDescartar(estado, it) }.map { it.id }.toSet()
+    val selecionadas = selecao?.intersect(podem)
+    BackHandler(enabled = selecao != null) { selecao = null }
+    var excluir by remember { mutableStateOf<Exclusao?>(null) }
+    fun pedirExclusao(apostas: List<Aposta>, ficam: Int, titulo: String) {
+        val lista = apostas.filter { it.id in podem }
+        if (lista.isNotEmpty()) excluir = Exclusao(lista, titulo, textoDaExclusao(lista, ficam))
+    }
 
     LazyColumn(
         contentPadding = PaddingTela,
@@ -148,9 +185,17 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
     ) {
         item(key = "resumo") { CartaoDoResumo(resumo, abrir) }
         item(key = "titulo-jogos") {
-            TituloDosJogos(compartilhar = if (registradas.isEmpty()) null else {
-                { escopo.launch { compartilharJogos(ctx, registradas) } }
-            })
+            if (selecionadas != null) {
+                BarraDaSelecao(
+                    selecionadas.size,
+                    aoCancelar = { selecao = null },
+                    aoExcluir = { pedirExclusao(todas.filter { it.id in selecionadas }, 0, if (selecionadas.size == 1) "Excluir a aposta?" else "Excluir as apostas?") },
+                )
+            } else {
+                TituloDosJogos(compartilhar = if (registradas.isEmpty()) null else {
+                    { escopo.launch { compartilharJogos(ctx, grupos, itens) } }
+                })
+            }
         }
         if (grupos.isEmpty()) {
             item(key = "vazio") { Vazio(apostar) }
@@ -164,24 +209,130 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
                     grupos.forEachIndexed { i, g ->
                         // Uma linha entre um concurso e outro (a faixa colorida já marca o começo de cada um).
                         if (i > 0) HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
-                        BlocoDoConcurso(estado, g, itens[g.modalidade], hoje, abrir)
+                        BlocoDoConcurso(
+                            estado, g, itens[g.modalidade], hoje, abrir,
+                            podem = podem,
+                            selecao = selecionadas,
+                            aoSegurar = { a -> selecao = setOf(a.id) },
+                            aoAlternar = { a -> selecao = selecionadas.orEmpty().let { if (a.id in it) it - a.id else it + a.id } },
+                            aoExcluir = { lista, ficam, titulo -> pedirExclusao(lista, ficam, titulo) },
+                        )
                     }
                 }
             }
         }
     }
+
+    // A confirmação das lixeiras e da seleção (desde a 0.27): uma janela só para todas as apostas escolhidas.
+    excluir?.let { x ->
+        DialogoConfirmar(
+            titulo = x.titulo,
+            texto = x.texto,
+            confirmar = EXCLUIR,
+            aoConfirmar = {
+                excluir = null
+                selecao = null
+                escopo.launch {
+                    try {
+                        val anexos = x.apostas.mapNotNull { it.comprovante }
+                        repo.atualizar { Operacoes.descartarApostas(it, x.apostas.map { a -> a.id }) }
+                        anexos.forEach { repo.apagarSeSolto(it) }
+                        avisos.showSnackbar(avisoDaExclusao(x.apostas))
+                    } catch (t: Throwable) {
+                        avisos.showSnackbar("Não foi possível excluir: ${t.message}")
+                    }
+                }
+            },
+            aoFechar = { excluir = null },
+        )
+    }
+}
+
+/** Uma exclusão esperando a confirmação: as apostas, o título e o texto da janela. */
+private data class Exclusao(val apostas: List<Aposta>, val titulo: String, val texto: String)
+
+/**
+ * O texto da confirmação das lixeiras do Painel de Jogos (desde a 0.27): quais apostas saem do app, quanto
+ * volta ao saldo (as registradas) e, quando há, quantas apostas já conferidas ficam ([ficam]).
+ */
+fun textoDaExclusao(apostas: List<Aposta>, ficam: Int = 0): String {
+    val valor = apostas.filter { it.registrada }.sumOf { it.valor }
+    val quais = if (apostas.size == 1) {
+        val a = apostas[0]
+        (if (a.registrada) "A aposta Nº${a.numero}" else "A nova aposta (ainda não registrada)") +
+            " da ${a.modalidade.nome}" + (if (a.concurso > 0) " (concurso ${a.concurso})" else "") + " sai do app"
+    } else {
+        "As ${apostas.size} apostas saem do app"
+    }
+    val dinheiro = if (valor > 0) " e ${Dinheiro.rs(valor)} volta" + (if (apostas.size == 1) "" else "m") + " ao saldo" else ""
+    val resto = when (ficam) {
+        0 -> ""
+        1 -> " A aposta já conferida fica: ela não pode mais sair do app."
+        else -> " As $ficam apostas já conferidas ficam: elas não podem mais sair do app."
+    }
+    return "$quais$dinheiro.$resto"
+}
+
+/** O aviso depois da exclusão: "Aposta excluída: R$ 6,00 voltou ao saldo." ou "3 apostas excluídas." */
+fun avisoDaExclusao(apostas: List<Aposta>): String {
+    val valor = apostas.filter { it.registrada }.sumOf { it.valor }
+    val quais = if (apostas.size == 1) "Aposta excluída" else "${apostas.size} apostas excluídas"
+    return quais + (if (valor > 0) ": ${Dinheiro.rs(valor)} voltou ao saldo." else ".")
 }
 
 /**
- * Gera a imagem dos jogos (leve, em PNG) e abre o compartilhamento do Android (WhatsApp, Telegram...).
- * No modo de teste a imagem diz que é um teste.
+ * Gera o PDF dos jogos (desde a 0.27; até a 0.26, uma imagem PNG): leve, com páginas do tamanho da tela do
+ * celular, agrupado por modalidade e concurso como o Painel ([JogosPdf]); e abre o compartilhamento do
+ * Android (WhatsApp, Telegram...). Só as apostas registradas. No modo de teste o PDF diz que é um teste.
  */
-private suspend fun compartilharJogos(ctx: Context, apostas: List<Aposta>) {
-    val arquivo = withContext(Dispatchers.Default) {
-        ImagemDosJogos.salvar(ctx, apostas, LocalDate.now(), ctx.bolao.repo.emTeste, File(Compartilhar.pastaTemporaria(ctx), "jogos.png"))
+private suspend fun compartilharJogos(ctx: Context, grupos: List<GrupoEmAndamento>, itens: Map<Modalidade, Indices.Item>) {
+    val hoje = LocalDate.now()
+    val doPdf = grupos.mapNotNull { g ->
+        val registradas = g.apostas.filter { it.registrada }
+        if (registradas.isEmpty()) null else JogosPdf.Grupo(g.modalidade, g.concurso, g.sorteio, premioDoConcurso(g, itens[g.modalidade]), registradas)
     }
-    Compartilhar.enviarArquivo(ctx, Compartilhar.uri(ctx, arquivo), "image/png", "Compartilhar")
+    val arquivo = withContext(Dispatchers.Default) {
+        val bytes = JogosPdf.gerar(doPdf, hoje, ctx.bolao.repo.emTeste) { nomeDoTime(it) }
+        File(Compartilhar.pastaTemporaria(ctx), "meus-jogos-${Datas.compacta(hoje)}.pdf").apply { writeBytes(bytes) }
+    }
+    Compartilhar.enviarArquivo(ctx, Compartilhar.uri(ctx, arquivo), "application/pdf", "Compartilhar")
 }
+
+/**
+ * A barra da seleção (segurar uma aposta, desde a 0.27), no lugar do título "MEUS JOGOS": o "X" que cancela,
+ * quantas estão selecionadas e o "Excluir" (com a confirmação).
+ */
+@Composable
+private fun BarraDaSelecao(quantas: Int, aoCancelar: () -> Unit, aoExcluir: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 40.dp),
+    ) {
+        IconButton(onClick = aoCancelar) { Icon(Icons.Outlined.Close, contentDescription = CANCELAR_SELECAO) }
+        Text(
+            if (quantas == 1) "1 selecionada" else "$quantas selecionadas",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f),
+        )
+        FilledTonalButton(
+            onClick = aoExcluir,
+            enabled = quantas > 0,
+            colors = ButtonDefaults.filledTonalButtonColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            ),
+            contentPadding = PaddingValues(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+        ) {
+            Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(5.dp))
+            Text(EXCLUIR, maxLines = 1)
+        }
+    }
+}
+
+const val EXCLUIR = "Excluir"
+const val CANCELAR_SELECAO = "Cancelar a seleção"
 
 /**
  * O título dos jogos ("MEUS JOGOS", como os grupos dos Ajustes, na cor de destaque do painel; até a
@@ -352,39 +503,60 @@ private fun corDoConcurso(g: GrupoEmAndamento): Color {
 }
 
 /**
- * Um concurso (dentro do bloco dos jogos; desde a 0.19, com a modalidade separada das apostas): a
- * faixa na cor da modalidade com a bola (sigla e concurso), o nome, os índices, o sorteio e o prêmio;
- * embaixo, no fundo neutro, as apostas, cada uma com as dezenas em bolas e OK ou Pendente. Um filete
- * da cor da modalidade, à esquerda, acompanha o concurso inteiro.
+ * Um concurso (dentro do bloco dos jogos; desde a 0.19, com a modalidade separada das apostas). Desde a 0.27:
+ * no alto, a tarja da modalidade de ponta a ponta (como as da Caixa; num concurso especial, a dele); embaixo,
+ * na faixa clarinha, o concurso, os índices e a lixeira do concurso (apaga os jogos dele que ainda podem sair
+ * do app), o sorteio e o prêmio; depois, no fundo neutro, as apostas, cada uma com as dezenas em bolas, OK ou
+ * Pendente e a lixeira (ou, na seleção, a caixa). Um filete da cor da modalidade, à esquerda, acompanha o
+ * concurso inteiro.
  */
 @Composable
-private fun BlocoDoConcurso(estado: Estado, g: GrupoEmAndamento, item: Indices.Item?, hoje: LocalDate, abrir: (String) -> Unit) {
+private fun BlocoDoConcurso(
+    estado: Estado,
+    g: GrupoEmAndamento,
+    item: Indices.Item?,
+    hoje: LocalDate,
+    abrir: (String) -> Unit,
+    podem: Set<String>,
+    selecao: Set<String>?,
+    aoSegurar: (Aposta) -> Unit,
+    aoAlternar: (Aposta) -> Unit,
+    aoExcluir: (List<Aposta>, ficam: Int, titulo: String) -> Unit,
+) {
     val cor = corDoConcurso(g)
     val faixa = cor.copy(alpha = if (isSystemInDarkTheme()) 0.26f else 0.12f)
+    val doConcurso = g.apostas.filter { it.id in podem }
     Column(
         Modifier
             .fillMaxWidth()
             .drawBehind { drawRect(cor, size = Size(FILETE.toPx(), size.height)) }
             .padding(start = FILETE),
     ) {
+        TarjaDoConcurso(g.modalidade, g.concurso, Modifier.fillMaxWidth(), altura = 42.dp, cantos = 0.dp)
         Column(Modifier.fillMaxWidth().background(faixa)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp, end = 14.dp, top = 14.dp)) {
-                EmblemaModalidade(g.modalidade, g.concurso.takeIf { it > 0 }, tamanho = 58.dp)
-                Spacer(Modifier.width(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 10.dp)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
-                        g.modalidade.nome,
-                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp, lineHeight = 24.sp),
+                        if (g.concurso > 0) "Concurso ${g.concurso}" else "Concurso",
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 23.sp),
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                     indicesDoConcurso(item, g)?.let { IndicesNaLinha(it) }
+                }
+                if (selecao == null && doConcurso.isNotEmpty()) {
+                    IconButton(onClick = { aoExcluir(doConcurso, g.apostas.size - doConcurso.size, "Excluir os jogos do concurso?") }) {
+                        Icon(
+                            Icons.Outlined.Delete,
+                            contentDescription = "Excluir os jogos do concurso ${g.concurso}",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 14.dp, top = 10.dp, bottom = 14.dp),
             ) {
                 Informacao(Icons.Outlined.Event, "Sorteio", g.sorteio?.let { Datas.sorteio(it, hoje) } ?: NAO_DIVULGADO)
                 Informacao(Icons.Outlined.EmojiEvents, "Prêmio estimado", premioDoConcurso(g, item))
@@ -392,7 +564,22 @@ private fun BlocoDoConcurso(estado: Estado, g: GrupoEmAndamento, item: Indices.I
         }
         g.apostas.forEachIndexed { i, a ->
             if (i > 0) HorizontalDivider(Modifier.padding(start = 12.dp, end = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
-            LinhaDaAposta(a, ok = pendenciaDoJogo(estado, a) == null) { abrir("aposta/${a.id}") }
+            val pode = a.id in podem
+            LinhaDaAposta(
+                a,
+                ok = pendenciaDoJogo(estado, a) == null,
+                podeExcluir = pode,
+                comLixeiras = doConcurso.isNotEmpty(),
+                selecionada = selecao?.let { a.id in it },
+                aoTocar = {
+                    when {
+                        selecao == null -> abrir("aposta/${a.id}")
+                        pode -> aoAlternar(a)
+                    }
+                },
+                aoSegurar = if (pode && selecao == null) ({ aoSegurar(a) }) else null,
+                aoExcluir = { aoExcluir(listOf(a), 0, "Excluir a aposta?") },
+            )
         }
     }
 }
@@ -422,26 +609,70 @@ private fun RowScope.Informacao(icone: ImageVector, rotulo: String, valor: Strin
     }
 }
 
-/** Uma aposta do concurso: o número e, à direita, OK ou Pendente; embaixo, as dezenas em bolas. */
+/**
+ * Uma aposta do concurso: o número e, à direita, OK ou Pendente e a lixeira (só nas que ainda podem sair do
+ * app, desde a 0.27); embaixo, as dezenas em bolas. Segurar abre a seleção ([aoSegurar]); na seleção
+ * ([selecionada] não nulo), a caixa de seleção fica no lugar da lixeira e tocar marca ou desmarca.
+ */
 @Composable
-private fun LinhaDaAposta(a: Aposta, ok: Boolean, aoTocar: () -> Unit) {
+private fun LinhaDaAposta(
+    a: Aposta,
+    ok: Boolean,
+    podeExcluir: Boolean,
+    comLixeiras: Boolean,
+    selecionada: Boolean?,
+    aoTocar: () -> Unit,
+    aoSegurar: (() -> Unit)?,
+    aoExcluir: () -> Unit,
+) {
+    val vibrar = LocalHapticFeedback.current
+    val titulo = if (a.registrada) tituloDaAposta(a) else "Nova aposta"
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = aoTocar)
-            .padding(start = 12.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+            .combinedClickable(
+                onClick = aoTocar,
+                onLongClick = aoSegurar?.let { s ->
+                    {
+                        vibrar.performHapticFeedback(HapticFeedbackType.LongPress)
+                        s()
+                    }
+                },
+                onLongClickLabel = if (aoSegurar != null) "Selecionar para excluir" else null,
+            )
+            .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 12.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 40.dp)) {
+            if (selecionada != null) {
+                // Na seleção, só as que podem sair do app têm a caixa (as outras ficam com o lugar dela vazio).
+                if (podeExcluir) {
+                    Checkbox(
+                        checked = selecionada,
+                        onCheckedChange = { aoTocar() },
+                        modifier = Modifier.semantics { contentDescription = "Selecionar: $titulo" },
+                    )
+                } else {
+                    Spacer(Modifier.width(48.dp))
+                }
+            }
             Text(
-                if (a.registrada) tituloDaAposta(a) else "Nova aposta",
+                titulo,
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 21.sp),
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
             IndicadorOk(ok)
+            if (selecionada == null && podeExcluir) {
+                IconButton(onClick = aoExcluir) {
+                    Icon(Icons.Outlined.Delete, contentDescription = "Excluir: $titulo", tint = MaterialTheme.colorScheme.error)
+                }
+            } else {
+                // Sem a lixeira: o lugar dela fica vazio quando outras apostas do concurso têm, para alinhar o OK/Pendente.
+                Spacer(Modifier.width(if (selecionada == null && comLixeiras) 48.dp else 10.dp))
+            }
         }
-        DezenasEmBolas(a)
+        Box(Modifier.padding(end = 10.dp)) { DezenasEmBolas(a) }
     }
 }
 

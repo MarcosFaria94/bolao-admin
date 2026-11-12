@@ -230,7 +230,7 @@ class Indices(private val context: Context) {
     }
 
     private fun carregarGuardados() {
-        val mapa = Modalidade.entries.associateWith { m ->
+        val mapa = Modalidade.ATIVAS.associateWith { m ->
             val u = ler(m, arquivoUltimo(m))
             val a = u?.let { ler(m, arquivoConcurso(m, it.numero - 1)) }
             if (u != null) concursos[m] = u to a
@@ -261,7 +261,7 @@ class Indices(private val context: Context) {
 
     /** Quando a agenda pede a próxima consulta depois de um sorteio (o despertador do Vigia acorda o app para ela). */
     fun proximaConsulta(agora: Instant = Instant.now()): Instant? =
-        AgendaDaCaixa.proximaConsulta(Modalidade.entries.map { situacao(it, agora) }, agora)
+        AgendaDaCaixa.proximaConsulta(Modalidade.ATIVAS.map { situacao(it, agora) }, agora)
 
     /**
      * Consulta a Caixa, só para os jogos que a agenda pede (o sorteio passou e o resultado ainda não
@@ -282,7 +282,7 @@ class Indices(private val context: Context) {
         if (!trava.tryLock()) return
         try {
             val agora = Instant.now()
-            val devidas = Modalidade.entries.filter { m ->
+            val devidas = Modalidade.ATIVAS.filter { m ->
                 val s = situacao(m, agora)
                 // Sem o concurso anterior (o k1 precisa dele): pede de novo, respeitando o intervalo.
                 val semAnterior = concursos[m]?.let { (u, a) -> a == null && chave(m) != null && u.numero > 1 } == true
@@ -407,7 +407,7 @@ class Indices(private val context: Context) {
     private fun publicarAvisos() {
         val agora = System.currentTimeMillis()
         val lista = mutableListOf<Aviso>()
-        for (m in Modalidade.entries) {
+        for (m in Modalidade.ATIVAS) {
             val item = _itens.value[m]
             if (item != null && item.precoDiferente) {
                 val desde = precoDiferenteDesde.getOrPut(m) { agora }
@@ -440,9 +440,9 @@ class Indices(private val context: Context) {
         _avisos.value = lista.sortedByDescending { it.desde }
     }
 
-    /** Ordem da lista: maior k1 primeiro; sem k1 (Loteca, Federal, especial ou sem dados) no fim. */
+    /** Ordem da lista: maior k1 primeiro; sem k1 (Loteca, especial ou sem dados) no fim. Sem a Federal (desde a 0.27). */
     fun ordenados(mapa: Map<Modalidade, Item> = _itens.value): List<Item> =
-        Modalidade.entries.map { mapa[it] ?: Item(it, null, null, oddsDe(it)) }
+        Modalidade.ATIVAS.map { mapa[it] ?: Item(it, null, null, oddsDe(it)) }
             .sortedWith(compareByDescending<Item> { it.k1 ?: Double.NEGATIVE_INFINITY }.thenBy { it.modalidade.ordinal })
 
     /** Concurso em destaque: o de maior k1 (o melhor retorno esperado), sem olhar o saldo. */

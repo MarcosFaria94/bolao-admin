@@ -101,7 +101,7 @@ import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
 import io.github.marcosfaria94.bolao.ui.comum.DialogoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaDesenho
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaIcone
-import io.github.marcosfaria94.bolao.ui.comum.EmblemaModalidade
+import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.Secao
@@ -983,10 +983,10 @@ private fun Auditoria(estado: Estado) {
 /** Colunas da tabela de preços (10 modalidades = 4 + 4 + 2, a última linha no meio). */
 private const val COLUNAS_PRECOS = 4
 
-/** Tabela de preços: a bola de cada modalidade, o nome e o preço embaixo; tocar muda o preço. */
+/** Tabela de preços: o selo de cada modalidade (desde a 0.27, no lugar da bola), o nome e o preço embaixo; tocar muda o preço. */
 @Composable
 private fun GradePrecos(estado: Estado, aoEscolher: (Modalidade) -> Unit) {
-    val lista = Modalidade.entries.filter { !it.precoVariavel }
+    val lista = Modalidade.ATIVAS.filter { !it.precoVariavel }
     Column(Modifier.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         lista.chunked(COLUNAS_PRECOS).forEach { linha ->
             Row(Modifier.fillMaxWidth()) {
@@ -1002,7 +1002,7 @@ private fun GradePrecos(estado: Estado, aoEscolher: (Modalidade) -> Unit) {
                             .clickable { aoEscolher(m) }
                             .padding(horizontal = 2.dp, vertical = 8.dp),
                     ) {
-                        EmblemaModalidade(m, concurso = null, tamanho = 48.dp)
+                        SeloModalidade(m, 48.dp)
                         Spacer(Modifier.height(6.dp))
                         TextoQueCabe(
                             m.nome,

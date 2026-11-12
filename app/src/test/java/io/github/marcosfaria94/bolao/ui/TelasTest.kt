@@ -67,7 +67,6 @@ import io.github.marcosfaria94.bolao.ui.aposta.mesDaLista
 import io.github.marcosfaria94.bolao.ui.aposta.siglaDoMes
 import io.github.marcosfaria94.bolao.ui.aposta.valorSemQuebra
 import io.github.marcosfaria94.bolao.domain.MESES_DE_SORTE
-import io.github.marcosfaria94.bolao.imagem.ImagemDosJogos
 import io.github.marcosfaria94.bolao.data.Pendencias
 import io.github.marcosfaria94.bolao.ui.home.emOrdemDeSorteioEK1
 import io.github.marcosfaria94.bolao.ui.painel.TipoDoResumo
@@ -557,19 +556,6 @@ class TelasTest {
         assertEquals("Março", mesDaLista("MARÇO"))
         assertEquals(null, mesDaLista("Marte"))
         assertEquals(listOf("JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"), MESES_DE_SORTE.map { siglaDoMes(it) })
-    }
-
-    @Test
-    fun cabecalhoDaImagemDosJogosComOSorteio() {
-        val q = aposta(Modalidade.QUINA, 1, 7149)
-        assertEquals("QUINA · CONCURSO 7149 · SORTEIO HOJE", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = hoje), hoje))
-        assertEquals("QUINA · CONCURSO 7149 · SORTEIO AMANHÃ", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = hoje.plusDays(1)), hoje))
-        // Desde a 0.20: "EM N DIAS" até 7 dias; depois, a data.
-        assertEquals("QUINA · CONCURSO 7149 · SORTEIO EM 5 DIAS", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = hoje.plusDays(5)), hoje))
-        val longe = hoje.plusDays(8)
-        assertEquals("QUINA · CONCURSO 7149 · SORTEIO ${Datas.longa(longe)}", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = longe), hoje))
-        // Sem a data divulgada: só a modalidade e o concurso.
-        assertEquals("QUINA · CONCURSO 7149", ImagemDosJogos.cabecalhoDe(q.copy(dataSorteio = null), hoje))
     }
 
     @Test

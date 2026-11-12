@@ -97,6 +97,8 @@ import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.marcosfaria94.bolao.bolao
@@ -177,7 +179,10 @@ private val SEM_SETA = setOf(
 )
 
 /** A página do jogo (o volante, a aposta aberta ou os Detalhes): nos Detalhes, o título "← Aposta" também volta. */
-private val ROTAS_DO_JOGO = setOf("modalidade/{nome}", "nova/{nome}", "detalhes/{nome}", "aposta/{id}", "apuracao/{id}")
+private val ROTAS_DO_JOGO = setOf("modalidade/{nome}", "nova/{nome}", "detalhes/{nome}", "aposta/{id}", "apuracao/{id}", ROTA_ESPECIAL)
+
+/** A página de um concurso especial (desde a 0.27): "especial/MEGA_SENA/3100" (com "?detalhes=true", já nos Detalhes). */
+private const val ROTA_ESPECIAL = "especial/{nome}/{concurso}?detalhes={detalhes}"
 
 /** A tela das abas (as páginas que se trocam deslizando o dedo para os lados). */
 private const val ROTA_ABAS = "abas"
@@ -555,6 +560,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                                 abrirDetalhes = { abrir("detalhes/${it.name}") },
                                 paraOTopo = toques[aba.ordinal],
                                 abrirIndices = { abrir(ROTA_INDICES) },
+                                abrirEspecial = { esp, detalhes -> abrir("especial/${esp.modalidade.name}/${esp.concurso}?detalhes=$detalhes") },
                             )
                             Aba.AJUSTES -> AjustesTela(estado, atualizacao, abrir = ::abrir, paraOTopo = toques[aba.ordinal])
                         }
@@ -650,6 +656,22 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                 val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
                 TelaDeCima(nav, e) {
                     if (m != null) ModalidadeTela(estado, m, aoSair = { fechar(nav, e) }, abrir = ::abrir, detalhes = true)
+                }
+            }
+            // Um concurso especial (desde a 0.27): a página do jogo com o volante só dele.
+            composable(
+                ROTA_ESPECIAL,
+                arguments = listOf(navArgument("detalhes") { type = NavType.BoolType; defaultValue = false }),
+            ) { e ->
+                val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
+                val concurso = e.arguments?.getString("concurso")?.toIntOrNull()
+                TelaDeCima(nav, e) {
+                    if (m != null && concurso != null) {
+                        ModalidadeTela(
+                            estado, m, aoSair = { fechar(nav, e) }, abrir = ::abrir,
+                            detalhes = e.arguments?.getBoolean("detalhes") == true, especial = concurso,
+                        )
+                    }
                 }
             }
             // Endereço antigo da aposta nova: a página do jogo.

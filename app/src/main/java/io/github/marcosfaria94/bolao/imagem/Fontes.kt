@@ -16,6 +16,9 @@ object Fontes {
     @Volatile
     private var jostNegrito: Typeface? = null
 
+    @Volatile
+    private var jostExtra: Typeface? = null
+
     /** VT323: parecida com a letra das impressoras térmicas dos comprovantes de banco. */
     fun termica(context: Context): Typeface =
         termica ?: runCatching { Typeface.createFromAsset(context.assets, "fontes/vt323.ttf") }
@@ -29,6 +32,11 @@ object Fontes {
         jostRegular ?: runCatching { Typeface.createFromAsset(context.assets, "fontes/jost-regular.ttf") }
             .getOrElse { Typeface.DEFAULT }.also { jostRegular = it }
     }
+
+    /** Jost ExtraBold: a letra das tarjas das modalidades (desde a 0.27), mais encorpada, como a da Caixa. */
+    fun jostExtra(context: Context): Typeface =
+        jostExtra ?: runCatching { Typeface.createFromAsset(context.assets, "fontes/jost-extrabold.ttf") }
+            .getOrElse { jost(context, true) }.also { jostExtra = it }
 
     /**
      * Uma folha do trevo (a mesma do ícone do app), com a ponta em (0, 0) e a folha para cima,

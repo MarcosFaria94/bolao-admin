@@ -156,6 +156,21 @@ object Volante {
     }
 
     /**
+     * O "+1" do volante (desde a 0.27, com as apostas com mais números): marca mais um número sorteado entre
+     * os que ainda não estão marcados, até o máximo da modalidade (no máximo, o palpite volta igual). Os
+     * trevos, o time e o mês não mudam.
+     */
+    fun maisUm(m: Modalidade, atual: Palpite, r: Random = aleatorio): Palpite {
+        if (m.formato != Formato.NUMEROS || atual.numeros.size >= maximo(m)) return atual
+        val livres = (universo(m) - atual.numeros.toSet()).toList()
+        if (livres.isEmpty()) return atual
+        return atual.copy(numeros = (atual.numeros + livres.random(r)).sorted())
+    }
+
+    /** Ainda cabe mais um número no palpite (o "+1" fica ligado). */
+    fun cabeMaisUm(m: Modalidade, p: Palpite): Boolean = m.formato == Formato.NUMEROS && p.numeros.size < maximo(m)
+
+    /**
      * Marca ou desmarca um número, sem passar da quantidade da aposta simples (ou, com [mais] números
      * permitidos, do máximo da modalidade).
      */

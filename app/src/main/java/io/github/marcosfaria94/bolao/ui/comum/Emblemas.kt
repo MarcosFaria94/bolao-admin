@@ -3,9 +3,7 @@ package io.github.marcosfaria94.bolao.ui.comum
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -23,15 +21,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.TipoLancamento
-import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.ui.tema.corDestaque
-import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 
 /**
  * Cores dos círculos dos ícones dos Ajustes (integridade, backup, termo, avisos). Os lançamentos
@@ -46,7 +41,7 @@ object CoresEmblema {
 
 /**
  * Círculo neutro dos lançamentos (aporte, rateio, extrato, prêmio): um só tom para os quatro, sem
- * cor própria, para não se confundir com as bolas das modalidades.
+ * cor própria, para não se confundir com as modalidades.
  */
 @Composable
 fun corCirculo(): Color = if (isSystemInDarkTheme()) Color(0xFF263140) else Color(0xFFE6EBF1)
@@ -58,7 +53,7 @@ private fun Color.escurecer(f: Float): Color = lerp(this, Color.Black, f)
 private fun fundoCirculo(cor: Color): Brush = Brush.verticalGradient(listOf(cor.clarear(0.12f), cor.escurecer(0.10f)))
 
 /**
- * Bola 3D, como as das loterias: a luz vem do alto, à esquerda (degradê radial da cor clara para
+ * Bola 3D, como as das loterias (desde a 0.27, só nos números sorteados: as modalidades usam as tarjas): a luz vem do alto, à esquerda (degradê radial da cor clara para
  * a escura, com a borda mais escura), um brilho pequeno perto da luz, um reflexo fraco na borda de
  * baixo e uma sombra suave embaixo, fora do círculo.
  */
@@ -137,52 +132,6 @@ fun estiloNaBola(tamanho: Dp): TextStyle {
     )
 }
 
-/**
- * Emblema de uma modalidade: bola 3D na cor dela com a sigla e, embaixo, o número do concurso.
- * Sem concurso, só a sigla, um pouco maior.
- */
-@Composable
-fun EmblemaModalidade(
-    m: Modalidade,
-    concurso: Int?,
-    tamanho: Dp = 56.dp,
-    modifier: Modifier = Modifier,
-) {
-    val numero = concurso?.takeIf { it > 0 }?.toString()
-    val letraSigla = (tamanho * if (numero != null) 0.37f else 0.46f).emSp()
-    val letraNumero = (tamanho * 0.225f).emSp()
-    val estilo = estiloNaBola(tamanho)
-    Box(
-        modifier.size(tamanho).bola3D(corModalidade(m.cor)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(
-                m.sigla,
-                style = estilo,
-                fontWeight = FontWeight.Bold,
-                fontSize = letraSigla,
-                lineHeight = letraSigla * 1.05f,
-                maxLines = 1,
-                softWrap = false,
-                textAlign = TextAlign.Center,
-            )
-            if (numero != null) {
-                Text(
-                    numero,
-                    style = estilo,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = letraNumero,
-                    lineHeight = letraNumero * 1.1f,
-                    maxLines = 1,
-                    softWrap = false,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
-    }
-}
-
 /** Emblema de um tipo de lançamento: o desenho (cofrinho, moedas, extrato, troféu) no círculo neutro. */
 @Composable
 fun EmblemaDesenho(desenho: ImageVector, tamanho: Dp = 56.dp, modifier: Modifier = Modifier, cor: Color = corCirculo()) {
@@ -224,7 +173,8 @@ fun EmblemaCifrao(tamanho: Dp = 56.dp, modifier: Modifier = Modifier) {
 }
 
 /**
- * Emblema de um item do Histórico da Home: a bola da modalidade (sigla e concurso) nas apostas e,
+ * Emblema de um item do Histórico da Home: o selo da modalidade nas apostas (desde a 0.27; antes, a bola com
+ * a sigla e o concurso) e,
  * nos outros, o desenho no círculo neutro: o troféu no prêmio, o cofrinho no aporte, as moedas no
  * rateio e o extrato no extrato do mês.
  */
@@ -238,7 +188,7 @@ fun EmblemaMovimento(e: Estado, mv: Movimento, tamanho: Dp = 52.dp) {
     val a = l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } }
     when (l.tipo) {
         TipoLancamento.APOSTA ->
-            if (a != null) EmblemaModalidade(a.modalidade, a.concurso, tamanho)
+            if (a != null) SeloModalidade(a.modalidade, tamanho)
             else EmblemaDesenho(Desenhos.Moedas, tamanho)
         TipoLancamento.PREMIO -> EmblemaDesenho(Desenhos.Trofeu, tamanho)
         TipoLancamento.APORTE -> EmblemaDesenho(Desenhos.Cofrinho, tamanho)
