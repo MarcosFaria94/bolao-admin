@@ -77,7 +77,7 @@ private val COMO_LER = listOf(
 fun IndicesTela() {
     val indices = LocalContext.current.bolao.indices
     val itens by indices.itens.collectAsStateWithLifecycle()
-    val exemplo = remember(itens) { indices.destaque(itens) }
+    val exemplo = remember(itens) { indices.maiorK1(itens) }
     LazyColumn(
         contentPadding = PaddingTela,
         verticalArrangement = Arrangement.spacedBy(12.dp),

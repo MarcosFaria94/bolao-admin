@@ -7,6 +7,7 @@ import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Conferencia
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
+import io.github.marcosfaria94.bolao.domain.Especiais
 import io.github.marcosfaria94.bolao.domain.Extra
 import io.github.marcosfaria94.bolao.domain.Formato
 import io.github.marcosfaria94.bolao.domain.LeituraComprovante
@@ -484,9 +485,15 @@ object Operacoes {
     /** A modalidade tem teimosinha (a Loteca muda de jogos e a Federal de bilhete a cada concurso). */
     fun temTeimosinha(m: Modalidade): Boolean = m.formato != Formato.LOTECA && m.formato != Formato.FEDERAL
 
+    /**
+     * A aposta [a] aceita a teimosinha: a modalidade tem ([temTeimosinha]) e o concurso dela não é um concurso
+     * especial (desde a 0.28: Mega da Virada, Quina de São João... têm volante próprio, sem a teimosinha).
+     */
+    fun aceitaTeimosinha(a: Aposta): Boolean = temTeimosinha(a.modalidade) && Especiais.doConcurso(a.modalidade, a.concurso) == null
+
     /** Em quantos concursos seguidos a aposta [a] (ainda não registrada) vai valer: 1 = só no dela. */
     fun concursosDaTeimosinha(a: Aposta): Int =
-        if (!temTeimosinha(a.modalidade)) 1 else a.teimosinha.coerceIn(1, MAXIMO_DA_TEIMOSINHA)
+        if (!aceitaTeimosinha(a)) 1 else a.teimosinha.coerceIn(1, MAXIMO_DA_TEIMOSINHA)
 
     /** Quantas apostas o registro de [a] vai fazer: uma por concurso da teimosinha, vezes 2 com a aposta espelho. */
     fun apostasDoRegistro(a: Aposta): Int = concursosDaTeimosinha(a) * (if (a.espelho && Volante.temEspelho(a.modalidade)) 2 else 1)

@@ -116,6 +116,29 @@ import io.github.marcosfaria94.bolao.ui.tema.corEntrada
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import io.github.marcosfaria94.bolao.ui.tema.corRateio
 import java.time.LocalDate
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.TouchApp
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TriStateCheckbox
+import androidx.compose.runtime.key
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.state.ToggleableState
+import io.github.marcosfaria94.bolao.data.Favorito
+import io.github.marcosfaria94.bolao.data.Favoritos
+import io.github.marcosfaria94.bolao.data.novoId
+import io.github.marcosfaria94.bolao.ui.aposta.mensagemDoRegistro
+import io.github.marcosfaria94.bolao.ui.aposta.novaAposta
+import io.github.marcosfaria94.bolao.ui.aposta.valorSemQuebra
+import io.github.marcosfaria94.bolao.ui.comum.TarjaModalidade
+import java.time.Instant
 import android.content.Context
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.heightIn
@@ -137,28 +160,33 @@ const val ROTA_PAINEL = "meus-jogos"
  * Notificações saíram). Desde a 0.19 abre com as cores próprias (azul-marinho e dourado, como o ícone:
  * a raiz troca o esquema de cores, ver coresDoPainel). No alto, as pendências (desde a 0.18, uma lista
  * compacta): cada tipo numa linha com o ícone, o nome e a quantidade, que abre a tela que resolve
- * ([resumo]). Depois, o título "MEUS JOGOS" (com o "Compartilhar", que manda uma imagem leve com as
+ * ([resumo]). Depois, o título "MEUS JOGOS" (com o "Compartilhar", que manda um PDF leve com as
  * apostas registradas) e os jogos num bloco só (registrados esperando o sorteio e os que falta
- * registrar): o sorteio mais próximo primeiro e, no mesmo dia, o maior k1. Cada concurso tem uma faixa
- * na cor da modalidade (a bola com a sigla e o concurso, o nome, o k1, o k2 e as odds, o sorteio e o
- * prêmio estimado) e um filete da mesma cor à esquerda que acompanha as apostas dele; cada aposta, no
- * fundo neutro, com as dezenas em bolas coloridas (como no volante) e, à direita, OK ou Pendente.
- * Tocar numa aposta abre a página dela; sem jogos, o "Apostar" vai para os Jogos ([apostar]). A raiz
- * cuida de voltar (puxando para baixo ou deslizando para o lado).
+ * registrar): o sorteio mais próximo primeiro e, no mesmo dia, o maior k1. Cada concurso tem a tarja da
+ * modalidade, a faixa com o concurso, os índices, o sorteio e o prêmio estimado, e um filete da cor da
+ * modalidade à esquerda que acompanha as apostas dele; cada aposta, no fundo neutro, com as dezenas em
+ * bolas coloridas (como no volante) e, à direita, OK ou Pendente. Tocar numa aposta abre a página dela;
+ * sem jogos, o "Apostar" vai para os Jogos ([apostar]). A raiz cuida de voltar (puxando para baixo ou
+ * deslizando para o lado).
  *
- * Desde a 0.27: cada concurso com a tarja da modalidade (como as da Caixa) no lugar da bola; a lixeira em
- * cada aposta e no concurso (apaga todos os jogos dele), com a confirmação; segurar uma aposta abre as
- * caixas de seleção, para apagar várias de uma vez com uma confirmação só (o voltar do celular cancela).
- * Só saem do app as apostas que ainda podem ser descartadas ([Operacoes.podeDescartar]: as que falta
- * registrar e as que esperam o comprovante da Caixa ou a conferência; no modo individual, qualquer uma); as
- * já conferidas ficam, sem a lixeira. O "Compartilhar" manda um PDF leve ([JogosPdf]) no lugar da imagem.
+ * Desde a 0.28:
+ * - cada concurso abre e fecha tocando no alto dele (drill-down; começa aberto);
+ * - sem as lixeiras: a dica "Segure uma aposta..." e, segurando, as caixas de seleção (também no concurso,
+ *   que marca todas as apostas dele). Os botões "N selecionadas" (cancela) e "Excluir" ficam flutuando no
+ *   rodapé da tela, no meio, acompanhando a rolagem. Só saem do app as apostas que ainda podem ser
+ *   descartadas ([Operacoes.podeDescartar]); as já conferidas não têm a caixa;
+ * - a estrelinha de cada aposta guarda o jogo nos favoritos ([Favoritos]) e a seção "JOGOS FAVORITOS", no
+ *   fim, lista os favoritos por modalidade: "Apostar" registra o jogo no próximo concurso; segurando, dá para
+ *   escolher vários (ou todos de uma modalidade) e apostar de uma vez.
  */
 @Composable
 fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String) -> Unit, apostar: () -> Unit) {
     val ctx = LocalContext.current
     // Com as pendências na tela, o aviso "Ação necessária" do celular já cumpriu o papel.
     LaunchedEffect(Unit) { Notificador.limparAcoes(ctx, ctx.bolao.repo.sessao) }
-    val itens by ctx.bolao.indices.itens.collectAsStateWithLifecycle()
+    val indices = remember { ctx.bolao.indices }
+    val itens by indices.itens.collectAsStateWithLifecycle()
+    val consultas by indices.consultas.collectAsStateWithLifecycle()
     val hoje = LocalDate.now()
     val grupos = emOrdemDeSorteioEK1(jogosEmAndamento(estado, hoje)) { indicesDoConcurso(itens[it.modalidade], it)?.k1 }
     val todas = grupos.flatMap { it.apostas }
@@ -167,63 +195,177 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
     val escopo = rememberCoroutineScope()
     val repo = remember { ctx.bolao.repo }
     val avisos = LocalAvisos.current
-    // A seleção (segurar uma aposta): null = sem seleção. Só as apostas que ainda podem sair do app.
-    var selecao by remember { mutableStateOf<Set<String>?>(null) }
+    // A seleção (segurar uma aposta ou um favorito): null = sem seleção. Nas apostas, só as que ainda podem sair do app.
+    var selApostas by remember { mutableStateOf<Set<String>?>(null) }
+    var selFavoritos by remember { mutableStateOf<Set<String>?>(null) }
     val podem = todas.filter { Operacoes.podeDescartar(estado, it) }.map { it.id }.toSet()
-    val selecionadas = selecao?.intersect(podem)
-    BackHandler(enabled = selecao != null) { selecao = null }
-    var excluir by remember { mutableStateOf<Exclusao?>(null) }
-    fun pedirExclusao(apostas: List<Aposta>, ficam: Int, titulo: String) {
-        val lista = apostas.filter { it.id in podem }
-        if (lista.isNotEmpty()) excluir = Exclusao(lista, titulo, textoDaExclusao(lista, ficam))
+    val apostasMarcadas = selApostas?.intersect(podem)
+    val favoritosMarcados = selFavoritos?.intersect(estado.favoritos.map { it.id }.toSet())
+    val selecionando = apostasMarcadas != null || favoritosMarcados != null
+    fun cancelar() {
+        selApostas = null
+        selFavoritos = null
     }
-
-    LazyColumn(
-        contentPadding = PaddingTela,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        item(key = "resumo") { CartaoDoResumo(resumo, abrir) }
-        item(key = "titulo-jogos") {
-            if (selecionadas != null) {
-                BarraDaSelecao(
-                    selecionadas.size,
-                    aoCancelar = { selecao = null },
-                    aoExcluir = { pedirExclusao(todas.filter { it.id in selecionadas }, 0, if (selecionadas.size == 1) "Excluir a aposta?" else "Excluir as apostas?") },
-                )
-            } else {
-                TituloDosJogos(compartilhar = if (registradas.isEmpty()) null else {
-                    { escopo.launch { compartilharJogos(ctx, grupos, itens) } }
-                })
+    BackHandler(enabled = selecionando) { cancelar() }
+    // Na seleção, os avisos do rodapé saem da frente dos botões flutuantes (e os que chegam também).
+    LaunchedEffect(selecionando) {
+        if (selecionando) snapshotFlow { avisos.currentSnackbarData }.collect { it?.dismiss() }
+    }
+    var excluir by remember { mutableStateOf<Exclusao?>(null) }
+    fun pedirExclusao(apostas: List<Aposta>, titulo: String) {
+        val lista = apostas.filter { it.id in podem }
+        if (lista.isNotEmpty()) excluir = Exclusao(lista, titulo, textoDaExclusao(lista))
+    }
+    // Os favoritos: a aposta de cada um no próximo concurso (ou por que ainda não dá).
+    val agora = Instant.now()
+    fun planoDo(f: Favorito): PlanoDoFavorito {
+        val m = f.modalidade
+        val base = novaAposta(estado, m, itens[m]?.ultimo, hoje, System.currentTimeMillis())
+        val sorteado = indices.situacao(m, agora, itens, consultas).sorteado
+        return PlanoDoFavorito(f, Favoritos.aposta(estado, f, base), impedimentoDoFavorito(estado, f, base.concurso, sorteado))
+    }
+    var apostarFavoritos by remember { mutableStateOf<List<PlanoDoFavorito>?>(null) }
+    fun registrarFavoritos(planos: List<PlanoDoFavorito>) {
+        cancelar()
+        escopo.launch {
+            try {
+                var feitas: List<Aposta> = emptyList()
+                val agoraMs = System.currentTimeMillis()
+                repo.atualizar { e ->
+                    // Cada aposta com o seu próprio id (o mesmo favorito pode ser apostado mais de uma vez).
+                    val apostas = planos.map { it.aposta.copy(id = novoId(), criadaEm = agoraMs) }
+                    val (x, lista) = Favoritos.consolidar(e, apostas, LocalDate.now(), agoraMs)
+                    feitas = lista
+                    Operacoes.guardarIndices(x, itens)
+                }
+                avisos.showSnackbar(mensagemDosFavoritos(feitas, estado.individual))
+            } catch (t: Throwable) {
+                avisos.showSnackbar("Não foi possível apostar: ${t.message}")
             }
         }
-        if (grupos.isEmpty()) {
-            item(key = "vazio") { Vazio(apostar) }
-        } else {
-            item(key = "jogos") {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    grupos.forEachIndexed { i, g ->
-                        // Uma linha entre um concurso e outro (a faixa colorida já marca o começo de cada um).
-                        if (i > 0) HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
-                        BlocoDoConcurso(
-                            estado, g, itens[g.modalidade], hoje, abrir,
-                            podem = podem,
-                            selecao = selecionadas,
-                            aoSegurar = { a -> selecao = setOf(a.id) },
-                            aoAlternar = { a -> selecao = selecionadas.orEmpty().let { if (a.id in it) it - a.id else it + a.id } },
-                            aoExcluir = { lista, ficam, titulo -> pedirExclusao(lista, ficam, titulo) },
-                        )
+    }
+    fun pedirFavoritos(planos: List<PlanoDoFavorito>) {
+        val livres = planos.filter { it.impedimento == null }
+        when {
+            livres.isEmpty() -> escopo.launch { avisos.showSnackbar(planos.firstNotNullOfOrNull { it.impedimento } ?: "Nada para apostar.") }
+            // Parâmetro "Registrar sem confirmação": direto, sem a janela.
+            estado.parametros.semConfirmacao -> registrarFavoritos(livres)
+            else -> apostarFavoritos = livres
+        }
+    }
+    fun alternarFavorito(a: Aposta) {
+        val antes = Favoritos.doJogo(estado, a)
+        escopo.launch {
+            repo.atualizar { Favoritos.alternar(it, a, System.currentTimeMillis()) }
+            if (antes == null) {
+                avisos.showSnackbar(FAVORITO_GUARDADO)
+            } else {
+                tirouFavorito(avisos, antes) { f -> repo.atualizar { Favoritos.devolver(it, f) } }
+            }
+        }
+    }
+    fun tirarFavorito(f: Favorito) {
+        escopo.launch {
+            repo.atualizar { Favoritos.remover(it, f.id) }
+            tirouFavorito(avisos, f) { x -> repo.atualizar { Favoritos.devolver(it, x) } }
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            // Com a seleção, um espaço a mais no fim: os botões flutuantes não cobrem o último jogo.
+            contentPadding = if (selecionando) PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp) else PaddingTela,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            item(key = "resumo") { CartaoDoResumo(resumo, abrir) }
+            item(key = "titulo-jogos") {
+                Column {
+                    TituloDosJogos(compartilhar = if (registradas.isEmpty()) null else {
+                        { escopo.launch { compartilharJogos(ctx, grupos, itens) } }
+                    })
+                    // A dica (desde a 0.28, no lugar das lixeiras): segurar uma aposta abre a seleção.
+                    if (podem.isNotEmpty() && !selecionando) Dica(DICA_DAS_APOSTAS)
+                }
+            }
+            if (grupos.isEmpty()) {
+                item(key = "vazio") { Vazio(apostar) }
+            } else {
+                item(key = "jogos") {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        grupos.forEachIndexed { i, g ->
+                            // Uma linha entre um concurso e outro (a tarja já marca o começo de cada um).
+                            if (i > 0) HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
+                            key(g.modalidade, g.concurso, g.sorteio) {
+                                BlocoDoConcurso(
+                                    estado, g, itens[g.modalidade], hoje, abrir,
+                                    podem = podem,
+                                    selecao = apostasMarcadas,
+                                    aoSegurar = { a ->
+                                        selFavoritos = null
+                                        selApostas = setOf(a.id)
+                                    },
+                                    aoMarcar = { ids, marcar ->
+                                        selApostas = apostasMarcadas.orEmpty().let { if (marcar) it + ids else it - ids.toSet() }
+                                    },
+                                    aoFavoritar = ::alternarFavorito,
+                                )
+                            }
+                        }
                     }
                 }
             }
+            // Os jogos favoritos (desde a 0.28).
+            item(key = "titulo-favoritos") {
+                Column {
+                    TituloDaSecao(TITULO_DOS_FAVORITOS)
+                    if (estado.favoritos.isNotEmpty() && !selecionando) Dica(DICA_DOS_FAVORITOS)
+                }
+            }
+            item(key = "favoritos") {
+                if (estado.favoritos.isEmpty()) {
+                    SemFavoritos()
+                } else {
+                    CartaoDosFavoritos(
+                        estado,
+                        planoDo = ::planoDo,
+                        selecao = favoritosMarcados,
+                        aoSegurar = { f ->
+                            selApostas = null
+                            selFavoritos = setOf(f.id)
+                        },
+                        aoMarcar = { ids, marcar ->
+                            selFavoritos = favoritosMarcados.orEmpty().let { if (marcar) it + ids else it - ids.toSet() }
+                        },
+                        aoApostar = { p -> pedirFavoritos(listOf(p)) },
+                        aoTirar = ::tirarFavorito,
+                    )
+                }
+            }
+        }
+        // Os botões da seleção, flutuando no rodapé da tela, no meio (desde a 0.28; na 0.27 ficavam no lugar do título).
+        if (apostasMarcadas != null) {
+            BarraFlutuante(
+                apostasMarcadas.size, EXCLUIR, Icons.Outlined.Delete, perigo = true,
+                aoCancelar = ::cancelar,
+                aoConfirmar = { pedirExclusao(todas.filter { it.id in apostasMarcadas }, if (apostasMarcadas.size == 1) "Excluir a aposta?" else "Excluir as apostas?") },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+            )
+        } else if (favoritosMarcados != null) {
+            BarraFlutuante(
+                favoritosMarcados.size, APOSTAR, Icones.Trevo, perigo = false,
+                aoCancelar = ::cancelar,
+                aoConfirmar = { pedirFavoritos(estado.favoritos.filter { it.id in favoritosMarcados }.map(::planoDo)) },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+            )
         }
     }
 
-    // A confirmação das lixeiras e da seleção (desde a 0.27): uma janela só para todas as apostas escolhidas.
+    // A confirmação da exclusão: uma janela só para todas as apostas escolhidas.
     excluir?.let { x ->
         DialogoConfirmar(
             titulo = x.titulo,
@@ -231,7 +373,7 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
             confirmar = EXCLUIR,
             aoConfirmar = {
                 excluir = null
-                selecao = null
+                cancelar()
                 escopo.launch {
                     try {
                         val anexos = x.apostas.mapNotNull { it.comprovante }
@@ -246,6 +388,77 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
             aoFechar = { excluir = null },
         )
     }
+    // A confirmação de apostar os favoritos (sem ela com o parâmetro "Registrar sem confirmação").
+    apostarFavoritos?.let { planos ->
+        DialogoConfirmar(
+            titulo = if (planos.size == 1) "Apostar o jogo favorito?" else "Apostar os ${planos.size} jogos favoritos?",
+            texto = textoDosFavoritos(planos.map { it.aposta }, estado.individual),
+            confirmar = APOSTAR,
+            aoConfirmar = {
+                apostarFavoritos = null
+                registrarFavoritos(planos)
+            },
+            aoFechar = { apostarFavoritos = null },
+        )
+    }
+}
+
+/** O favorito tirado: o aviso com o "Desfazer", que devolve o jogo aos favoritos. */
+private suspend fun tirouFavorito(avisos: SnackbarHostState, f: Favorito, devolver: suspend (Favorito) -> Unit) {
+    val r = avisos.showSnackbar(FAVORITO_TIRADO, actionLabel = DESFAZER, duration = SnackbarDuration.Short)
+    if (r == SnackbarResult.ActionPerformed) devolver(f)
+}
+
+const val FAVORITO_GUARDADO = "Jogo guardado nos favoritos."
+const val FAVORITO_TIRADO = "Jogo tirado dos favoritos."
+const val DESFAZER = "Desfazer"
+const val APOSTAR = "Apostar"
+
+/** As dicas do Painel (desde a 0.28): segurar uma aposta abre a seleção; os favoritos, como apostar. */
+const val DICA_DAS_APOSTAS = "Segure uma aposta para selecionar e excluir."
+const val DICA_DOS_FAVORITOS = "Apostar registra o jogo no próximo concurso. Segure um jogo para escolher vários."
+
+/** O título da seção dos jogos favoritos (desde a 0.28). */
+const val TITULO_DOS_FAVORITOS = "JOGOS FAVORITOS"
+
+/** Um favorito pronto para apostar: a aposta no próximo concurso e por que ainda não dá ([impedimento], null = dá). */
+data class PlanoDoFavorito(val favorito: Favorito, val aposta: Aposta, val impedimento: String?)
+
+/**
+ * Por que o favorito [f] não pode ser apostado agora (null = pode): o jogo com mais números sem o parâmetro,
+ * o próximo concurso que o app ainda não sabe ([concurso] 0) ou que já foi sorteado sem o resultado chegar.
+ */
+fun impedimentoDoFavorito(e: Estado, f: Favorito, concurso: Int, sorteado: Boolean): String? = when {
+    !Favoritos.cabe(e, f) -> "Precisa das apostas com mais números (Ajustes > Parâmetros)."
+    e.config.preco(f.modalidade) <= 0 -> "Informe o preço da aposta simples em Ajustes > Parâmetros."
+    concurso <= 0 -> "Sem os dados do próximo concurso da ${f.modalidade.nome}: abra os Jogos para consultar a Caixa."
+    sorteado -> "O concurso $concurso da ${f.modalidade.nome} já foi sorteado: aguarde o resultado."
+    else -> null
+}
+
+/**
+ * O texto da confirmação de apostar os favoritos: para qual concurso vai cada aposta, quanto sai do saldo e,
+ * no bolão, o lembrete de fazer os jogos na Caixa e anexar os comprovantes.
+ */
+fun textoDosFavoritos(apostas: List<Aposta>, individual: Boolean): String {
+    val valor = apostas.sumOf { it.valor }
+    val destino = if (apostas.size == 1) {
+        val a = apostas[0]
+        "A aposta da ${a.modalidade.nome} vai para o concurso ${a.concurso}"
+    } else {
+        val concursos = apostas.groupBy { it.modalidade to it.concurso }.keys.map { (m, c) -> "${m.nome} $c" }
+        val lista = if (concursos.size == 1) concursos[0] else concursos.dropLast(1).joinToString(", ") + " e " + concursos.last()
+        "As ${apostas.size} apostas vão para os próximos concursos ($lista)"
+    }
+    val lembrete = if (individual) "" else " Depois, faça os jogos no app Loterias CAIXA e anexe os comprovantes na aba Comprovantes."
+    return "$destino, e ${Dinheiro.rs(valor)} sai do saldo.$lembrete"
+}
+
+/** O aviso depois de apostar os favoritos: "Aposta Nº3 registrada." ou "3 apostas registradas (Nº3 a Nº5)." */
+fun mensagemDosFavoritos(feitas: List<Aposta>, individual: Boolean): String {
+    if (feitas.size <= 1) return mensagemDoRegistro(feitas, individual)
+    val texto = "${feitas.size} apostas registradas (Nº${feitas.minOf { it.numero }} a Nº${feitas.maxOf { it.numero }})."
+    return texto + if (individual) "" else " Anexe os comprovantes da Caixa na aba Comprovantes."
 }
 
 /** Uma exclusão esperando a confirmação: as apostas, o título e o texto da janela. */
@@ -299,35 +512,65 @@ private suspend fun compartilharJogos(ctx: Context, grupos: List<GrupoEmAndament
 }
 
 /**
- * A barra da seleção (segurar uma aposta, desde a 0.27), no lugar do título "MEUS JOGOS": o "X" que cancela,
- * quantas estão selecionadas e o "Excluir" (com a confirmação).
+ * Os botões da seleção (desde a 0.28, flutuando no rodapé da tela, no meio; na 0.27, uma barra no lugar do
+ * título): "✕ N selecionadas" (cancela a seleção) e a ação ([acao]: "Excluir", em vermelho, ou "Apostar").
  */
 @Composable
-private fun BarraDaSelecao(quantas: Int, aoCancelar: () -> Unit, aoExcluir: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 40.dp),
+private fun BarraFlutuante(
+    quantas: Int,
+    acao: String,
+    icone: ImageVector,
+    perigo: Boolean,
+    aoCancelar: () -> Unit,
+    aoConfirmar: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(32.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        tonalElevation = 6.dp,
+        shadowElevation = 10.dp,
+        modifier = modifier,
     ) {
-        IconButton(onClick = aoCancelar) { Icon(Icons.Outlined.Close, contentDescription = CANCELAR_SELECAO) }
-        Text(
-            if (quantas == 1) "1 selecionada" else "$quantas selecionadas",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f),
-        )
-        FilledTonalButton(
-            onClick = aoExcluir,
-            enabled = quantas > 0,
-            colors = ButtonDefaults.filledTonalButtonColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-                contentColor = MaterialTheme.colorScheme.onErrorContainer,
-            ),
-            contentPadding = PaddingValues(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
         ) {
-            Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(5.dp))
-            Text(EXCLUIR, maxLines = 1)
+            OutlinedButton(
+                onClick = aoCancelar,
+                contentPadding = PaddingValues(start = 10.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
+                modifier = Modifier.semantics { contentDescription = CANCELAR_SELECAO },
+            ) {
+                Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (quantas == 1) "1 selecionada" else "$quantas selecionadas", maxLines = 1, softWrap = false)
+            }
+            Button(
+                onClick = aoConfirmar,
+                enabled = quantas > 0,
+                colors = if (perigo) {
+                    ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError)
+                } else {
+                    ButtonDefaults.buttonColors()
+                },
+                contentPadding = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            ) {
+                Icon(icone, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(acao, maxLines = 1, softWrap = false)
+            }
         }
+    }
+}
+
+/** Uma dica pequena embaixo do título da seção (o ícone do toque e o texto). */
+@Composable
+private fun Dica(texto: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 2.dp, bottom = 2.dp)) {
+        Icon(Icons.Outlined.TouchApp, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(texto, style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -340,13 +583,17 @@ const val CANCELAR_SELECAO = "Cancelar a seleção"
  * aposta registrada; até a 0.18, "Compartilhar jogos").
  */
 @Composable
-private fun TituloDosJogos(compartilhar: (() -> Unit)?) {
+private fun TituloDosJogos(compartilhar: (() -> Unit)?) = TituloDaSecao(TITULO_DOS_JOGOS, compartilhar)
+
+/** O título de uma seção do Painel ("MEUS JOGOS", "JOGOS FAVORITOS"), com o "Compartilhar" quando há. */
+@Composable
+private fun TituloDaSecao(titulo: String, compartilhar: (() -> Unit)? = null) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 40.dp),
     ) {
         Text(
-            TITULO_DOS_JOGOS,
+            titulo,
             style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, letterSpacing = 0.9.sp),
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
@@ -505,10 +752,14 @@ private fun corDoConcurso(g: GrupoEmAndamento): Color {
 /**
  * Um concurso (dentro do bloco dos jogos; desde a 0.19, com a modalidade separada das apostas). Desde a 0.27:
  * no alto, a tarja da modalidade de ponta a ponta (como as da Caixa; num concurso especial, a dele); embaixo,
- * na faixa clarinha, o concurso, os índices e a lixeira do concurso (apaga os jogos dele que ainda podem sair
- * do app), o sorteio e o prêmio; depois, no fundo neutro, as apostas, cada uma com as dezenas em bolas, OK ou
- * Pendente e a lixeira (ou, na seleção, a caixa). Um filete da cor da modalidade, à esquerda, acompanha o
+ * na faixa clarinha, o concurso e os índices, o sorteio e o prêmio; depois, no fundo neutro, as apostas, cada
+ * uma com as dezenas em bolas e OK ou Pendente. Um filete da cor da modalidade, à esquerda, acompanha o
  * concurso inteiro.
+ *
+ * Desde a 0.28: tocar no alto (a tarja e o concurso) abre e fecha o concurso (drill-down; começa aberto; a
+ * seta diz qual); fechado, só a tarja, o concurso e quantas apostas. Sem as lixeiras: segurar uma aposta abre
+ * a seleção ([aoSegurar]); na seleção ([selecao] não nulo), a caixa do concurso marca ou desmarca todas as
+ * apostas dele que podem sair do app ([aoMarcar]). A estrelinha de cada aposta guarda o jogo nos favoritos.
  */
 @Composable
 private fun BlocoDoConcurso(
@@ -520,47 +771,78 @@ private fun BlocoDoConcurso(
     podem: Set<String>,
     selecao: Set<String>?,
     aoSegurar: (Aposta) -> Unit,
-    aoAlternar: (Aposta) -> Unit,
-    aoExcluir: (List<Aposta>, ficam: Int, titulo: String) -> Unit,
+    aoMarcar: (List<String>, marcar: Boolean) -> Unit,
+    aoFavoritar: (Aposta) -> Unit,
 ) {
     val cor = corDoConcurso(g)
     val faixa = cor.copy(alpha = if (isSystemInDarkTheme()) 0.26f else 0.12f)
-    val doConcurso = g.apostas.filter { it.id in podem }
+    val doConcurso = g.apostas.filter { it.id in podem }.map { it.id }
+    var aberto by rememberSaveable { mutableStateOf(true) }
+    val titulo = if (g.concurso > 0) "Concurso ${g.concurso}" else "Concurso"
     Column(
         Modifier
             .fillMaxWidth()
             .drawBehind { drawRect(cor, size = Size(FILETE.toPx(), size.height)) }
             .padding(start = FILETE),
     ) {
-        TarjaDoConcurso(g.modalidade, g.concurso, Modifier.fillMaxWidth(), altura = 42.dp, cantos = 0.dp)
-        Column(Modifier.fillMaxWidth().background(faixa)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 10.dp)) {
+        // O alto do concurso (a tarja e a linha do concurso): tocar abre e fecha.
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClickLabel = if (aberto) "Fechar" else "Abrir") { aberto = !aberto },
+        ) {
+            TarjaDoConcurso(g.modalidade, g.concurso, Modifier.fillMaxWidth(), altura = 42.dp, cantos = 0.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(faixa)
+                    .padding(start = if (selecao != null && doConcurso.isNotEmpty()) 0.dp else 12.dp, end = 4.dp, top = 10.dp, bottom = if (aberto) 0.dp else 10.dp),
+            ) {
+                // Na seleção, a caixa do concurso: marca (ou desmarca) todas as apostas dele que podem sair.
+                if (selecao != null && doConcurso.isNotEmpty()) {
+                    val marcadas = doConcurso.count { it in selecao }
+                    TriStateCheckbox(
+                        state = when (marcadas) {
+                            0 -> ToggleableState.Off
+                            doConcurso.size -> ToggleableState.On
+                            else -> ToggleableState.Indeterminate
+                        },
+                        onClick = { aoMarcar(doConcurso, marcadas < doConcurso.size) },
+                        modifier = Modifier.semantics { contentDescription = "Selecionar: $titulo" },
+                    )
+                }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
-                        if (g.concurso > 0) "Concurso ${g.concurso}" else "Concurso",
+                        titulo,
                         style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 23.sp),
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                     )
                     indicesDoConcurso(item, g)?.let { IndicesNaLinha(it) }
-                }
-                if (selecao == null && doConcurso.isNotEmpty()) {
-                    IconButton(onClick = { aoExcluir(doConcurso, g.apostas.size - doConcurso.size, "Excluir os jogos do concurso?") }) {
-                        Icon(
-                            Icons.Outlined.Delete,
-                            contentDescription = "Excluir os jogos do concurso ${g.concurso}",
-                            tint = MaterialTheme.colorScheme.error,
+                    if (!aberto) {
+                        Text(
+                            if (g.apostas.size == 1) "1 aposta" else "${g.apostas.size} apostas",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
+                Icon(
+                    if (aberto) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription = (if (aberto) "Fechar o " else "Abrir o ") + titulo.lowercase(),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 10.dp).size(26.dp),
+                )
             }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 14.dp, top = 10.dp, bottom = 14.dp),
-            ) {
-                Informacao(Icons.Outlined.Event, "Sorteio", g.sorteio?.let { Datas.sorteio(it, hoje) } ?: NAO_DIVULGADO)
-                Informacao(Icons.Outlined.EmojiEvents, "Prêmio estimado", premioDoConcurso(g, item))
-            }
+        }
+        if (!aberto) return@Column
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth().background(faixa).padding(start = 12.dp, end = 14.dp, top = 10.dp, bottom = 14.dp),
+        ) {
+            Informacao(Icons.Outlined.Event, "Sorteio", g.sorteio?.let { Datas.sorteio(it, hoje) } ?: NAO_DIVULGADO)
+            Informacao(Icons.Outlined.EmojiEvents, "Prêmio estimado", premioDoConcurso(g, item))
         }
         g.apostas.forEachIndexed { i, a ->
             if (i > 0) HorizontalDivider(Modifier.padding(start = 12.dp, end = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
@@ -568,17 +850,17 @@ private fun BlocoDoConcurso(
             LinhaDaAposta(
                 a,
                 ok = pendenciaDoJogo(estado, a) == null,
-                podeExcluir = pode,
-                comLixeiras = doConcurso.isNotEmpty(),
+                podeSelecionar = pode,
                 selecionada = selecao?.let { a.id in it },
+                favorita = if (Favoritos.podeFavoritar(a)) Favoritos.doJogo(estado, a) != null else null,
                 aoTocar = {
                     when {
                         selecao == null -> abrir("aposta/${a.id}")
-                        pode -> aoAlternar(a)
+                        pode -> aoMarcar(listOf(a.id), a.id !in selecao)
                     }
                 },
                 aoSegurar = if (pode && selecao == null) ({ aoSegurar(a) }) else null,
-                aoExcluir = { aoExcluir(listOf(a), 0, "Excluir a aposta?") },
+                aoFavoritar = { aoFavoritar(a) },
             )
         }
     }
@@ -610,20 +892,21 @@ private fun RowScope.Informacao(icone: ImageVector, rotulo: String, valor: Strin
 }
 
 /**
- * Uma aposta do concurso: o número e, à direita, OK ou Pendente e a lixeira (só nas que ainda podem sair do
- * app, desde a 0.27); embaixo, as dezenas em bolas. Segurar abre a seleção ([aoSegurar]); na seleção
- * ([selecionada] não nulo), a caixa de seleção fica no lugar da lixeira e tocar marca ou desmarca.
+ * Uma aposta do concurso: o número e, à direita, OK ou Pendente e (desde a 0.28, no lugar da lixeira) a
+ * estrelinha que guarda o jogo nos favoritos ([favorita]: null = o jogo não pode ser favorito); embaixo, as
+ * dezenas em bolas. Segurar abre a seleção ([aoSegurar]); na seleção ([selecionada] não nulo), a caixa de
+ * seleção fica à esquerda (só nas que podem sair do app) e tocar marca ou desmarca.
  */
 @Composable
 private fun LinhaDaAposta(
     a: Aposta,
     ok: Boolean,
-    podeExcluir: Boolean,
-    comLixeiras: Boolean,
+    podeSelecionar: Boolean,
     selecionada: Boolean?,
+    favorita: Boolean?,
     aoTocar: () -> Unit,
     aoSegurar: (() -> Unit)?,
-    aoExcluir: () -> Unit,
+    aoFavoritar: () -> Unit,
 ) {
     val vibrar = LocalHapticFeedback.current
     val titulo = if (a.registrada) tituloDaAposta(a) else "Nova aposta"
@@ -639,14 +922,14 @@ private fun LinhaDaAposta(
                         s()
                     }
                 },
-                onLongClickLabel = if (aoSegurar != null) "Selecionar para excluir" else null,
+                onLongClickLabel = if (aoSegurar != null) "Selecionar" else null,
             )
             .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 40.dp)) {
             if (selecionada != null) {
                 // Na seleção, só as que podem sair do app têm a caixa (as outras ficam com o lugar dela vazio).
-                if (podeExcluir) {
+                if (podeSelecionar) {
                     Checkbox(
                         checked = selecionada,
                         onCheckedChange = { aoTocar() },
@@ -663,18 +946,172 @@ private fun LinhaDaAposta(
                 modifier = Modifier.weight(1f),
             )
             IndicadorOk(ok)
-            if (selecionada == null && podeExcluir) {
-                IconButton(onClick = aoExcluir) {
-                    Icon(Icons.Outlined.Delete, contentDescription = "Excluir: $titulo", tint = MaterialTheme.colorScheme.error)
-                }
+            if (selecionada == null && favorita != null) {
+                BotaoEstrela(favorita, titulo, aoFavoritar)
             } else {
-                // Sem a lixeira: o lugar dela fica vazio quando outras apostas do concurso têm, para alinhar o OK/Pendente.
-                Spacer(Modifier.width(if (selecionada == null && comLixeiras) 48.dp else 10.dp))
+                Spacer(Modifier.width(10.dp))
             }
         }
         Box(Modifier.padding(end = 10.dp)) { DezenasEmBolas(a) }
     }
 }
+
+/** A estrelinha dos favoritos: cheia e dourada no jogo favorito; vazia nos outros. */
+@Composable
+private fun BotaoEstrela(favorita: Boolean, titulo: String, aoTocar: () -> Unit) {
+    IconButton(onClick = aoTocar) {
+        Icon(
+            if (favorita) Icons.Filled.Star else Icons.Outlined.StarBorder,
+            contentDescription = (if (favorita) "Tirar dos favoritos: " else "Favoritar: ") + titulo,
+            tint = if (favorita) Dourado else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(26.dp),
+        )
+    }
+}
+
+/**
+ * Os jogos favoritos (desde a 0.28), num cartão: por modalidade, a tarja e cada jogo com quantos números e o
+ * preço, a estrelinha (tira dos favoritos, com o "Desfazer"), o "Apostar" (registra no próximo concurso) e as
+ * dezenas em bolas. Segurar um jogo abre a seleção ([aoSegurar]); na seleção, a caixa de cada jogo e a de
+ * "Todos os jogos" da modalidade.
+ */
+@Composable
+private fun CartaoDosFavoritos(
+    estado: Estado,
+    planoDo: (Favorito) -> PlanoDoFavorito,
+    selecao: Set<String>?,
+    aoSegurar: (Favorito) -> Unit,
+    aoMarcar: (List<String>, marcar: Boolean) -> Unit,
+    aoApostar: (PlanoDoFavorito) -> Unit,
+    aoTirar: (Favorito) -> Unit,
+) {
+    val porModalidade = estado.favoritos.groupBy { it.modalidade }.toSortedMap(compareBy { it.ordinal })
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        porModalidade.entries.forEachIndexed { i, (m, lista) ->
+            if (i > 0) HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
+            TarjaModalidade(m, Modifier.fillMaxWidth(), altura = 38.dp, cantos = 0.dp)
+            if (selecao != null) {
+                val ids = lista.map { it.id }
+                val marcados = ids.count { it in selecao }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(end = 12.dp)) {
+                    TriStateCheckbox(
+                        state = when (marcados) {
+                            0 -> ToggleableState.Off
+                            ids.size -> ToggleableState.On
+                            else -> ToggleableState.Indeterminate
+                        },
+                        onClick = { aoMarcar(ids, marcados < ids.size) },
+                        modifier = Modifier.semantics { contentDescription = "Selecionar todos os jogos da ${m.nome}" },
+                    )
+                    Text("Todos os jogos", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                }
+                HorizontalDivider(Modifier.padding(start = 12.dp, end = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            }
+            lista.forEachIndexed { j, f ->
+                if (j > 0) HorizontalDivider(Modifier.padding(start = 12.dp, end = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                val plano = planoDo(f)
+                LinhaDoFavorito(
+                    estado, plano,
+                    selecionado = selecao?.let { f.id in it },
+                    aoTocar = { if (selecao != null) aoMarcar(listOf(f.id), f.id !in selecao) },
+                    aoSegurar = { aoSegurar(f) },
+                    aoApostar = { aoApostar(plano) },
+                    aoTirar = { aoTirar(f) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Um jogo favorito: quantos números e o preço; à direita, a estrelinha cheia (tira dos favoritos) e o "Apostar"
+ * (desligado quando ainda não dá, com o motivo embaixo); as dezenas em bolas. Na seleção, a caixa à esquerda.
+ */
+@Composable
+private fun LinhaDoFavorito(
+    estado: Estado,
+    plano: PlanoDoFavorito,
+    selecionado: Boolean?,
+    aoTocar: () -> Unit,
+    aoSegurar: () -> Unit,
+    aoApostar: () -> Unit,
+    aoTirar: () -> Unit,
+) {
+    val f = plano.favorito
+    val vibrar = LocalHapticFeedback.current
+    val titulo = Favoritos.descricao(f) + " · " + valorSemQuebra(Dinheiro.rs(Favoritos.preco(estado, f)))
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = aoTocar,
+                onLongClick = if (selecionado == null) {
+                    {
+                        vibrar.performHapticFeedback(HapticFeedbackType.LongPress)
+                        aoSegurar()
+                    }
+                } else {
+                    null
+                },
+                onLongClickLabel = if (selecionado == null) "Selecionar" else null,
+            )
+            .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 40.dp)) {
+            if (selecionado != null) {
+                Checkbox(
+                    checked = selecionado,
+                    onCheckedChange = { aoTocar() },
+                    modifier = Modifier.semantics { contentDescription = "Selecionar: $titulo" },
+                )
+            }
+            Text(
+                titulo,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 21.sp),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            if (selecionado == null) {
+                BotaoEstrela(favorita = true, titulo = titulo, aoTocar = aoTirar)
+                FilledTonalButton(
+                    onClick = aoApostar,
+                    enabled = plano.impedimento == null,
+                    contentPadding = PaddingValues(start = 12.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
+                    modifier = Modifier.heightIn(min = 38.dp).semantics { contentDescription = "Apostar: $titulo" },
+                ) {
+                    Text(APOSTAR, maxLines = 1, softWrap = false)
+                }
+            }
+        }
+        Box(Modifier.padding(end = 6.dp)) { DezenasDoJogo(f.modalidade, f.numeros, f.trevos, f.extra) }
+        plano.impedimento?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Sem jogos favoritos: a estrela e como guardar um. */
+@Composable
+private fun SemFavoritos() {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(16.dp)) {
+            Icon(Icons.Outlined.StarBorder, contentDescription = null, tint = Dourado, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.width(12.dp))
+            Text(SEM_FAVORITOS, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+const val SEM_FAVORITOS = "Nenhum jogo favorito. Toque na estrela de uma aposta, em Meus jogos, para guardar os números dela aqui."
 
 /** Tamanho de letra preso ao tamanho da bola (o número tem de caber nela, com qualquer letra do sistema). */
 @Composable
@@ -709,29 +1146,41 @@ private fun Etiqueta(texto: String, inicio: @Composable () -> Unit) {
 private val BOLA = 34.dp
 private val BOLA_PEQUENA = 30.dp
 
+/** As dezenas da aposta em bolas coloridas ([DezenasDoJogo]). */
+@Composable
+private fun DezenasEmBolas(a: Aposta) =
+    DezenasDoJogo(a.modalidade, a.numeros, a.trevos, a.extra, a.palpitesLoteca, a.bilheteFederal, vazio = true)
+
 /**
  * As dezenas do jogo em bolas coloridas, como no volante: os números (em ordem), os trevos (+Milionária),
  * o time do coração e o mês de sorte; as 7 colunas da Super Sete; os 14 palpites da Loteca; o bilhete
- * da Federal.
+ * da Federal. Nas apostas do Painel, nos jogos favoritos e na escolha do favorito no volante (desde a 0.28).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DezenasEmBolas(a: Aposta) {
-    val m = a.modalidade
+fun DezenasDoJogo(
+    m: Modalidade,
+    numeros: List<Int>,
+    trevos: List<Int> = emptyList(),
+    extra: String? = null,
+    palpitesLoteca: List<String> = emptyList(),
+    bilheteFederal: String? = null,
+    vazio: Boolean = false,
+) {
     val cor = corModalidade(m.cor)
     val quadrada = RoundedCornerShape(30)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         when (m.formato) {
             Formato.NUMEROS -> {
-                val tamanho = if (a.numeros.size > 20) BOLA_PEQUENA else BOLA
-                a.numeros.sorted().forEach { Bolinha(m.rotulo(it), cor, tamanho) }
-                a.trevos.sorted().forEach { Bolinha(it.toString(), cor, BOLA, quadrada) }
+                val tamanho = if (numeros.size > 20) BOLA_PEQUENA else BOLA
+                numeros.sorted().forEach { Bolinha(m.rotulo(it), cor, tamanho) }
+                trevos.sorted().forEach { Bolinha(it.toString(), cor, BOLA, quadrada) }
                 when (m.extra) {
-                    Extra.TIME_DO_CORACAO -> a.extra?.let { caixa ->
+                    Extra.TIME_DO_CORACAO -> extra?.let { caixa ->
                         val time = timeDoCoracao(caixa)
                         Etiqueta(nomeDoTime(caixa) ?: caixa) { if (time != null) Brasao(time, 26.dp) }
                     }
-                    Extra.MES_DE_SORTE -> a.extra?.let { mes ->
+                    Extra.MES_DE_SORTE -> extra?.let { mes ->
                         Etiqueta(mes.lowercase().replaceFirstChar { it.uppercase() }) {
                             Icon(Icons.Outlined.CalendarMonth, contentDescription = null, tint = cor, modifier = Modifier.size(20.dp))
                         }
@@ -739,13 +1188,13 @@ private fun DezenasEmBolas(a: Aposta) {
                     Extra.NENHUM -> Unit
                 }
             }
-            Formato.COLUNAS -> a.numeros.forEach { Bolinha(if (it in 0..9) it.toString() else "-", cor, BOLA, quadrada) }
-            Formato.LOTECA -> a.palpitesLoteca.forEach { Bolinha(it.ifBlank { "-" }, cor, BOLA_PEQUENA, quadrada) }
-            Formato.FEDERAL -> Etiqueta(a.bilheteFederal?.let { "Bilhete $it" } ?: "Bilhete") {
+            Formato.COLUNAS -> numeros.forEach { Bolinha(if (it in 0..9) it.toString() else "-", cor, BOLA, quadrada) }
+            Formato.LOTECA -> palpitesLoteca.forEach { Bolinha(it.ifBlank { "-" }, cor, BOLA_PEQUENA, quadrada) }
+            Formato.FEDERAL -> Etiqueta(bilheteFederal?.let { "Bilhete $it" } ?: "Bilhete") {
                 Icon(Icons.Outlined.Description, contentDescription = null, tint = cor, modifier = Modifier.size(20.dp))
             }
         }
-        if (m.formato != Formato.FEDERAL && a.numeros.isEmpty() && a.palpitesLoteca.isEmpty()) {
+        if (vazio && m.formato != Formato.FEDERAL && numeros.isEmpty() && palpitesLoteca.isEmpty()) {
             Text("Sem números", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

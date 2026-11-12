@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,6 +28,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -218,22 +222,70 @@ fun TextoBrilhante(texto: String, estilo: TextStyle, cor: Color, modifier: Modif
     }
 }
 
+/** O título da marca do concurso em destaque (o de maior k1). */
+const val CONCURSO_EM_DESTAQUE = "CONCURSO EM DESTAQUE"
+
+/** O título da marca quando o destaque é um concurso especial (desde a 0.28: o especial sempre é o destaque). */
+const val CONCURSO_ESPECIAL = "CONCURSO ESPECIAL"
+
 /**
- * Marca do concurso em destaque (o de maior k1), no alto do cartão: a estrelinha dourada e
- * "CONCURSO EM DESTAQUE" (Jogos e a página do jogo).
+ * Marca do concurso em destaque, no alto do cartão (Jogos e a página do jogo): o ícone de brilho e
+ * "CONCURSO EM DESTAQUE" ou, num concurso especial ([especial]), "CONCURSO ESPECIAL". Desde a 0.28 o
+ * ícone e o título brilham (uma faixa clara passa pelo texto e o ícone pisca), sem o contorno dourado no
+ * cartão (na Timemania, amarela, as cores se confundiam); a estrelinha saiu, porque agora ela marca os jogos
+ * favoritos. Com as animações desligadas (fotos), fica parado.
  */
 @Composable
-fun TituloDestaque(modifier: Modifier = Modifier, cor: Color = corDestaque()) {
+fun TituloDestaque(modifier: Modifier = Modifier, especial: Boolean = false, cor: Color = corDestaque()) {
+    val texto = if (especial) CONCURSO_ESPECIAL else CONCURSO_EM_DESTAQUE
+    val estilo = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+    if (!Animacoes.ligadas) {
+        Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Dourado, modifier = Modifier.size(19.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(texto, style = estilo, color = cor, maxLines = 1)
+        }
+        return
+    }
+    val brilho = rememberInfiniteTransition(label = "destaque")
+    val passo by brilho.animateFloat(
+        initialValue = -0.4f,
+        targetValue = 1.4f,
+        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart),
+        label = "passo",
+    )
+    val pisca by brilho.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pisca",
+    )
+    // A faixa clara que atravessa o título (no tema claro, um dourado vivo; no escuro, quase branco).
+    val claro = if (isSystemInDarkTheme()) Color(0xFFFFF1C2) else Color(0xFFE3A21A)
+    var largura by remember { mutableIntStateOf(0) }
+    val x = passo * largura
+    val meia = largura * 0.16f + 1f
+    val pincel = Brush.linearGradient(
+        colors = listOf(cor, claro, cor),
+        start = Offset(x - meia, 0f),
+        end = Offset(x + meia, 0f),
+        tileMode = TileMode.Clamp,
+    )
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Filled.Star, contentDescription = null, tint = Dourado, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(
-            "CONCURSO EM DESTAQUE",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.2.sp,
-            color = cor,
-            maxLines = 1,
+        Icon(
+            Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            tint = Dourado,
+            modifier = Modifier
+                .size(19.dp)
+                .graphicsLayer {
+                    alpha = pisca
+                    scaleX = 0.82f + 0.18f * pisca
+                    scaleY = 0.82f + 0.18f * pisca
+                    rotationZ = (1f - pisca) * 14f
+                },
         )
+        Spacer(Modifier.width(6.dp))
+        Text(texto, style = estilo.copy(brush = pincel), maxLines = 1, modifier = Modifier.onSizeChanged { largura = it.width })
     }
 }

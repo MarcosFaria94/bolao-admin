@@ -42,6 +42,22 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import io.github.marcosfaria94.bolao.net.CaixaApi
+import io.github.marcosfaria94.bolao.ui.aposta.TENTAR_DE_NOVO
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -95,7 +111,6 @@ import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.bola3D
 import io.github.marcosfaria94.bolao.ui.comum.estiloNaBola
-import io.github.marcosfaria94.bolao.ui.tema.Dourado
 import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import java.time.Instant
@@ -235,7 +250,12 @@ fun ModalidadeTela(
     val premio = aposta.premioEstimado?.takeIf { it > 0 } ?: u?.premioEstimadoProximo?.takeIf { doProximo && it > 0 }
         ?: especialDaAposta?.premioEstimado
     val sorteio = aposta.dataSorteio ?: u?.proximaData?.takeIf { doProximo } ?: especialDaAposta?.dia
-    val emDestaque = doProximo && indices.destaque(itens)?.modalidade == m
+    // O concurso em destaque (desde a 0.28, o concurso especial quando há um): na página do especial (ou na da
+    // modalidade, quando o especial já é o próximo concurso) e, sem especial, na do jogo de maior k1.
+    val destaque = indices.destaque(itens)
+    val especialEmDestaque = destaque?.especial
+    val emDestaque = destaque != null && destaque.modalidade == m && registrada == null &&
+        if (especialEmDestaque != null) especialDaAposta == especialEmDestaque else doProximo
     // O próximo concurso (da Caixa, guardado no celular) já foi sorteado e o resultado ainda não chegou.
     val situacao = indices.situacao(m, Instant.now(), itens, consultas)
     val avisoDoQuadro = situacao.sorteio?.takeIf { doProximo && situacao.sorteado }?.let {
@@ -246,7 +266,7 @@ fun ModalidadeTela(
     Box(Modifier.fillMaxSize().nestedScroll(puxao)) {
     HorizontalPager(state = paginas, beyondViewportPageCount = 1, flingBehavior = soltarDasPaginas(paginas), modifier = Modifier.fillMaxSize().acompanharPuxao(puxao)) { pagina ->
         if (pagina == 1) {
-            DetalhesDaModalidade(estado, m, u, atualizando)
+            DetalhesDaModalidade(estado, m, u, atualizando, visivel = paginas.currentPage == 1)
             return@HorizontalPager
         }
         Column(
@@ -264,6 +284,7 @@ fun ModalidadeTela(
                 hoje = hoje,
                 federal = m == Modalidade.FEDERAL,
                 destaque = emDestaque,
+                especial = especialEmDestaque != null,
                 consultando = premio == null && sorteio == null && atualizando,
                 aviso = avisoDoQuadro,
                 hora = especialDaAposta?.takeIf { it.dia == sorteio }?.hora,
@@ -378,8 +399,9 @@ fun acumuladosDaPagina(m: Modalidade, u: Concurso?, doProximo: Boolean, esp: Con
 }
 
 /**
- * O prêmio (de ponta a ponta) e o dia do sorteio, juntos num quadro; o concurso em destaque tem o
- * contorno dourado e a estrelinha.
+ * O prêmio (de ponta a ponta) e o dia do sorteio, juntos num quadro; o concurso em destaque tem, no alto, o
+ * título que brilha ("CONCURSO EM DESTAQUE" ou, num especial, "CONCURSO ESPECIAL"; desde a 0.28 sem o
+ * contorno dourado).
  */
 @Composable
 private fun QuadroPremio(
@@ -389,18 +411,19 @@ private fun QuadroPremio(
     federal: Boolean,
     destaque: Boolean,
     consultando: Boolean,
+    especial: Boolean = false,
     aviso: String? = null,
     hora: LocalTime? = null,
     acumulados: List<Pair<String, Long>> = emptyList(),
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        border = if (destaque) BorderStroke(2.dp, Dourado) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             if (destaque) {
-                TituloDestaque()
+                TituloDestaque(especial = especial)
                 Spacer(Modifier.height(4.dp))
             }
             if (consultando) {
@@ -457,10 +480,40 @@ private fun QuadroPremio(
  * abre e fecha tocando no título. Com as apostas com mais números ligadas (o parâmetro), a tabela de
  * probabilidades tem uma linha para cada quantidade de números e aparece a da quantidade de prêmios; sem
  * ele, só a linha da aposta simples. Voltar leva à página do jogo como ela estava (o volante não muda).
+ *
+ * Desde a 0.28, logo acima do resultado, os botões para ir e voltar nos concursos anteriores e o campo para
+ * digitar um concurso ([NavegacaoDoConcurso]; o resultado vem da Caixa). Saindo dos Detalhes ([visivel]
+ * falso), volta para o último concurso.
  */
 @Composable
-private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, atualizando: Boolean) {
+private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, atualizando: Boolean, visivel: Boolean = true) {
     val mais = estado.parametros.maisNumeros && Volante.aceitaMais(m)
+    // O concurso escolhido nos botões ou no campo (null = o último, o que os Jogos guardam).
+    var escolhido by remember(m) { mutableStateOf<Int?>(null) }
+    var outro by remember(m) { mutableStateOf<Concurso?>(null) }
+    var buscando by remember(m) { mutableStateOf(false) }
+    var erro by remember(m) { mutableStateOf<String?>(null) }
+    var tentativa by remember(m) { mutableIntStateOf(0) }
+    LaunchedEffect(visivel) { if (!visivel) escolhido = null }
+    val ultimo = u?.numero
+    val pedido = escolhido?.takeIf { it != ultimo }
+    LaunchedEffect(m, pedido, tentativa) {
+        erro = null
+        if (pedido == null) {
+            outro = null
+            buscando = false
+            return@LaunchedEffect
+        }
+        if (outro?.numero == pedido) return@LaunchedEffect
+        buscando = true
+        outro = try {
+            CaixaApi.guardado(m, pedido) ?: CaixaApi.concurso(m, pedido)
+        } catch (t: Throwable) {
+            erro = erroDoConcurso(pedido)
+            null
+        }
+        buscando = false
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -468,7 +521,15 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        UltimoResultado(m, u, atualizando)
+        if (ultimo != null) {
+            NavegacaoDoConcurso(numero = pedido ?: ultimo, ultimo = ultimo) { n -> escolhido = n.coerceIn(1, ultimo) }
+        }
+        when {
+            pedido == null -> UltimoResultado(m, u, atualizando)
+            buscando -> CartaoConsultando()
+            erro != null -> CartaoErroDoConcurso(erro!!) { tentativa++ }
+            else -> UltimoResultado(m, outro?.takeIf { it.numero == pedido }, atualizando = true, oUltimo = false)
+        }
         CartaoQueAbre(TITULO_REGRAS) {
             regras(m, estado, mais).forEach { (r, v) -> LinhaValor(r, v) }
         }
@@ -484,21 +545,34 @@ const val TITULO_REGRAS = "Regras"
 const val TITULO_PROBABILIDADES = "Probabilidades"
 const val TITULO_QUANTIDADE = "Quantidade de prêmios"
 
-/** A tabela de probabilidades, como a da Caixa: números jogados, valor da aposta e "1 em X" de cada faixa. */
+/**
+ * As probabilidades, como na tabela da Caixa, divididas em tabelas que cabem na tela (desde a 0.28; na 0.27 era
+ * uma tabela só, larga, rolando para os lados): a primeira com os números jogados, a quantidade de jogos (as
+ * apostas simples) e o preço; depois, os números jogados e o "1 em X" das faixas, no máximo 3 por tabela
+ * (na Mega-Sena, Sena, Quina e Quadra numa tabela só). Com a letra grande, as tabelas se dividem mais, para
+ * caber na largura da tela ([TabelasDivididas]).
+ */
 @Composable
 private fun TabelaDeProbabilidades(m: Modalidade, estado: Estado, mais: Boolean) {
     val preco = estado.config.preco(m)
     val linhas = remember(m, mais) { Probabilidades.tabela(m, mais) }
     val colunas = Probabilidades.colunas(m)
-    TabelaRolavel(
-        primeira = if (m.trevos > 0) "Números + trevos" else "Números",
-        grupos = listOf("" to 1, "Probabilidade de acerto (1 em)" to colunas.size),
-        colunas = listOf("Valor da aposta") + colunas,
-        linhas = linhas.map { l ->
-            val rotulo = if (m.trevos > 0) "${l.numeros} + ${l.trevos}" else if (m.formato == Formato.COLUNAS) "7" else "${l.numeros}"
-            rotulo to (listOf(valorSemQuebra(Dinheiro.rs(preco * l.apostasSimples))) + l.umEm.map { v -> v?.let { Probabilidades.milhares(it) } ?: "—" })
-        },
-    )
+    val primeira = if (m.trevos > 0) "Números + trevos" else "Números"
+    fun rotulo(l: Probabilidades.LinhaDaTabela) = if (m.trevos > 0) "${l.numeros} + ${l.trevos}" else if (m.formato == Formato.COLUNAS) "7" else "${l.numeros}"
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        TabelasDivididas(
+            primeira = primeira,
+            grupo = null,
+            colunas = listOf(COLUNA_QTD_DE_JOGOS, COLUNA_PRECO),
+            linhas = linhas.map { l -> rotulo(l) to listOf(Probabilidades.milhares(l.apostasSimples), valorSemQuebra(Dinheiro.rs(preco * l.apostasSimples))) },
+        )
+        TabelasDivididas(
+            primeira = primeira,
+            grupo = PROBABILIDADE_DE_ACERTO,
+            colunas = colunas,
+            linhas = linhas.map { l -> rotulo(l) to colunas.indices.map { j -> l.umEm.getOrNull(j)?.let { Probabilidades.milhares(it) } ?: "—" } },
+        )
+    }
     val notas = Probabilidades.observacoesDaTabela(m) + if (!mais && Volante.aceitaMais(m)) {
         listOf("Com as apostas com mais números ligadas (Ajustes > Parâmetros), a tabela mostra também as apostas com mais números.")
     } else {
@@ -509,23 +583,43 @@ private fun TabelaDeProbabilidades(m: Modalidade, estado: Estado, mais: Boolean)
     }
 }
 
+/** As colunas da primeira tabela das probabilidades (desde a 0.28). */
+const val COLUNA_QTD_DE_JOGOS = "Qtd de jogos"
+const val COLUNA_PRECO = "Preço"
+
+/** O título das colunas das faixas nas tabelas de probabilidades. */
+const val PROBABILIDADE_DE_ACERTO = "Probabilidade de acerto (1 em)"
+
+/** "6 acertos": o título de cada tabela da quantidade de prêmios (desde a 0.28). */
+fun tituloDaQuantidade(acertando: Int): String = "$acertando acertos"
+
 /**
- * A tabela "Quantidade de prêmios a receber acertando", como a da Caixa (só com as apostas com mais números):
- * para cada quantidade de números jogados, quantos prêmios de cada faixa a aposta recebe acertando 6, 5 ou 4
- * dos números sorteados (na Mega-Sena).
+ * A "Quantidade de prêmios a receber acertando", como a da Caixa (só com as apostas com mais números), dividida
+ * em tabelas (desde a 0.28): uma para cada quantidade de acertos ("6 acertos", "5 acertos", "4 acertos" na
+ * Mega-Sena), com os números jogados e quantos prêmios de cada faixa a aposta recebe (no máximo 3 faixas por
+ * tabela e, com a letra grande, menos, para caber na tela; o resto continua logo embaixo).
  */
 @Composable
 private fun TabelaDeQuantidade(m: Modalidade) {
     val grupos = Probabilidades.gruposDePremios(m) ?: return
-    val linhas = remember(m) {
-        (m.qtdAposta..Volante.maximo(m)).map { n -> "$n" to Probabilidades.quantidadeDePremios(m, n).flatten().map { Probabilidades.milhares(it) } }
+    val numeros = remember(m) { (m.qtdAposta..Volante.maximo(m)).toList() }
+    val quantidades = remember(m) { numeros.map { n -> Probabilidades.quantidadeDePremios(m, n) } }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        grupos.forEachIndexed { g, grupo ->
+            Text(
+                tituloDaQuantidade(grupo.acertando),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = if (g > 0) 8.dp else 0.dp),
+            )
+            TabelasDivididas(
+                primeira = "Números",
+                grupo = null,
+                colunas = grupo.faixas.map { Probabilidades.nomeDaFaixa(m, it) },
+                linhas = numeros.mapIndexed { i, n -> "$n" to grupo.faixas.indices.map { j -> Probabilidades.milhares(quantidades[i][g][j]) } },
+            )
+        }
     }
-    TabelaRolavel(
-        primeira = "Números",
-        grupos = grupos.map { g -> "Acertando ${g.acertando}" to g.faixas.size },
-        colunas = grupos.flatMap { g -> g.faixas.map { Probabilidades.nomeDaFaixa(m, it) } },
-        linhas = linhas,
-    )
     val nota = when (m) {
         Modalidade.DUPLA_SENA -> "Em cada um dos 2 sorteios."
         Modalidade.DIA_DE_SORTE -> "Sem contar o Mês de Sorte."
@@ -536,9 +630,77 @@ private fun TabelaDeQuantidade(m: Modalidade) {
     }
 }
 
-/** O último concurso: se acumulou (ou se saiu o prêmio principal), os números sorteados e a premiação. */
+/** "Não foi possível consultar o concurso 2949 na Caixa." */
+fun erroDoConcurso(numero: Int): String = "Não foi possível consultar o concurso $numero na Caixa."
+
+/**
+ * Os botões para ir e voltar nos concursos (desde a 0.28, logo acima do resultado nos Detalhes): "‹" (o
+ * anterior), o campo com o número (digitar outro e tocar em Ir no teclado) e "›" (o seguinte, até o último).
+ */
 @Composable
-private fun UltimoResultado(m: Modalidade, u: Concurso?, atualizando: Boolean) {
+private fun NavegacaoDoConcurso(numero: Int, ultimo: Int, aoIr: (Int) -> Unit) {
+    var texto by remember(numero) { mutableStateOf(numero.toString()) }
+    val foco = LocalFocusManager.current
+    fun ir() {
+        texto.toIntOrNull()?.takeIf { it > 0 }?.let(aoIr) ?: run { texto = numero.toString() }
+        foco.clearFocus()
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        FilledTonalIconButton(onClick = { aoIr(numero - 1) }, enabled = numero > 1, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = CONCURSO_ANTERIOR)
+        }
+        OutlinedTextField(
+            value = texto,
+            onValueChange = { novo -> texto = novo.filter(Char::isDigit).take(6) },
+            singleLine = true,
+            label = { Text(if (numero == ultimo) "Concurso (o último)" else "Concurso") },
+            textStyle = MaterialTheme.typography.titleMedium.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(onGo = { ir() }, onDone = { ir() }),
+            modifier = Modifier.weight(1f).semantics { contentDescription = CAMPO_DO_CONCURSO },
+        )
+        FilledTonalIconButton(onClick = { aoIr(numero + 1) }, enabled = numero < ultimo, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = PROXIMO_CONCURSO)
+        }
+    }
+}
+
+const val CONCURSO_ANTERIOR = "Concurso anterior"
+const val PROXIMO_CONCURSO = "Próximo concurso"
+const val CAMPO_DO_CONCURSO = "Número do concurso"
+
+/** O quadro do resultado enquanto a Caixa responde (um concurso escolhido nos Detalhes). */
+@Composable
+private fun CartaoConsultando() {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(16.dp)) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Text("  Consultando a Caixa...", style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+/** O quadro do resultado quando a Caixa não respondeu (um concurso escolhido nos Detalhes), com o "Tentar de novo". */
+@Composable
+private fun CartaoErroDoConcurso(texto: String, aoTentar: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(texto, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
+            OutlinedButton(onClick = aoTentar) {
+                Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(TENTAR_DE_NOVO)
+            }
+        }
+    }
+}
+
+/**
+ * O resultado de um concurso (o último, ou o escolhido nos Detalhes, desde a 0.28, com [oUltimo] falso): se
+ * acumulou (ou se saiu o prêmio principal), os números sorteados e a premiação.
+ */
+@Composable
+private fun UltimoResultado(m: Modalidade, u: Concurso?, atualizando: Boolean, oUltimo: Boolean = true) {
     val hoje = LocalDate.now()
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -556,7 +718,7 @@ private fun UltimoResultado(m: Modalidade, u: Concurso?, atualizando: Boolean) {
             when {
                 u.acumulado -> Text("Acumulou!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 principal != null && principal.ganhadores > 0 -> Text("Saiu o prêmio principal!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                else -> Text("Último resultado", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                else -> Text(if (oUltimo) "Último resultado" else "Resultado", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
             Text(
                 "Concurso ${u.numero}" + (u.data?.let { " · ${Datas.relativa(it, hoje)}" } ?: ""),

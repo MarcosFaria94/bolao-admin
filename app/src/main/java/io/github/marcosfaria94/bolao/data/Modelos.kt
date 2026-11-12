@@ -194,6 +194,21 @@ data class Aposta(
     val ehTeimosinha: Boolean get() = teimosinhaDe != null && teimosinha > 1
 }
 
+/**
+ * Um jogo favorito (desde a 0.28, a estrelinha das apostas no Painel de Jogos): os números da aposta (com os
+ * trevos, o Time do Coração ou o Mês de Sorte), sem o concurso, para apostar de novo em qualquer concurso.
+ */
+@Serializable
+data class Favorito(
+    val id: String,
+    val modalidade: Modalidade,
+    val numeros: List<Int> = emptyList(),
+    val trevos: List<Int> = emptyList(),
+    /** Time do Coração (Timemania) ou Mês de Sorte (Dia de Sorte). */
+    val extra: String? = null,
+    val criadoEm: Long,
+)
+
 /** O jogo de uma aposta (o que o comprovante da Caixa pode mudar), para desfazer a mudança. */
 @Serializable
 data class JogoDaAposta(
@@ -362,6 +377,8 @@ data class Estado(
      * (os comprovantes do bolão ficam só no app). O comprovante da Caixa de cada aposta continua.
      */
     val informal: Boolean = false,
+    /** Os jogos favoritos (desde a 0.28): os números guardados para apostar de novo. */
+    val favoritos: List<Favorito> = emptyList(),
 ) {
     val individual: Boolean get() = modo == Modo.INDIVIDUAL
     /** O bolão formal: com o termo e os comprovantes enviados ao grupo do WhatsApp. */

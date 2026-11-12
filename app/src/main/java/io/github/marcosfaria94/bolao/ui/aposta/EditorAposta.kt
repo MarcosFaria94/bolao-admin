@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -86,6 +87,15 @@ import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import io.github.marcosfaria94.bolao.data.Favorito
+import io.github.marcosfaria94.bolao.data.Favoritos
+import io.github.marcosfaria94.bolao.ui.painel.DezenasDoJogo
+import io.github.marcosfaria94.bolao.ui.tema.Dourado
 
 /**
  * Título do volante: "Aposta Nº1" (o número que a aposta vai receber no mês) e, embaixo (desde a 0.22), o
@@ -239,7 +249,8 @@ fun SecaoVolante(
     val individual = estado.individual
     val parametros = estado.parametros
     val mais = parametros.maisNumeros && Volante.aceitaMais(m)
-    val comTeimosinha = parametros.teimosinha && Operacoes.temTeimosinha(m)
+    // Sem a teimosinha no concurso especial (desde a 0.28).
+    val comTeimosinha = parametros.teimosinha && Operacoes.aceitaTeimosinha(r)
     val hoje = LocalDate.now()
     // Nas respostas que chegam depois (Caixa, arquivo escolhido), vale a aposta como está agora.
     val atual by rememberUpdatedState(r)
@@ -258,6 +269,15 @@ fun SecaoVolante(
     var conferindo by remember { mutableStateOf(false) }
     var registrando by remember { mutableStateOf(false) }
     var vendo by remember { mutableStateOf(false) }
+    // Os jogos favoritos da modalidade que cabem no volante (desde a 0.28).
+    val favoritos = Favoritos.paraOVolante(estado, m)
+    var escolhendoFavorito by remember { mutableStateOf(false) }
+    if (escolhendoFavorito) {
+        EscolhaDoFavorito(estado, favoritos, aoEscolher = { f ->
+            escolhendoFavorito = false
+            mudarPalpite(f.palpite)
+        }, aoFechar = { escolhendoFavorito = false })
+    }
 
     // Sem o número do concurso (ou com um que já foi sorteado): busca o próximo na Caixa assim que a tela abre.
     // Desde a 0.27 não há mais o lápis para preencher à mão: sem resposta da Caixa, o "Tentar de novo".
@@ -426,6 +446,19 @@ fun SecaoVolante(
                         ) { Text("Limpar") }
                     }
                 }
+                // Desde a 0.28: o jogo favorito (a estrelinha do Painel de Jogos) preenche o volante. Com um só, ele
+                // vai direto; com mais, a lista para escolher.
+                if (favoritos.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = { if (favoritos.size == 1) mudarPalpite(favoritos[0].palpite) else escolhendoFavorito = true },
+                        enabled = !registrando && !conferindo,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Filled.Star, contentDescription = null, tint = Dourado, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(textoDoBotaoFavorito(favoritos.size), maxLines = 1)
+                    }
+                }
             }
         }
     }
@@ -555,6 +588,47 @@ fun textoRegistrar(apostas: Int): String = if (apostas > 1) "Registrar $apostas 
 
 /** O mesmo, mais curto, dividindo o lugar com o "+1" (desde a 0.27): "Registrar" ou "Registrar (4)". */
 fun textoRegistrarCurto(apostas: Int): String = if (apostas > 1) "Registrar ($apostas)" else "Registrar"
+
+/** O botão do volante que preenche um jogo favorito (desde a 0.28): "Jogo favorito" ou "Jogos favoritos (3)". */
+fun textoDoBotaoFavorito(quantos: Int): String = if (quantos == 1) "Jogo favorito" else "Jogos favoritos ($quantos)"
+
+/** O título da janela que escolhe o jogo favorito do volante. */
+const val ESCOLHA_O_FAVORITO = "Escolha o jogo favorito"
+
+/**
+ * A janela do volante com os jogos favoritos da modalidade (desde a 0.28, com mais de um): cada um com quantos
+ * números, o preço e as dezenas em bolas; tocar preenche o volante.
+ */
+@Composable
+private fun EscolhaDoFavorito(estado: Estado, favoritos: List<Favorito>, aoEscolher: (Favorito) -> Unit, aoFechar: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = aoFechar,
+        title = { Text(ESCOLHA_O_FAVORITO) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                favoritos.forEach { f ->
+                    Card(
+                        onClick = { aoEscolher(f) },
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                Favoritos.descricao(f) + " · " + valorSemQuebra(Dinheiro.rs(Favoritos.preco(estado, f))),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            DezenasDoJogo(f.modalidade, f.numeros, f.trevos, f.extra)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = aoFechar) { Text("Cancelar") } },
+    )
+}
 
 /** O botão que marca mais um número sorteado (com as apostas com mais números, desde a 0.27). */
 const val MAIS_UM = "+1"

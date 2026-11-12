@@ -64,6 +64,15 @@ object Especiais {
         lista.filter { e -> e.momento().isAfter(agora) && (proximo(e.modalidade)?.let { e.concurso > it } ?: true) }
             .sortedBy { it.sorteio }
 
+    /**
+     * O concurso especial em destaque (desde a 0.28): sempre que há um concurso especial com apostas abertas, à
+     * parte nos Jogos ou já como o próximo concurso da modalidade ([proximo]), ele é o concurso em destaque; com
+     * mais de um, o de sorteio mais próximo. null = nenhum (o destaque é o de maior k1).
+     */
+    fun emDestaque(agora: Instant, proximo: (Modalidade) -> Int?, lista: List<ConcursoEspecial> = CONHECIDOS): ConcursoEspecial? =
+        lista.filter { e -> e.momento().isAfter(agora) && (proximo(e.modalidade)?.let { e.concurso >= it } ?: true) }
+            .minByOrNull { it.sorteio }
+
     /** O nome do concurso especial de cada modalidade (o do valor acumulado para ele). */
     fun nomeDoEspecial(m: Modalidade): String? = when (m) {
         Modalidade.MEGA_SENA -> "Mega da Virada"

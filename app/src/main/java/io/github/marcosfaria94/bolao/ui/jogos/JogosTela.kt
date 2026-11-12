@@ -76,6 +76,8 @@ import java.time.Instant
  * Desde a 0.27: cada jogo com a tarja da modalidade (como as da Caixa), sem a Loteria Federal, e os
  * concursos especiais com apostas abertas (Mega da Virada...) como opções à parte, logo antes dos outros
  * jogos ([Especiais.aParte]; tocar abre a página do especial, [abrirEspecial], com os Detalhes se segurar).
+ * Desde a 0.28, havendo um concurso especial com apostas abertas, ele é o concurso em destaque (sempre o
+ * primeiro da lista), com o título "CONCURSO ESPECIAL" brilhando.
  */
 @Composable
 fun JogosTela(
@@ -103,7 +105,10 @@ fun JogosTela(
     LaunchedEffect(agora) { indices.atualizar() }
     val situacoes = Modalidade.ATIVAS.associateWith { indices.situacao(it, agora, itens, consultas) }
     val especiais = Especiais.aParte(agora, { itens[it]?.proximoNumero })
-    val destaque = indices.destaque(itens)?.modalidade
+    // O concurso em destaque: desde a 0.28, sempre o concurso especial quando há um (senão, o de maior k1).
+    val destaque = indices.destaque(itens, agora)
+    // O especial em destaque que já é o próximo concurso da modalidade: o cartão dela vai para o alto da lista.
+    val especialNoCartao = destaque?.especial?.takeIf { e -> itens[e.modalidade]?.proximoNumero == e.concurso }
     val lista = rememberLazyListState()
     VoltarAoTopo(lista, paraOTopo)
 
@@ -154,11 +159,15 @@ fun JogosTela(
                     e, itens[e.modalidade], estado,
                     aoTocar = { abrirEspecial(e, false) },
                     aoSegurar = { abrirEspecial(e, true) },
+                    destaque = destaque?.especial == e,
                 )
             }
-            items(indices.ordenados(itens), key = { it.modalidade.name }) { item ->
+            val ordem = indices.ordenados(itens).let { l -> if (especialNoCartao == null) l else l.sortedByDescending { it.modalidade == especialNoCartao.modalidade } }
+            items(ordem, key = { it.modalidade.name }) { item ->
                 CartaoIndice(
-                    item, estado, destaque = item.modalidade == destaque,
+                    item, estado,
+                    destaque = destaque != null && item.modalidade == destaque.modalidade &&
+                        (destaque.especial == null || destaque.especial == especialNoCartao),
                     aoTocar = { abrirModalidade(item.modalidade) },
                     aoSegurar = { abrirDetalhes(item.modalidade) },
                     situacao = situacoes[item.modalidade],

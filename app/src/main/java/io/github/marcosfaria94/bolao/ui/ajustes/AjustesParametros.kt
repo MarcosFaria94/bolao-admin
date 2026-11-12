@@ -94,7 +94,7 @@ internal fun ParametrosDaSessao(estado: Estado) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Chave(
             PARAMETRO_TEIMOSINHA,
-            "Mostra no volante a opção de repetir a mesma aposta em vários concursos seguidos.",
+            "Mostra no volante a opção de repetir a mesma aposta em vários concursos seguidos (menos nos concursos especiais).",
             p.teimosinha,
         ) { v -> mudar { it.copy(teimosinha = v) } }
     }

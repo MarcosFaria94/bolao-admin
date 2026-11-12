@@ -4,7 +4,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewConfiguration
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -48,7 +47,6 @@ import io.github.marcosfaria94.bolao.domain.ConcursoEspecial
 import io.github.marcosfaria94.bolao.domain.Especiais
 import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
-import io.github.marcosfaria94.bolao.ui.tema.Dourado
 import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 import java.time.LocalDate
 
@@ -109,9 +107,10 @@ fun avisoDoCartao(s: AgendaDaCaixa.Situacao?): String? = when (s?.estado) {
  * Uma modalidade na lista ordenada pelo k1 (Jogos). Desde a 0.27, no alto do cartão, de ponta a ponta, a
  * tarja da modalidade como as da Caixa (até a 0.26, a bola com a sigla e o concurso); embaixo, o concurso,
  * o preço no canto, "Prêmio: R$ 58,5 Milhões", "Sorteio: Hoje" ("Em 3 dias" até 7 dias) e os índices.
- * O concurso em destaque tem contorno dourado e a estrelinha com "CONCURSO EM DESTAQUE". Quando os dados
- * não são certos ([situacao]), o aviso ao lado do concurso ([avisoDoCartao]). Quando o próximo concurso é
- * um concurso especial ([Especiais]), a tarja é a dele ("mega da virada").
+ * O concurso em destaque tem, no alto, o título que brilha ([TituloDestaque]: "CONCURSO EM DESTAQUE" ou, num
+ * concurso especial, "CONCURSO ESPECIAL"; desde a 0.28 sem o contorno dourado e com o ícone de brilho no lugar
+ * da estrelinha). Quando os dados não são certos ([situacao]), o aviso ao lado do concurso ([avisoDoCartao]).
+ * Quando o próximo concurso é um concurso especial ([Especiais]), a tarja é a dele ("mega da virada").
  */
 @Composable
 fun CartaoIndice(
@@ -150,6 +149,7 @@ fun CartaoEspecial(
     estado: Estado,
     aoTocar: () -> Unit,
     aoSegurar: (() -> Unit)? = null,
+    destaque: Boolean = false,
 ) {
     val hoje = LocalDate.now()
     CartaoDoJogo(
@@ -160,7 +160,7 @@ fun CartaoEspecial(
         premio = e.premioEstimado?.let { Dinheiro.porExtenso(it) } ?: NAO_DIVULGADO,
         sorteio = Datas.sorteio(e.dia, hoje) + " às " + AgendaDaCaixa.hora(e.hora),
         aviso = null,
-        destaque = false,
+        destaque = destaque,
         aoTocar = aoTocar,
         aoSegurar = aoSegurar,
     ) {
@@ -199,7 +199,6 @@ private fun CartaoDoJogo(
     CompositionLocalProvider(LocalViewConfiguration provides segurarMais) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        border = if (destaque) BorderStroke(2.dp, Dourado) else null,
         modifier = Modifier
             .fillMaxWidth()
             .clip(CardDefaults.shape)
@@ -219,7 +218,7 @@ private fun CartaoDoJogo(
         TarjaModalidade(m, Modifier.fillMaxWidth(), altura = 46.dp, especial = especial, cantos = 0.dp)
         Column(Modifier.padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             if (destaque) {
-                TituloDestaque(Modifier.padding(bottom = 4.dp))
+                TituloDestaque(Modifier.padding(bottom = 4.dp), especial = especial != null)
             }
             // O concurso e, à direita, o preço; quando os dados não são certos, o aviso no lugar do concurso.
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

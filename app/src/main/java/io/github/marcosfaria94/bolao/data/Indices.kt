@@ -6,6 +6,8 @@ import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
+import io.github.marcosfaria94.bolao.domain.Especiais
+import io.github.marcosfaria94.bolao.domain.ConcursoEspecial
 import io.github.marcosfaria94.bolao.domain.indices.AuditoriaRegras
 import io.github.marcosfaria94.bolao.domain.indices.IndiceK
 import io.github.marcosfaria94.bolao.domain.indices.ParametrosK
@@ -445,8 +447,18 @@ class Indices(private val context: Context) {
         Modalidade.ATIVAS.map { mapa[it] ?: Item(it, null, null, oddsDe(it)) }
             .sortedWith(compareByDescending<Item> { it.k1 ?: Double.NEGATIVE_INFINITY }.thenBy { it.modalidade.ordinal })
 
-    /** Concurso em destaque: o de maior k1 (o melhor retorno esperado), sem olhar o saldo. */
-    fun destaque(mapa: Map<Modalidade, Item>): Item? = ordenados(mapa).firstOrNull { it.k1 != null }
+    /** O jogo de maior k1 (o melhor retorno esperado), sem olhar o saldo: o concurso em destaque quando não há especial. */
+    fun maiorK1(mapa: Map<Modalidade, Item>): Item? = ordenados(mapa).firstOrNull { it.k1 != null }
+
+    /**
+     * O concurso em destaque: a modalidade e, quando é um, o concurso especial. Desde a 0.28, sempre que há um
+     * concurso especial com apostas abertas ([Especiais.emDestaque]), ele é o destaque; senão, o de maior k1.
+     */
+    data class Destaque(val modalidade: Modalidade, val especial: ConcursoEspecial? = null)
+
+    fun destaque(mapa: Map<Modalidade, Item>, agora: Instant = Instant.now()): Destaque? =
+        Especiais.emDestaque(agora, { mapa[it]?.proximoNumero })?.let { Destaque(it.modalidade, it) }
+            ?: maiorK1(mapa)?.let { Destaque(it.modalidade) }
 
     companion object {
         private val SERIALIZADOR_CONSULTAS = MapSerializer(String.serializer(), Consulta.serializer())

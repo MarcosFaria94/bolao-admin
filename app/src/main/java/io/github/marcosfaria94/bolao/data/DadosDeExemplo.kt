@@ -446,7 +446,18 @@ object DadosDeExemplo {
                 }
             }
         }
-        return e
+        return comFavoritos(e, semente, agora)
+    }
+
+    /**
+     * Alguns jogos das apostas do exemplo nos favoritos (desde a 0.28), com um sorteio à parte (o resto do
+     * exemplo não muda).
+     */
+    private fun comFavoritos(e: Estado, semente: Long, agora: Long): Estado {
+        val r = Random(semente + 28)
+        return e.apostas.filter { it.registrada && Favoritos.podeFavoritar(it) && it.numeros.size == it.modalidade.qtdAposta }
+            .distinctBy { it.modalidade }.shuffled(r).take(3)
+            .fold(e) { x, a -> Favoritos.favoritar(x, a, agora - 30_000) }
     }
 
     /**
@@ -505,7 +516,7 @@ object DadosDeExemplo {
                 e = Operacoes.confirmarApuracao(e, a.id, apurada, sorteio.coerceAtMost(hoje), quando)
             }
         }
-        return e
+        return comFavoritos(e, semente, agora)
     }
 
     /** O comprovante recém-criado foi enviado ao grupo um minuto depois. */
