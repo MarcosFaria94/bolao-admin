@@ -120,6 +120,14 @@ import io.github.marcosfaria94.bolao.ui.aporte.AporteTela
 import io.github.marcosfaria94.bolao.ui.atualizacao.AtualizacaoViewModel
 import io.github.marcosfaria94.bolao.ui.atualizacao.DialogosAtualizacao
 import io.github.marcosfaria94.bolao.ui.cadastro.CadastroTela
+import io.github.marcosfaria94.bolao.ui.caixa.CaixaTela
+import io.github.marcosfaria94.bolao.ui.caixa.NavegadorDaCaixa
+import io.github.marcosfaria94.bolao.ui.caixa.ROTA_CAIXA
+import io.github.marcosfaria94.bolao.ui.caixa.ROTULO_CAIXA
+import io.github.marcosfaria94.bolao.ui.caixa.TITULO_CAIXA
+import io.github.marcosfaria94.bolao.ui.caixa.tecladoAberto
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.runtime.DisposableEffect
 import io.github.marcosfaria94.bolao.ui.comprovantes.ComprovantesTela
 import io.github.marcosfaria94.bolao.ui.comum.BarraTitulo
 import io.github.marcosfaria94.bolao.ui.comum.ComprovanteTela
@@ -152,7 +160,8 @@ import java.time.YearMonth
 /** As páginas que se trocam deslizando o dedo (as abas da barra de baixo): as mesmas nos dois modos. */
 private enum class Aba(val rota: String, val rotulo: String, val icone: ImageVector, val iconeEscolhido: ImageVector) {
     HOME("home", "Home", Icons.Outlined.Home, Icons.Filled.Home),
-    JOGOS("jogos", "Jogos", Icones.Trevo, Icones.TrevoCheio),
+    // Desde a 0.31, as cartas (até a 0.30, o trevo, que passou para o botão da Caixa).
+    JOGOS("jogos", "Jogos", Icones.Cartas, Icones.CartasCheias),
     AJUSTES("ajustes", "Ajustes", Icons.Outlined.Settings, Icons.Filled.Settings),
 }
 
@@ -178,7 +187,7 @@ private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_PAINEL,
 /** Telas sem a seta de voltar na barra de cima (fecham deslizando o dedo, puxando para baixo ou pelo voltar do celular). */
 private val SEM_SETA = setOf(
     "aporte", "rateio", "extrato", "extrato/{mes}", ROTA_FILTRO, "saldo", ROTA_COMPROVANTES, ROTA_PAINEL, ROTA_SECAO_AJUSTES, "integridade",
-    ROTA_INDICES, ROTA_SESSOES, ROTA_FAVORITOS,
+    ROTA_INDICES, ROTA_SESSOES, ROTA_FAVORITOS, ROTA_CAIXA,
 )
 
 /** A página do jogo (o volante, a aposta aberta ou os Detalhes): nos Detalhes, o título "← Aposta" também volta. */
@@ -315,6 +324,10 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     /** Vai para a aba [aba] na hora (sem animação), pelo caminho mais curto. */
     suspend fun mostrar(aba: Aba) = paginas.scrollToPage(paginaDa(aba, paginas.currentPage))
     val barra = remember { BarraDaTela() }
+    // A página da Caixa (desde a 0.31): o mesmo navegador enquanto a sessão está aberta (voltar à tela da Caixa
+    // encontra a página onde estava, com a conta aberta); fecha ao trocar de sessão.
+    val caixa = remember { NavegadorDaCaixa(ctx.applicationContext) }
+    DisposableEffect(caixa) { onDispose { caixa.destruir() } }
     // Tocar na aba em que já se está: a lista dela volta ao começo (um contador por aba).
     val toques = remember { mutableStateListOf(0, 0, 0) }
 
@@ -381,6 +394,9 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     val entrada by nav.currentBackStackEntryAsState()
     val rota = entrada?.destination?.route ?: ROTA_ABAS
     val ehAba = rota == ROTA_ABAS
+    // A tela da Caixa tem a barra de baixo, como as abas (o botão do trevo escolhido); com o teclado aberto, ela some.
+    val naCaixa = rota == ROTA_CAIXA
+    val tecladoNaCaixa = naCaixa && tecladoAberto()
     val abaAtual = abaDa(paginas.currentPage)
     // A ação que a tela de cima pôs na barra (o "Detalhes →" da página do jogo).
     val acao = barra.acao?.takeIf { !ehAba && it.dono === entrada }
@@ -392,6 +408,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         ROTA_PAINEL -> "Painel de Jogos"
         ROTA_FAVORITOS -> TITULO_FAVORITOS
         ROTA_SESSOES -> TITULO_SESSOES
+        ROTA_CAIXA -> TITULO_CAIXA
         ROTA_SECAO_AJUSTES -> SecaoAjuste.de(e?.arguments?.getString("secao"))?.titulo(estado.individual) ?: "Ajustes"
         "aporte" -> "Aporte"
         "rateio" -> "Rateio"
@@ -472,6 +489,12 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                             BotaoDaSessao { nav.navigate(ROTA_SESSOES) { launchSingleTop = true } }
                             BotaoDoPainel(noContador) { abrirPainel() }
                         }
+                        // Na tela da Caixa: recarregar a página.
+                        if (naCaixa) {
+                            IconButton(onClick = { caixa.recarregar() }) {
+                                Icon(Icons.Outlined.Refresh, contentDescription = "Recarregar a página", modifier = Modifier.size(28.dp))
+                            }
+                        }
                         // O "Detalhes →" da página do jogo (nos Detalhes, o "Voltar →"), na mesma cor e letra do título.
                         acao?.botao?.let { rotulo ->
                             val cor = MaterialTheme.colorScheme.onSurface
@@ -487,21 +510,30 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             }
         },
         bottomBar = {
-            if (ehAba) {
+            if ((ehAba || naCaixa) && !tecladoNaCaixa) {
                 // Azul-noite do ícone, com a aba escolhida em dourado.
+                val coresDaBarra = NavigationBarItemDefaults.colors(
+                    selectedIconColor = Barra.escolhida,
+                    selectedTextColor = Barra.escolhida,
+                    unselectedIconColor = Barra.outras(),
+                    unselectedTextColor = Barra.outras(),
+                    indicatorColor = Color.Transparent,
+                )
                 NavigationBar(containerColor = Barra.fundo(), contentColor = Barra.outras()) {
                     abas.forEachIndexed { i, aba ->
-                        val escolhida = abaAtual == aba
+                        val escolhida = !naCaixa && abaAtual == aba
                         NavigationBarItem(
                             selected = escolhida,
                             onClick = {
                                 when {
+                                    // Na tela da Caixa: volta para as abas, na aba tocada.
+                                    naCaixa -> irParaAba(aba)
                                     // Já nesta aba: a lista volta ao começo.
                                     abaAtual == aba -> toques[i]++
                                     else -> escopo.launch { mostrar(aba) }
                                 }
                             },
-                            // Só 3 abas: os ícones maiores, para ficarem mais visíveis.
+                            // Poucos botões: os ícones maiores, para ficarem mais visíveis.
                             icon = { Icon(if (escolhida) aba.iconeEscolhido else aba.icone, contentDescription = null, modifier = Modifier.size(ICONE_DA_ABA)) },
                             label = {
                                 Text(
@@ -512,22 +544,39 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                                     fontWeight = if (escolhida) FontWeight.Bold else FontWeight.Normal,
                                 )
                             },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Barra.escolhida,
-                                selectedTextColor = Barra.escolhida,
-                                unselectedIconColor = Barra.outras(),
-                                unselectedTextColor = Barra.outras(),
-                                indicatorColor = Color.Transparent,
-                            ),
+                            colors = coresDaBarra,
                         )
                     }
+                    // O botão da Caixa (desde a 0.31): o trevo das Loterias Caixa, depois das abas (não gira com elas).
+                    // Abre o site de apostas por cima das abas; já nele, a página volta ao começo.
+                    NavigationBarItem(
+                        selected = naCaixa,
+                        onClick = { if (naCaixa) caixa.paraOTopo() else nav.navigate(ROTA_CAIXA) { launchSingleTop = true } },
+                        icon = {
+                            Icon(
+                                if (naCaixa) Icones.TrevoDaCaixaEscolhido else Icones.TrevoDaCaixa,
+                                contentDescription = null,
+                                modifier = Modifier.size(ICONE_DA_ABA),
+                            )
+                        },
+                        label = {
+                            Text(
+                                ROTULO_CAIXA,
+                                fontSize = 12.5.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                fontWeight = if (naCaixa) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        },
+                        colors = coresDaBarra,
+                    )
                 }
             }
         },
         // Os avisos (registrado, descartado...) ficam no alto da tela desde a 0.29, logo abaixo da barra do título
         // (até a 0.28, no rodapé): ver o SnackbarHost em cima do NavHost.
         // Nas abas a barra de baixo já cuida da margem do sistema; nas outras telas, o conteúdo cuida.
-        contentWindowInsets = if (ehAba) WindowInsets(0, 0, 0, 0) else WindowInsets.navigationBars,
+        contentWindowInsets = if (ehAba || naCaixa) WindowInsets(0, 0, 0, 0) else WindowInsets.navigationBars,
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
         // Troca de tela instantânea, sem o esmaecer (fade) padrão da navegação.
@@ -577,6 +626,12 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp),
                     )
                 }
+            }
+            // A tela da Caixa (desde a 0.31): o site de apostas. Sem o puxar para baixo nem o deslizar para os lados (a
+            // página usa os dedos); o voltar do celular volta a página do site e, na primeira, fecha a tela.
+            composable(ROTA_CAIXA) { e ->
+                BackHandler { if (!caixa.voltar()) fechar(nav, e) }
+                CaixaTela(estado, caixa)
             }
             // Todas as telas por cima das abas voltam puxando para baixo (do alto da lista): o aviso diz
             // "Sair" (desde a 0.19; antes, "Voltar" e o nome da tela de baixo). Muitas também fecham
@@ -779,7 +834,7 @@ private fun PaginaDaAposta(estado: Estado, id: String, abrir: (String) -> Unit, 
     }
 }
 
-/** Tamanho dos ícones das 3 abas da barra de baixo (o padrão é 24dp). */
+/** Tamanho dos ícones da barra de baixo (as 3 abas e o botão da Caixa; o padrão é 24dp). */
 private val ICONE_DA_ABA = 31.dp
 
 /** Tamanho do ícone do Painel de Jogos na barra de cima (até a 0.17, a bola de 38dp; até a 0.16, um bilhete e o sino). */

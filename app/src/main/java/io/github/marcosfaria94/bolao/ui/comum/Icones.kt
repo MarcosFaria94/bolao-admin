@@ -5,10 +5,15 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
+import io.github.marcosfaria94.bolao.domain.Tarjas
 
-/** Ícones próprios do app: o trevo do ícone, para a aba Jogos, e o painel do Painel de Jogos. */
+/**
+ * Ícones próprios do app: o trevo do ícone (listas e avisos; até a 0.30, a aba Jogos), as cartas da aba Jogos, o
+ * trevo das Loterias Caixa (o botão da tela da Caixa) e o painel do Painel de Jogos.
+ */
 object Icones {
     // As quatro folhas do trevo do ícone (a mesma folha das imagens), centradas em (12; 10,4).
     private const val FOLHAS =
@@ -36,11 +41,81 @@ object Icones {
             )
         }.build()
 
-    /** Trevo de contorno (aba não escolhida, listas). */
+    /** Trevo de contorno (listas e avisos; até a 0.30, a aba Jogos não escolhida). */
     val Trevo: ImageVector by lazy { trevo("Trevo", cheio = false) }
 
-    /** Trevo cheio (aba escolhida). */
+    /** Trevo cheio (o filtro do Histórico; até a 0.30, a aba Jogos escolhida). */
     val TrevoCheio: ImageVector by lazy { trevo("TrevoCheio", cheio = true) }
+
+    /**
+     * As cartas da aba Jogos (desde a 0.31; até a 0.30, o trevo, que passou para o botão da Caixa): o "cards" dos
+     * Tabler Icons (MIT, (c) Paweł Kuna), em traço de 2 numa grade de 24 (aba não escolhida).
+     */
+    val Cartas: ImageVector by lazy {
+        ImageVector.Builder("Cartas", 24.dp, 24.dp, 24f, 24f).apply {
+            listOf(
+                "M3.604,7.197l7.138,-3.109a0.96,0.96 0 0,1 1.27,0.527l4.924,11.902a1,1 0 0,1 -0.514,1.304l-7.137,3.109" +
+                    "a0.96,0.96 0 0,1 -1.271,-0.527l-4.924,-11.903a1,1 0 0,1 0.514,-1.304z",
+                "M15,4h1a1,1 0 0,1 1,1v3.5",
+                "M20,6c0.264,0.112 0.52,0.217 0.768,0.315a1,1 0 0,1 0.53,1.311l-2.298,5.374",
+            ).forEach { d ->
+                addPath(
+                    pathData = addPathNodes(d),
+                    stroke = SolidColor(Color.Black),
+                    strokeLineWidth = 2f,
+                    strokeLineCap = StrokeCap.Round,
+                    strokeLineJoin = StrokeJoin.Round,
+                )
+            }
+        }.build()
+    }
+
+    /** As cartas cheias (aba Jogos escolhida): o "cards" cheio dos Tabler Icons. */
+    val CartasCheias: ImageVector by lazy {
+        ImageVector.Builder("CartasCheias", 24.dp, 24.dp, 24f, 24f).apply {
+            listOf(
+                "M10.348,3.169l-7.15,3.113a2,2 0 0,0 -1.03,2.608l4.92,11.895a1.96,1.96 0 0,0 2.59,1.063l7.142,-3.11" +
+                    "a2.002,2.002 0 0,0 1.036,-2.611l-4.92,-11.894a1.96,1.96 0 0,0 -2.588,-1.064z",
+                "M16,3a2,2 0 0,1 1.995,1.85l0.005,0.15v3.5a1,1 0 0,1 -1.993,0.117l-0.007,-0.117v-3.5h-1" +
+                    "a1,1 0 0,1 -0.117,-1.993l0.117,-0.007h1z",
+                "M19.08,5.61a1,1 0 0,1 1.31,-0.53c0.257,0.108 0.505,0.21 0.769,0.314a2,2 0 0,1 1.114,2.479l-0.056,0.146" +
+                    "l-2.298,5.374a1,1 0 0,1 -1.878,-0.676l0.04,-0.11l2.296,-5.371l-0.366,-0.148l-0.402,-0.167a1,1 0 0,1 -0.53,-1.312z",
+            ).forEach { d -> addPath(pathData = addPathNodes(d), fill = SolidColor(Color.Black)) }
+        }.build()
+    }
+
+    /**
+     * O trevo das Loterias Caixa (o botão da tela da Caixa, desde a 0.31): as quatro folhas em coração das tarjas
+     * ([Tarjas.FOLHAS]), sem o caule, com as duas folhas de uma diagonal cheias (a de cima à esquerda e a de baixo
+     * à direita, como na marca). Não escolhido, as outras duas só no contorno; escolhido, as outras duas claras.
+     */
+    private fun trevoDaCaixa(nome: String, escolhido: Boolean): ImageVector =
+        ImageVector.Builder(nome, 24.dp, 24.dp, 24f, 24f).apply {
+            for ((angulo, cheia) in Tarjas.FOLHAS) {
+                val (inicio, curvas) = Tarjas.folha(angulo, 12f, 12f, 21f)
+                val caminho = PathBuilder().apply {
+                    moveTo(inicio[0], inicio[1])
+                    curvas.forEach { k -> curveTo(k[0], k[1], k[2], k[3], k[4], k[5]) }
+                    close()
+                }.nodes
+                when {
+                    cheia -> addPath(pathData = caminho, fill = SolidColor(Color.Black))
+                    escolhido -> addPath(pathData = caminho, fill = SolidColor(Color.Black), fillAlpha = 0.45f)
+                    else -> addPath(
+                        pathData = caminho,
+                        stroke = SolidColor(Color.Black),
+                        strokeLineWidth = 1.6f,
+                        strokeLineJoin = StrokeJoin.Round,
+                    )
+                }
+            }
+        }.build()
+
+    /** O trevo das Loterias Caixa, botão não escolhido. */
+    val TrevoDaCaixa: ImageVector by lazy { trevoDaCaixa("TrevoDaCaixa", escolhido = false) }
+
+    /** O trevo das Loterias Caixa, botão escolhido (na tela da Caixa). */
+    val TrevoDaCaixaEscolhido: ImageVector by lazy { trevoDaCaixa("TrevoDaCaixaEscolhido", escolhido = true) }
 
     /**
      * O painel (os 4 blocos) do Painel de Jogos, desde a 0.18 (até a 0.17, a bola): o "layout-dashboard"
