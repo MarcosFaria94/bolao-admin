@@ -3,6 +3,7 @@ package io.github.marcosfaria94.bolao.data
 import android.content.Context
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
+import io.github.marcosfaria94.bolao.domain.AvisosDeEspeciais
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
@@ -293,6 +294,33 @@ class Indices(private val context: Context) {
         return base.copy(k = resultadoDoEspecial(m, e.concurso) ?: ResultadoK(e.concurso, true, 0.0, 0, emptyMap(), 0.0))
     }
 
+    /**
+     * Os concursos especiais que podem ser avisados (desde a 0.34): os anunciados ([Especiais.CONHECIDOS], com o
+     * sorteio ainda por vir) e o próximo concurso de cada modalidade quando ele é especial; com o k1 da média dos
+     * últimos especiais.
+     */
+    fun alvosDosEspeciais(agora: Instant = Instant.now(), mapa: Map<Modalidade, Item> = _itens.value): List<AvisosDeEspeciais.Alvo> {
+        val anunciados = Especiais.CONHECIDOS.filter { it.momento().isAfter(agora) }.map { e ->
+            AvisosDeEspeciais.Alvo(
+                e.modalidade, e.nome, e.concurso, e.dia, e.hora, e.premioEstimado,
+                k1 = _especiais.value[e.modalidade]?.k1,
+                destino = "especial/${e.modalidade.name}/${e.concurso}?detalhes=false",
+            )
+        }
+        val proximos = mapa.values.filter { it.especial && it.proximoNumero != null }.mapNotNull { item ->
+            val m = item.modalidade
+            val n = item.proximoNumero ?: return@mapNotNull null
+            if (anunciados.any { it.modalidade == m && it.concurso == n }) return@mapNotNull null
+            val dia = item.ultimo?.proximaData
+            AvisosDeEspeciais.Alvo(
+                m, Especiais.nomeDoEspecial(m) ?: "Concurso especial da ${m.nome}", n, dia,
+                dia?.let { AgendaDaCaixa.horaDoSorteio(m, it) }, item.ultimo?.premioEstimadoProximo, item.k1,
+                destino = "modalidade/${m.name}",
+            )
+        }
+        return anunciados + proximos
+    }
+
     /** O k1 e o k2 do concurso [numero] quando ele é um especial anunciado (null = não é, ou sem a estimativa). */
     fun resultadoDoEspecial(m: Modalidade, numero: Int): ResultadoK? {
         if (Especiais.doConcurso(m, numero) == null) return null
@@ -535,16 +563,55 @@ class Indices(private val context: Context) {
     fun maiorK1(mapa: Map<Modalidade, Item>): Item? = ordenados(mapa).firstOrNull { it.k1 != null }
 
     /**
-     * O concurso em destaque: a modalidade e, quando é um, o concurso especial. Desde a 0.28, sempre que há um
-     * concurso especial com apostas abertas ([Especiais.emDestaque]), ele é o destaque; senão, o de maior k1.
+     * O concurso em destaque: a modalidade e, quando é um, o concurso especial. Desde a 0.34 (pedido do usuário) é
+     * sempre o de maior k1 entre todas as opções dos Jogos ([opcoes]: as modalidades e os especiais à parte, com o k1
+     * da média dos últimos especiais); de 0.28 a 0.33, o especial com apostas abertas era sempre o destaque.
      */
     data class Destaque(val modalidade: Modalidade, val especial: ConcursoEspecial? = null)
 
+    /** Uma opção da lista dos Jogos (desde a 0.34): o cartão de uma modalidade ou um concurso especial à parte. */
+    sealed interface Opcao {
+        val item: Item
+        val k1: Double? get() = item.k1
+
+        /** O cartão da modalidade (o próximo concurso dela, especial ou não). */
+        data class DoJogo(override val item: Item) : Opcao
+
+        /** Um concurso especial anunciado, à parte (ainda não é o próximo da modalidade). */
+        data class Especial(val especial: ConcursoEspecial, override val item: Item) : Opcao
+    }
+
+    /**
+     * As opções dos Jogos em ordem de k1, do maior para o menor (desde a 0.34): os especiais à parte entram na mesma
+     * ordem que as modalidades (até a 0.33 ficavam sempre no alto); sem k1 (Loteca, sem dados), no fim. No empate, o
+     * especial primeiro e depois a ordem das modalidades.
+     */
+    fun opcoes(mapa: Map<Modalidade, Item>, agora: Instant = Instant.now()): List<Opcao> {
+        val especiais = Especiais.aParte(agora, { mapa[it]?.proximoNumero }).map { Opcao.Especial(it, doEspecial(it, mapa)) }
+        val jogos = ordenados(mapa).map { Opcao.DoJogo(it) }
+        return emOrdem(especiais + jogos)
+    }
+
+    /** O destaque de uma opção: a modalidade e o especial (o à parte, ou o próximo concurso quando é um especial). */
+    fun destaqueDa(o: Opcao): Destaque = destaqueDe(o)
+
     fun destaque(mapa: Map<Modalidade, Item>, agora: Instant = Instant.now()): Destaque? =
-        Especiais.emDestaque(agora, { mapa[it]?.proximoNumero })?.let { Destaque(it.modalidade, it) }
-            ?: maiorK1(mapa)?.let { Destaque(it.modalidade) }
+        opcoes(mapa, agora).firstOrNull { it.k1 != null }?.let(::destaqueDa)
 
     companion object {
+        /** A ordem das opções dos Jogos (desde a 0.34): maior k1 primeiro; sem k1 no fim; no empate, o especial e a ordem das modalidades. */
+        fun emOrdem(opcoes: List<Opcao>): List<Opcao> = opcoes.sortedWith(
+            compareByDescending<Opcao> { it.k1 ?: Double.NEGATIVE_INFINITY }
+                .thenBy { if (it is Opcao.Especial) 0 else 1 }
+                .thenBy { it.item.modalidade.ordinal },
+        )
+
+        /** O destaque de uma opção (ver [destaqueDa]). */
+        fun destaqueDe(o: Opcao): Destaque = when (o) {
+            is Opcao.Especial -> Destaque(o.especial.modalidade, o.especial)
+            is Opcao.DoJogo -> Destaque(o.item.modalidade, Especiais.doConcurso(o.item.modalidade, o.item.proximoNumero))
+        }
+
         private val SERIALIZADOR_CONSULTAS = MapSerializer(String.serializer(), Consulta.serializer())
 
         /** Concursos seguidos fora das regras para avisar que elas mudaram. */

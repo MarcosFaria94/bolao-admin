@@ -76,8 +76,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.material.icons.outlined.BatteryFull
-import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.marcosfaria94.bolao.notificacoes.SegundoPlano
@@ -94,6 +92,7 @@ import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.net.Atualizador
+import io.github.marcosfaria94.bolao.notificacoes.AvisoDeEspeciais
 import io.github.marcosfaria94.bolao.notificacoes.Notificador
 import io.github.marcosfaria94.bolao.pdf.AuditoriaPdf
 import io.github.marcosfaria94.bolao.pdf.PdfsDoApp
@@ -269,7 +268,10 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         onPauseOrDispose {}
     }
     val liberada = remember(conferido) { Notificador.permitido(ctx) && SegundoPlano.bateriaLivre(ctx) }
-    val toqueLigado = remember(conferido, estado) { Toque.config(ctx).ligado }
+    // Desde a 0.34: quantos dos três avisos estão ligados (o prêmio principal, o secundário e os concursos especiais).
+    val avisosLigados = remember(conferido, estado) {
+        listOf(Toque.config(ctx).ligado, Toque.config(ctx, Toque.Qual.SECUNDARIO).ligado, AvisoDeEspeciais.ligado(ctx)).count { it }
+    }
     val bloqueio = remember(conferido) { Biometria.bloqueio(ctx) }
     val celularComBloqueio = remember(conferido) { Biometria.disponivel(ctx) }
     val individual = estado.individual
@@ -285,8 +287,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         SecaoAjuste.BACKUP -> "Cópia de tudo" to TomItem.NORMAL
         SecaoAjuste.NOTIFICACOES -> when {
             !liberada -> "Falta liberar" to TomItem.ALERTA
-            toqueLigado -> "Toque ligado" to TomItem.NORMAL
-            else -> "Toque desligado" to TomItem.NORMAL
+            else -> resumoDosAvisos(avisosLigados) to TomItem.NORMAL
         }
         SecaoAjuste.BIOMETRIA -> when {
             !celularComBloqueio -> SEM_BLOQUEIO_NO_CELULAR to TomItem.ALERTA
@@ -540,12 +541,8 @@ fun AjustesSecaoTela(estado: Estado, secao: SecaoAjuste, atualizacao: Atualizaca
                     }
                     SecaoAjuste.AUDITORIA -> QuadroAjuste { Auditoria(estado) }
                     SecaoAjuste.BACKUP -> Backup()
-                    SecaoAjuste.NOTIFICACOES -> {
-                        Secao("Apuração automática") { ApuracaoComOAppFechado() }
-                        Secao("Toque do prêmio") { ToqueDoPremio() }
-                        // Desde a 0.32: um som próprio para as outras faixas (o prêmio secundário).
-                        Secao(TITULO_DO_SOM_SECUNDARIO) { SomDoPremioSecundario() }
-                    }
+                    // Refeita na 0.34 (AjustesNotificacoes.kt): o quadro das liberações, "O que avisar" e "Sons".
+                    SecaoAjuste.NOTIFICACOES -> NotificacoesDoApp()
                     SecaoAjuste.BIOMETRIA -> BiometriaDoCelular()
                     // Ficam direto na lista (não têm tela).
                     SecaoAjuste.ATUALIZACAO, SecaoAjuste.TESTE -> Unit
@@ -770,62 +767,11 @@ private fun Backup() {
     }
 }
 
-/**
- * A apuração automática e o aviso do prêmio com o app fechado: o que o celular precisa liberar.
- * A situação é lida de novo ao voltar dos ajustes do Android.
- */
-@Composable
-private fun ApuracaoComOAppFechado() {
-    val ctx = LocalContext.current
-    var conferido by remember { mutableIntStateOf(0) }
-    LifecycleResumeEffect(Unit) {
-        conferido++
-        onPauseOrDispose {}
-    }
-    val avisosPermitidos = remember(conferido) { Notificador.permitido(ctx) }
-    val bateriaLivre = remember(conferido) { SegundoPlano.bateriaLivre(ctx) }
-    val pedirPermissao = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) Notificador.teste(ctx)
-        conferido++
-    }
-    ExplicacaoAjuste(
-        "O app confere o resultado, apura e avisa do prêmio sozinho, na hora do sorteio, mesmo com o app fechado. " +
-            "Para isso o celular não pode pausar o app:",
-    )
-    QuadroAjuste {
-        LinhaAjuste(
-            emblema = { EmblemaIcone(Icons.Outlined.NotificationsActive, CoresEmblema.PREMIO, TAMANHO_EMBLEMA) },
-            titulo = "Avisos",
-            subtitulo = if (avisosPermitidos) "Permitidos" else "Desligados: o aviso do prêmio não chega",
-            final = {
-                if (avisosPermitidos) {
-                    OutlinedButton(onClick = { Notificador.teste(ctx) }) { Text("Testar") }
-                } else {
-                    Button(onClick = {
-                        if (android.os.Build.VERSION.SDK_INT >= 33) {
-                            pedirPermissao.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                        } else {
-                            SegundoPlano.abrirAjustesDoApp(ctx)
-                        }
-                    }) { Text("Permitir") }
-                }
-            },
-        )
-        Divisoria()
-        LinhaAjuste(
-            emblema = { EmblemaIcone(Icons.Outlined.BatteryFull, CoresEmblema.APORTE, TAMANHO_EMBLEMA) },
-            titulo = "Bateria",
-            subtitulo = if (bateriaLivre) "Sem restrições" else "Com restrição: a apuração pode atrasar",
-            final = if (bateriaLivre) null else ({ Button(onClick = { SegundoPlano.pedirBateriaLivre(ctx) }) { Text("Liberar") } }),
-        )
-        Divisoria()
-        LinhaAjuste(
-            emblema = { EmblemaIcone(Icons.Outlined.PowerSettingsNew, AzulMarinhoEmblema, TAMANHO_EMBLEMA) },
-            titulo = "Inicialização automática",
-            subtitulo = "No HyperOS: ative para o app acordar sozinho na hora do resultado",
-            final = { OutlinedButton(onClick = { SegundoPlano.abrirInicioAutomatico(ctx) }) { Text("Abrir") } },
-        )
-    }
+/** O resumo das Notificações na lista dos Ajustes (desde a 0.34): "3 avisos ligados", "1 aviso ligado", "Avisos desligados". */
+fun resumoDosAvisos(ligados: Int): String = when (ligados) {
+    0 -> "Avisos desligados"
+    1 -> "1 aviso ligado"
+    else -> "$ligados avisos ligados"
 }
 
 /** A extinção do bolão (no individual, "Apagar tudo"), com o quadro vermelho de sempre. */

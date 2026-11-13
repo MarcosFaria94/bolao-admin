@@ -51,6 +51,7 @@ import io.github.marcosfaria94.bolao.ui.comum.EtiquetaDePreco
 import io.github.marcosfaria94.bolao.ui.comum.TarjaModalidade
 import io.github.marcosfaria94.bolao.domain.ConcursoEspecial
 import io.github.marcosfaria94.bolao.domain.Especiais
+import io.github.marcosfaria94.bolao.ui.comum.TarjaDoDestaque
 import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.tema.corDestaque
@@ -114,9 +115,9 @@ fun avisoDoCartao(s: AgendaDaCaixa.Situacao?): String? = when (s?.estado) {
  * Uma modalidade na lista ordenada pelo k1 (Jogos). Desde a 0.27, no alto do cartão, de ponta a ponta, a
  * tarja da modalidade como as da Caixa (até a 0.26, a bola com a sigla e o concurso); embaixo, o concurso,
  * o preço no canto, "Prêmio: R$ 58,5 Milhões", "Sorteio: Hoje" ("Em 3 dias" até 7 dias) e os índices.
- * O concurso em destaque tem, no alto, o título que brilha ([TituloDestaque]: "CONCURSO EM DESTAQUE" ou, num
- * concurso especial, "CONCURSO ESPECIAL"; desde a 0.28 sem o contorno dourado e com o ícone de brilho no lugar
- * da estrelinha). Quando os dados não são certos ([situacao]), o aviso ao lado do concurso ([avisoDoCartao]).
+ * Desde a 0.34 o concurso em destaque (o de maior k1, especial ou não) tem a tarja dourada [TarjaDoDestaque] logo
+ * abaixo da tarja da modalidade, e todo concurso especial tem, no alto, o título que brilha "CONCURSO ESPECIAL"
+ * ([TituloDestaque]; até a 0.33 o especial era sempre o destaque e só o destaque tinha o título). Quando os dados não são certos ([situacao]), o aviso ao lado do concurso ([avisoDoCartao]).
  * Quando o próximo concurso é um concurso especial ([Especiais]), a tarja é a dele ("mega da virada").
  */
 @Composable
@@ -233,9 +234,11 @@ private fun CartaoDoJogo(
     ) {
         // A tarja de ponta a ponta, no alto do cartão (o cartão arredonda os cantos de cima).
         TarjaModalidade(m, Modifier.fillMaxWidth(), altura = 46.dp, especial = especial, cantos = 0.dp)
+        // Desde a 0.34: o destaque (o de maior k1) tem a tarja dourada logo abaixo; o especial, a marca dele, sempre.
+        if (destaque) TarjaDoDestaque(Modifier.fillMaxWidth())
         Column(Modifier.padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            if (destaque) {
-                TituloDestaque(Modifier.padding(bottom = 4.dp), especial = especial != null)
+            if (especial != null) {
+                TituloDestaque(Modifier.padding(bottom = 4.dp), especial = true)
             }
             // O concurso e, à direita, o preço; quando os dados não são certos, o aviso no lugar do concurso.
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

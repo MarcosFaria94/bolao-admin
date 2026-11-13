@@ -68,8 +68,15 @@ object PremiosTipicos {
     /** A nota da coluna do último concurso. */
     fun notaDoUltimo(concurso: Int): String = "Último concurso: quanto a Caixa pagou a cada ganhador no concurso $concurso (— = ninguém acertou)."
 
+    /**
+     * A nota da coluna do concurso que está na tela (desde a 0.34, o escolhido nos Detalhes): a do último ou
+     * "Concurso 7000: quanto a Caixa pagou...".
+     */
+    fun notaDoConcurso(concurso: Int, ultimo: Boolean): String =
+        if (ultimo) notaDoUltimo(concurso) else "Concurso $concurso: quanto a Caixa pagou a cada ganhador nele (— = ninguém acertou)."
+
     /** Sem a estimativa (Loteca, concurso especial, dados que não chegaram). */
     const val SEM_ESTIMATIVA =
         "Sem a estimativa agora (a Loteca não tem os parâmetros do cálculo; no concurso especial e sem os dados da " +
-            "Caixa, ela não sai): a tabela mostra só o último concurso."
+            "Caixa, ela não sai): a tabela mostra só o que o concurso pagou."
 }

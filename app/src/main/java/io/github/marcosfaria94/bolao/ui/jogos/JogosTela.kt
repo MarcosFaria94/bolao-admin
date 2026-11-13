@@ -76,8 +76,9 @@ import java.time.Instant
  * Desde a 0.27: cada jogo com a tarja da modalidade (como as da Caixa), sem a Loteria Federal, e os
  * concursos especiais com apostas abertas (Mega da Virada...) como opções à parte, logo antes dos outros
  * jogos ([Especiais.aParte]; tocar abre a página do especial, [abrirEspecial], com os Detalhes se segurar).
- * Desde a 0.28, havendo um concurso especial com apostas abertas, ele é o concurso em destaque (sempre o
- * primeiro da lista), com o título "CONCURSO ESPECIAL" brilhando.
+ * De 0.28 a 0.33, havendo um concurso especial com apostas abertas, ele era o concurso em destaque. Desde a 0.34
+ * (pedido do usuário) tudo fica em ordem de k1, os especiais à parte junto com as modalidades ([Indices.opcoes]), e o
+ * destaque é o de maior k1, com a tarja dourada "CONCURSO EM DESTAQUE"; todo especial tem o título "CONCURSO ESPECIAL".
  */
 @Composable
 fun JogosTela(
@@ -106,11 +107,9 @@ fun JogosTela(
     }
     LaunchedEffect(agora) { indices.atualizar() }
     val situacoes = Modalidade.ATIVAS.associateWith { indices.situacao(it, agora, itens, consultas) }
-    val especiais = Especiais.aParte(agora, { itens[it]?.proximoNumero })
-    // O concurso em destaque: desde a 0.28, sempre o concurso especial quando há um (senão, o de maior k1).
-    val destaque = indices.destaque(itens, agora)
-    // O especial em destaque que já é o próximo concurso da modalidade: o cartão dela vai para o alto da lista.
-    val especialNoCartao = destaque?.especial?.takeIf { e -> itens[e.modalidade]?.proximoNumero == e.concurso }
+    // Desde a 0.34: as modalidades e os especiais à parte juntos, em ordem de k1; o destaque é o primeiro (o maior k1).
+    val opcoes = remember(itens, estimativas, agora) { indices.opcoes(itens, agora) }
+    val destaque = opcoes.firstOrNull { it.k1 != null }?.let(indices::destaqueDa)
     val lista = rememberLazyListState()
     VoltarAoTopo(lista, paraOTopo)
 
@@ -155,27 +154,32 @@ fun JogosTela(
             }
             // Preço de Ajustes diferente do dos parâmetros ou regras da Caixa que mudaram.
             items(avisos, key = { it.chave }) { a -> Aviso(a.titulo, alerta = true) }
-            // Os concursos especiais com apostas abertas (desde a 0.27), antes dos outros jogos.
-            items(especiais, key = { "especial-${it.modalidade.name}-${it.concurso}" }) { e ->
-                CartaoEspecial(
-                    e, remember(e, itens, estimativas) { indices.doEspecial(e, itens) }, estado,
-                    aoTocar = { abrirEspecial(e, false) },
-                    aoSegurar = { abrirEspecial(e, true) },
-                    destaque = destaque?.especial == e,
-                    aoInformar = abrirIndices,
-                )
-            }
-            val ordem = indices.ordenados(itens).let { l -> if (especialNoCartao == null) l else l.sortedByDescending { it.modalidade == especialNoCartao.modalidade } }
-            items(ordem, key = { it.modalidade.name }) { item ->
-                CartaoIndice(
-                    item, estado,
-                    destaque = destaque != null && item.modalidade == destaque.modalidade &&
-                        (destaque.especial == null || destaque.especial == especialNoCartao),
-                    aoTocar = { abrirModalidade(item.modalidade) },
-                    aoSegurar = { abrirDetalhes(item.modalidade) },
-                    situacao = situacoes[item.modalidade],
-                    aoInformar = abrirIndices,
-                )
+            // Desde a 0.34 tudo em ordem de k1: os cartões das modalidades e os concursos especiais à parte (desde a 0.27;
+            // até a 0.33 ficavam antes dos outros jogos). O destaque é o de maior k1.
+            items(opcoes, key = { o ->
+                when (o) {
+                    is Indices.Opcao.Especial -> "especial-${o.especial.modalidade.name}-${o.especial.concurso}"
+                    is Indices.Opcao.DoJogo -> o.item.modalidade.name
+                }
+            }) { o ->
+                val emDestaque = destaque != null && indices.destaqueDa(o) == destaque
+                when (o) {
+                    is Indices.Opcao.Especial -> CartaoEspecial(
+                        o.especial, o.item, estado,
+                        aoTocar = { abrirEspecial(o.especial, false) },
+                        aoSegurar = { abrirEspecial(o.especial, true) },
+                        destaque = emDestaque,
+                        aoInformar = abrirIndices,
+                    )
+                    is Indices.Opcao.DoJogo -> CartaoIndice(
+                        o.item, estado,
+                        destaque = emDestaque,
+                        aoTocar = { abrirModalidade(o.item.modalidade) },
+                        aoSegurar = { abrirDetalhes(o.item.modalidade) },
+                        situacao = situacoes[o.item.modalidade],
+                        aoInformar = abrirIndices,
+                    )
+                }
             }
         }
         // Consultando a Caixa: uma linha fininha no alto da lista.

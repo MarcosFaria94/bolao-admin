@@ -130,6 +130,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import java.time.LocalTime
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
+import io.github.marcosfaria94.bolao.ui.comum.TarjaDoDestaque
 import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.bola3D
 import io.github.marcosfaria94.bolao.ui.comum.estiloNaBola
@@ -271,12 +272,13 @@ fun ModalidadeTela(
     val premio = aposta.premioEstimado?.takeIf { it > 0 } ?: u?.premioEstimadoProximo?.takeIf { doProximo && it > 0 }
         ?: especialDaAposta?.premioEstimado
     val sorteio = aposta.dataSorteio ?: u?.proximaData?.takeIf { doProximo } ?: especialDaAposta?.dia
-    // O concurso em destaque (desde a 0.28, o concurso especial quando há um): na página do especial (ou na da
-    // modalidade, quando o especial já é o próximo concurso) e, sem especial, na do jogo de maior k1.
-    val destaque = indices.destaque(itens)
+    // O concurso em destaque (desde a 0.34 sempre o de maior k1, especial ou não; de 0.28 a 0.33, o especial quando
+    // havia um): na página do especial (ou na da modalidade, quando o especial já é o próximo concurso) ou na do jogo.
+    val estimativas by indices.especiais.collectAsStateWithLifecycle()
+    val destaque = remember(itens, estimativas) { indices.destaque(itens) }
     val especialEmDestaque = destaque?.especial
     val emDestaque = destaque != null && destaque.modalidade == m && registrada == null &&
-        if (especialEmDestaque != null) especialDaAposta == especialEmDestaque else doProximo
+        if (especialEmDestaque != null) especialDaAposta == especialEmDestaque else doProximo && especialDaAposta == null
     // O próximo concurso (da Caixa, guardado no celular) já foi sorteado e o resultado ainda não chegou.
     val situacao = indices.situacao(m, Instant.now(), itens, consultas)
     val avisoDoQuadro = situacao.sorteio?.takeIf { doProximo && situacao.sorteado }?.let {
@@ -305,7 +307,7 @@ fun ModalidadeTela(
                 hoje = hoje,
                 federal = m == Modalidade.FEDERAL,
                 destaque = emDestaque,
-                especial = especialEmDestaque != null,
+                especial = especialDaAposta != null,
                 consultando = premio == null && sorteio == null && atualizando,
                 aviso = avisoDoQuadro,
                 hora = especialDaAposta?.takeIf { it.dia == sorteio }?.hora,
@@ -420,9 +422,9 @@ fun acumuladosDaPagina(m: Modalidade, u: Concurso?, doProximo: Boolean, esp: Con
 }
 
 /**
- * O prêmio (de ponta a ponta) e o dia do sorteio, juntos num quadro; o concurso em destaque tem, no alto, o
- * título que brilha ("CONCURSO EM DESTAQUE" ou, num especial, "CONCURSO ESPECIAL"; desde a 0.28 sem o
- * contorno dourado).
+ * O prêmio (de ponta a ponta) e o dia do sorteio, juntos num quadro. Desde a 0.34 o concurso em destaque (o de maior
+ * k1) tem, no alto do quadro, a tarja dourada "CONCURSO EM DESTAQUE" e o concurso especial ([especial]), o título que
+ * brilha "CONCURSO ESPECIAL" (até a 0.33 só o destaque tinha um título, e o especial era sempre o destaque).
  */
 @Composable
 private fun QuadroPremio(
@@ -442,9 +444,10 @@ private fun QuadroPremio(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
+        if (destaque) TarjaDoDestaque(Modifier.fillMaxWidth())
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (destaque) {
-                TituloDestaque(especial = especial)
+            if (especial) {
+                TituloDestaque(especial = true)
                 Spacer(Modifier.height(4.dp))
             }
             if (consultando) {
@@ -566,8 +569,10 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
         if (mais && Probabilidades.gruposDePremios(m) != null) {
             CartaoQueAbre(TITULO_QUANTIDADE) { TabelaDeQuantidade(m) }
         }
-        // Desde a 0.32, em todas as modalidades: quanto cada faixa costuma pagar (a estimativa e o último concurso).
-        if (m != Modalidade.FEDERAL) CartaoQueAbre(TITULO_PREMIOS_TIPICOS) { TabelaDePremiosTipicos(m, u) }
+        // Desde a 0.32, em todas as modalidades: quanto cada faixa costuma pagar (a estimativa e o último concurso);
+        // desde a 0.34, a coluna do concurso que está na tela (o escolhido nos botões ou no campo, do histórico).
+        val naTela = if (pedido == null) u else outro?.takeIf { it.numero == pedido }
+        if (m != Modalidade.FEDERAL) CartaoQueAbre(TITULO_PREMIOS_TIPICOS) { TabelaDePremiosTipicos(m, u, naTela) }
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -583,32 +588,38 @@ const val COLUNA_FAIXA = "Faixa"
 const val COLUNA_ESTIMATIVA = "Estimativa"
 const val COLUNA_ULTIMO_CONCURSO = "Último concurso"
 
+/** A coluna do concurso escolhido nos Detalhes (desde a 0.34): "Concurso 7000" (o último continua "Último concurso"). */
+fun colunaDoConcurso(numero: Int, ultimo: Int?): String = if (numero == ultimo) COLUNA_ULTIMO_CONCURSO else "Concurso $numero"
+
 /**
  * Os prêmios típicos (desde a 0.32, em todas as modalidades, no cartão que começa fechado): uma linha por faixa de
  * premiação, com a estimativa do que cada aposta ganhadora recebe no próximo concurso ([PremiosTipicos.estimar], o
- * mesmo cálculo do k1, sem o IR) e o que o último concurso pagou; embaixo, a nota que explica que é só uma estimativa
- * e como ela é calculada. Sem a estimativa (Loteca, concurso especial), só o último concurso.
+ * mesmo cálculo do k1, sem o IR) e o que o concurso pagou; embaixo, a nota que explica que é só uma estimativa
+ * e como ela é calculada. Sem a estimativa (Loteca, concurso especial), só o concurso. Desde a 0.34 a coluna é a do
+ * concurso que está na tela ([naTela]: o escolhido nos botões ou no campo; sem escolher, o último, [u]).
  */
 @Composable
-private fun TabelaDePremiosTipicos(m: Modalidade, u: Concurso?) {
+private fun TabelaDePremiosTipicos(m: Modalidade, u: Concurso?, naTela: Concurso? = u) {
     val indices = LocalContext.current.bolao.indices
     val itens by indices.itens.collectAsStateWithLifecycle()
     val estimativa = remember(itens[m]) { indices.premiosTipicos(m) }
-    if (u == null && estimativa == null) {
+    val concurso = naTela ?: u
+    if (concurso == null && estimativa == null) {
         Text("Sem dados da Caixa agora.", style = MaterialTheme.typography.bodyMedium)
         return
     }
-    val linhas = PremiosTipicos.linhas(m, estimativa, u)
+    val linhas = PremiosTipicos.linhas(m, estimativa, concurso)
+    val coluna = concurso?.let { colunaDoConcurso(it.numero, u?.numero) } ?: COLUNA_ULTIMO_CONCURSO
     fun texto(v: Long?): String = v?.let { valorSemQuebra(PremiosTipicos.valor(it)) } ?: "—"
     TabelaRolavel(
         primeira = COLUNA_FAIXA,
         grupos = emptyList(),
-        colunas = if (estimativa != null) listOf(COLUNA_ESTIMATIVA, COLUNA_ULTIMO_CONCURSO) else listOf(COLUNA_ULTIMO_CONCURSO),
+        colunas = if (estimativa != null) listOf(COLUNA_ESTIMATIVA, coluna) else listOf(coluna),
         linhas = linhas.map { l -> l.nome to (if (estimativa != null) listOf(texto(l.estimativa), texto(l.ultimo)) else listOf(texto(l.ultimo))) },
     )
     val notas = listOfNotNull(
         if (estimativa != null) PremiosTipicos.NOTA_DA_ESTIMATIVA else PremiosTipicos.SEM_ESTIMATIVA,
-        u?.let { PremiosTipicos.notaDoUltimo(it.numero) },
+        concurso?.let { PremiosTipicos.notaDoConcurso(it.numero, ultimo = it.numero == u?.numero) },
         Probabilidades.LEGENDA_DA_MAIS_MILIONARIA.takeIf { m == Modalidade.MAIS_MILIONARIA },
     )
     notas.forEach { n ->

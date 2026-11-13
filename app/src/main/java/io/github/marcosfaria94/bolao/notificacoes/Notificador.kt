@@ -26,6 +26,10 @@ import io.github.marcosfaria94.bolao.data.Sessoes
 object Notificador {
     private const val CANAL_ACOES = "acoes"
     private const val CANAL_PREMIOS = "premios"
+
+    /** Os avisos dos concursos especiais (desde a 0.34; um canal novo, com nome próprio nos ajustes do Android). */
+    private const val CANAL_ESPECIAIS = "concursos_especiais"
+    private const val ID_ESPECIAIS = 30_000
     const val EXTRA_DESTINO = "destino"
 
     /** A sessão do aviso (desde a 0.21): tocar abre o app nela. */
@@ -57,6 +61,31 @@ object Notificador {
                 description = "Quando uma aposta do bolão é premiada (o valor aparece ao abrir o app)."
             },
         )
+        nm.createNotificationChannel(
+            NotificationChannel(CANAL_ESPECIAIS, "Concursos especiais", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Mega da Virada, Quina de São João...: quando as apostas abrem e na véspera do sorteio."
+            },
+        )
+    }
+
+    /**
+     * Um aviso de concurso especial (desde a 0.34): "Mega da Virada: apostas abertas" ou "...: o sorteio é amanhã".
+     * Tocar abre a página do especial (ou a da modalidade).
+     */
+    @SuppressLint("MissingPermission")
+    fun concursoEspecial(context: Context, a: io.github.marcosfaria94.bolao.domain.AvisosDeEspeciais.Aviso) {
+        if (!permitido(context)) return
+        val id = ID_ESPECIAIS + (a.chaves.last().hashCode() and 0xFFF)
+        val n = NotificationCompat.Builder(context, CANAL_ESPECIAIS)
+            .setSmallIcon(R.drawable.ic_notificacao)
+            .setColor(COR)
+            .setContentTitle(a.titulo)
+            .setContentText(a.texto)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(a.texto))
+            .setContentIntent(abrir(context, a.destino, id))
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(id, n)
     }
 
     fun permitido(context: Context): Boolean =

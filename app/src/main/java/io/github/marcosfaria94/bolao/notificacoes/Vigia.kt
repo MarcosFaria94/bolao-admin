@@ -20,6 +20,7 @@ import io.github.marcosfaria94.bolao.data.Repositorio
 import io.github.marcosfaria94.bolao.data.Sessoes
 import io.github.marcosfaria94.bolao.data.palpite
 import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
+import io.github.marcosfaria94.bolao.domain.AvisosDeEspeciais
 import io.github.marcosfaria94.bolao.domain.Conferencia
 import io.github.marcosfaria94.bolao.imagem.ImagemConferencia
 import io.github.marcosfaria94.bolao.net.CaixaApi
@@ -39,7 +40,8 @@ import java.util.concurrent.TimeUnit
  *    bolão, o envio do comprovante ao grupo vira pendência);
  * 3. mostra os dois avisos do celular: "Aposta premiada" e "Ação necessária" (no prêmio principal,
  *    toca o toque dos Ajustes, como uma chamada);
- * 4. marca o próximo despertar.
+ * 4. marca o próximo despertar;
+ * 5. desde a 0.34, avisa dos concursos especiais (apostas abertas e véspera do sorteio; [AvisoDeEspeciais]).
  * Desde a 0.21 faz isso em todas as sessões (cada bolão, o Individual e o modo de teste, se existir),
  * e não só na que está em uso: os avisos levam o nome da sessão (com mais de uma) e abrem nela. Os do
  * modo de teste levam "Teste" (e não tocam o toque do prêmio).
@@ -133,6 +135,8 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             }
         }
         if (!algumaPendencia) Notificador.limparAcoes(ctx)
+        // 5. Os concursos especiais (desde a 0.34, ligado por padrão em Ajustes > Notificações): do app todo, uma vez cada.
+        runCatching { avisarEspeciais(ctx, agora) }
         if (novasChaves.isNotEmpty()) {
             val todas = (avisados + novasChaves).takeLast(MAX_CHAVES)
             prefs.edit().putString(CHAVES, todas.joinToString("\n")).apply()
@@ -142,6 +146,14 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             tocarSecundario -> Toque.Origem.SECUNDARIO
             else -> null
         }
+    }
+
+    /** O passo 5: os avisos dos concursos especiais que faltam dar (apostas abertas e véspera). */
+    private fun avisarEspeciais(ctx: Context, agora: LocalDateTime) {
+        if (!AvisoDeEspeciais.ligado(ctx)) return
+        val devidos = AvisosDeEspeciais.devidos(ctx.bolao.indices.alvosDosEspeciais(), agora, AvisoDeEspeciais.avisados(ctx))
+        devidos.forEach { Notificador.concursoEspecial(ctx, it) }
+        AvisoDeEspeciais.marcar(ctx, devidos.flatMap { it.chaves })
     }
 
     /** Os passos 1 e 2 numa sessão: a conferência na Caixa e a apuração automática. Devolve o estado depois deles. */
