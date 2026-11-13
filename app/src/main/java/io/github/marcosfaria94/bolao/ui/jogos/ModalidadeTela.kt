@@ -65,6 +65,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.text.KeyboardActions
@@ -104,6 +105,7 @@ import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.Pendencias
 import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
 import io.github.marcosfaria94.bolao.domain.Concurso
+import io.github.marcosfaria94.bolao.domain.PremioDoConcurso
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Extra
@@ -130,7 +132,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import java.time.LocalTime
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
-import io.github.marcosfaria94.bolao.ui.comum.TarjaDoDestaque
 import io.github.marcosfaria94.bolao.ui.comum.TituloDestaque
 import io.github.marcosfaria94.bolao.ui.comum.bola3D
 import io.github.marcosfaria94.bolao.ui.comum.estiloNaBola
@@ -422,9 +423,9 @@ fun acumuladosDaPagina(m: Modalidade, u: Concurso?, doProximo: Boolean, esp: Con
 }
 
 /**
- * O prêmio (de ponta a ponta) e o dia do sorteio, juntos num quadro. Desde a 0.34 o concurso em destaque (o de maior
- * k1) tem, no alto do quadro, a tarja dourada "CONCURSO EM DESTAQUE" e o concurso especial ([especial]), o título que
- * brilha "CONCURSO ESPECIAL" (até a 0.33 só o destaque tinha um título, e o especial era sempre o destaque).
+ * O prêmio (de ponta a ponta) e o dia do sorteio, juntos num quadro. No alto, o título que brilha: "CONCURSO EM
+ * DESTAQUE" no de maior k1 e, desde a 0.34, "CONCURSO ESPECIAL" no concurso especial ([especial]); os dois, se for
+ * os dois (na 0.34 o destaque teve uma tarja dourada, que saiu na 0.35).
  */
 @Composable
 private fun QuadroPremio(
@@ -444,12 +445,10 @@ private fun QuadroPremio(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        if (destaque) TarjaDoDestaque(Modifier.fillMaxWidth())
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (especial) {
-                TituloDestaque(especial = true)
-                Spacer(Modifier.height(4.dp))
-            }
+            if (destaque) TituloDestaque()
+            if (especial) TituloDestaque(especial = true)
+            if (destaque || especial) Spacer(Modifier.height(4.dp))
             if (consultando) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(56.dp)) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -542,6 +541,18 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
         }
         buscando = false
     }
+    // O concurso que está na tela: o escolhido nos botões ou no campo (do histórico); sem escolher, o último.
+    val naTela = if (pedido == null) u else outro?.takeIf { it.numero == pedido }
+    // Desde a 0.35: o concurso anterior ao da tela, que traz o prêmio estimado dele (do histórico, da memória ou,
+    // se faltar, da Caixa), para o prêmio no alto do resultado ([PremioDoConcurso]).
+    val numeroNaTela = naTela?.numero
+    val anterior by produceState<Concurso?>(null, m, numeroNaTela) {
+        val n = numeroNaTela?.minus(1)?.takeIf { it >= 1 } ?: return@produceState
+        value = runCatching { historico.concurso(m, n) }.getOrNull()
+            ?: CaixaApi.guardado(m, n)
+            ?: runCatching { CaixaApi.concurso(m, n) }.getOrNull()
+    }
+    val premio = naTela?.let { PremioDoConcurso.de(it, anterior) }
     Column(
         Modifier
             .fillMaxSize()
@@ -553,10 +564,10 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
             NavegacaoDoConcurso(numero = pedido ?: ultimo, ultimo = ultimo) { n -> escolhido = n.coerceIn(1, ultimo) }
         }
         when {
-            pedido == null -> UltimoResultado(m, u, atualizando)
+            pedido == null -> UltimoResultado(m, u, atualizando, premio = premio)
             buscando -> CartaoConsultando()
             erro != null -> CartaoErroDoConcurso(erro!!) { tentativa++ }
-            else -> UltimoResultado(m, outro?.takeIf { it.numero == pedido }, atualizando = true, oUltimo = false)
+            else -> UltimoResultado(m, naTela, atualizando = true, oUltimo = false, premio = premio)
         }
         CartaoQueAbre(TITULO_REGRAS) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -571,7 +582,6 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
         }
         // Desde a 0.32, em todas as modalidades: quanto cada faixa costuma pagar (a estimativa e o último concurso);
         // desde a 0.34, a coluna do concurso que está na tela (o escolhido nos botões ou no campo, do histórico).
-        val naTela = if (pedido == null) u else outro?.takeIf { it.numero == pedido }
         if (m != Modalidade.FEDERAL) CartaoQueAbre(TITULO_PREMIOS_TIPICOS) { TabelaDePremiosTipicos(m, u, naTela) }
         Spacer(Modifier.height(8.dp))
     }
@@ -957,11 +967,18 @@ private fun CartaoErroDoConcurso(texto: String, aoTentar: () -> Unit) {
 }
 
 /**
- * O resultado de um concurso (o último, ou o escolhido nos Detalhes, desde a 0.28, com [oUltimo] falso): se
- * acumulou (ou se saiu o prêmio principal), os números sorteados e a premiação.
+ * O resultado de um concurso (o último, ou o escolhido nos Detalhes, desde a 0.28, com [oUltimo] falso): desde a
+ * 0.35, no alto, o prêmio do concurso ([premio], [PremioDoConcurso]: o estimado, o pago ou o 1º prêmio da Federal);
+ * depois, se acumulou (ou se saiu o prêmio principal), os números sorteados e a premiação.
  */
 @Composable
-private fun UltimoResultado(m: Modalidade, u: Concurso?, atualizando: Boolean, oUltimo: Boolean = true) {
+private fun UltimoResultado(
+    m: Modalidade,
+    u: Concurso?,
+    atualizando: Boolean,
+    oUltimo: Boolean = true,
+    premio: PremioDoConcurso.Premio? = null,
+) {
     val hoje = LocalDate.now()
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -975,6 +992,7 @@ private fun UltimoResultado(m: Modalidade, u: Concurso?, atualizando: Boolean, o
                 }
                 return@Column
             }
+            if (premio != null) PremioNoAlto(premio)
             val principal = u.faixas.minByOrNull { it.faixa }
             when {
                 u.acumulado -> Text("Acumulou!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -1000,6 +1018,24 @@ private fun UltimoResultado(m: Modalidade, u: Concurso?, atualizando: Boolean, o
                 }
             }
         }
+    }
+}
+
+/**
+ * O prêmio do concurso no alto do resultado (desde a 0.35): o rótulo ("Prêmio estimado", "Prêmio pago" ou "1º prêmio")
+ * e o valor grande, por extenso ("R$ 27,5 Milhões"), como o da página do jogo (menor que ele).
+ */
+@Composable
+private fun PremioNoAlto(premio: PremioDoConcurso.Premio) {
+    Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
+        Text(premio.rotulo, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextoQueCabe(
+            Dinheiro.porExtenso(premio.valor),
+            MaterialTheme.typography.displaySmall.copy(fontSize = 40.sp, lineHeight = 46.sp),
+            peso = FontWeight.Bold,
+            menor = 20.sp,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

@@ -104,10 +104,15 @@ Os dados (integrantes, chaves Pix, saldo, comprovantes) ficam **só no celular**
 ## Ordem pelo k1, destaque e Notificações novas (desde a 0.34)
 
 - **Jogos**: tudo em ordem de k1, do maior para o menor, com os concursos especiais à parte (a Mega da Virada) entrando na mesma ordem das modalidades (até a 0.33 o especial ficava sempre no alto e era sempre o destaque). Sem k1 (Loteca, sem dados), no fim.
-- **Tarjas**: o concurso em destaque é sempre o de maior k1, especial ou não, e ganha a **tarja dourada** "CONCURSO EM DESTAQUE" (com o troféu e "maior k1"), logo abaixo da tarja da modalidade; todo concurso especial tem o título que brilha **CONCURSO ESPECIAL**, em destaque ou não. Na página do jogo, o mesmo no quadro do prêmio.
+- **Tarjas**: o concurso em destaque é sempre o de maior k1, especial ou não, e ganhou uma **tarja dourada** "CONCURSO EM DESTAQUE" (saiu na 0.35); todo concurso especial tem o título que brilha **CONCURSO ESPECIAL**, em destaque ou não. Na página do jogo, o mesmo no quadro do prêmio.
 - **Notificações** (Ajustes > Notificações), refeita: no alto, o quadro azul-noite com o sino dourado diz **Avisos prontos** (ou **Falta liberar**) e mostra as três liberações do celular em linhas curtas (Permissão de avisos, com **Permitir** ou **Testar**; Bateria sem restrição, com **Liberar**; Inicialização automática, com **Abrir**). Em **O que avisar**, só chaves: **Prêmio principal** (o toque como chamada), **Prêmio secundário** (o som próprio) e **Concursos especiais** (ligado por padrão). Em **Sons**, o toque do prêmio principal e o som do prêmio secundário, cada um com o botão de testar no fim da linha; tocar na linha abre a janela de escolha (uma música do celular, um toque do celular ou voltar ao de sempre).
 - **Aviso dos concursos especiais**: com a chave ligada, o celular avisa quando as apostas de um especial abrem (o concurso, o dia e a hora do sorteio, o prêmio estimado e o k1) e na véspera do sorteio, a partir das 9h ("o sorteio é amanhã"; perdida a véspera, no próprio dia: "é hoje"). Cada aviso uma vez só; tocar abre a página do especial.
 - **Detalhes**: os **Prêmios típicos** mostram o que pagou o concurso que está na tela (o escolhido nos botões ou no campo, do histórico: a coluna "Concurso 7000"); sem escolher, o último ("Último concurso").
+
+## Sem a tarja dourada e o prêmio nos Detalhes (desde a 0.35)
+
+- **Destaque**: a tarja dourada "CONCURSO EM DESTAQUE" saiu. O concurso de maior k1 volta a ter, no alto do cartão (e do quadro do prêmio, na página do jogo), o título que brilha **CONCURSO EM DESTAQUE**, agora com o troféu; o concurso especial continua com **CONCURSO ESPECIAL** e o ícone de brilho (um concurso especial em destaque mostra os dois).
+- **Detalhes**: o quadro do resultado mostra no alto, acima do "Acumulou!" (ou "Saiu o prêmio principal!"), o **prêmio do concurso**, grande, por extenso: o **Prêmio estimado** que a Caixa divulgou para ele (o que a página do jogo mostrava antes do sorteio, que vem com o concurso anterior no histórico; na Mega da Virada de 2025, R$ 1 Bilhão). Vale para o último e para qualquer concurso escolhido nos botões ou no campo. Sem a estimativa (os primeiros concursos de algumas modalidades), o **Prêmio pago** pela faixa principal, se saiu; na Federal, o **1º prêmio**.
 
 ## Sessões (vários bolões)
 

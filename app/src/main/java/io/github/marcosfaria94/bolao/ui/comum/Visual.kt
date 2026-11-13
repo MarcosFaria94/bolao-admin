@@ -223,45 +223,16 @@ fun TextoBrilhante(texto: String, estilo: TextStyle, cor: Color, modifier: Modif
     }
 }
 
-/** O título da marca do concurso em destaque (o de maior k1; desde a 0.34, a tarja dourada [TarjaDoDestaque]). */
+/** O título da marca do concurso em destaque (o de maior k1). */
 const val CONCURSO_EM_DESTAQUE = "CONCURSO EM DESTAQUE"
 
 /** O título dos concursos especiais (desde a 0.34 em todo concurso especial, em destaque ou não). */
 const val CONCURSO_ESPECIAL = "CONCURSO ESPECIAL"
 
 /**
- * A tarja do concurso em destaque (desde a 0.34, pedido do usuário: diferente da marca "CONCURSO ESPECIAL"): uma
- * faixa dourada de ponta a ponta, com o troféu e "CONCURSO EM DESTAQUE" em azul-marinho (o destaque é sempre o jogo de
- * maior k1, especial ou não). Fica logo abaixo da tarja da modalidade, nos cartões dos
- * Jogos, e no alto do quadro do prêmio, na página do jogo.
- */
-@Composable
-fun TarjaDoDestaque(modifier: Modifier = Modifier) {
-    val marinho = Color(0xFF13294B)
-    Row(
-        modifier
-            .background(Brush.horizontalGradient(listOf(Color(0xFFF2B630), Color(0xFFFFD36A), Color(0xFFF2B630))))
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = marinho, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(7.dp))
-        // Inteiro também com a letra grande do celular (diminui para caber).
-        TextoQueCabe(
-            CONCURSO_EM_DESTAQUE,
-            MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.1.sp),
-            cor = marinho,
-            peso = FontWeight.ExtraBold,
-            menor = 10.sp,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-/**
- * Marca do concurso especial (desde a 0.34 só dele: o destaque tem a [TarjaDoDestaque]), no alto do cartão (Jogos e a
- * página do jogo): o ícone de brilho e "CONCURSO ESPECIAL" (com [especial] falso, ainda "CONCURSO EM DESTAQUE", como
- * até a 0.33). Desde a 0.28 o
+ * O título que brilha, no alto do cartão (Jogos e a página do jogo): "CONCURSO EM DESTAQUE" (o de maior k1), com o
+ * troféu, ou, com [especial], "CONCURSO ESPECIAL" (desde a 0.34), com o ícone de brilho (na 0.34 o destaque teve uma
+ * tarja dourada; desde a 0.35 volta a ser este título, com o troféu para não confundir com o especial). Desde a 0.28 o
  * ícone e o título brilham (uma faixa clara passa pelo texto e o ícone pisca), sem o contorno dourado no
  * cartão (na Timemania, amarela, as cores se confundiam); a estrelinha saiu, porque agora ela marca os jogos
  * favoritos. Com as animações desligadas (fotos), fica parado.
@@ -269,10 +240,11 @@ fun TarjaDoDestaque(modifier: Modifier = Modifier) {
 @Composable
 fun TituloDestaque(modifier: Modifier = Modifier, especial: Boolean = false, cor: Color = corDestaque()) {
     val texto = if (especial) CONCURSO_ESPECIAL else CONCURSO_EM_DESTAQUE
+    val icone = if (especial) Icons.Filled.AutoAwesome else Icons.Filled.EmojiEvents
     val estilo = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
     if (!Animacoes.ligadas) {
         Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Dourado, modifier = Modifier.size(19.dp))
+            Icon(icone, contentDescription = null, tint = Dourado, modifier = Modifier.size(19.dp))
             Spacer(Modifier.width(6.dp))
             Text(texto, style = estilo, color = cor, maxLines = 1)
         }
@@ -304,7 +276,7 @@ fun TituloDestaque(modifier: Modifier = Modifier, especial: Boolean = false, cor
     )
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Icon(
-            Icons.Filled.AutoAwesome,
+            icone,
             contentDescription = null,
             tint = Dourado,
             modifier = Modifier
