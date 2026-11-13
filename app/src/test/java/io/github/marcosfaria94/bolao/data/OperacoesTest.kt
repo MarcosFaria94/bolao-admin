@@ -200,7 +200,14 @@ class OperacoesTest {
         }
         assertNotNull(Operacoes.impedimentoDoExtrato(e, junho, d(30)))
         assertTrue(Operacoes.impedimentosDaExtincao(e).any { it.contains("esperando") })
-        assertThrows(IllegalArgumentException::class.java) { Operacoes.aprovarAposta(e, "a", agora()) }
+        // Desde a 0.36 a confirmação não cobra o comprovante da Caixa: sai o comprovante do bolão, sem anexo.
+        val confirmada = Operacoes.aprovarAposta(e, "c", agora())
+        assertFalse(confirmada.apostas.first { it.id == "c" }.pendenteDeAnexo)
+        assertEquals("c", confirmada.comprovantes.last().apostaId)
+        assertTrue(confirmada.comprovantes.last().anexos.isEmpty())
+        assertNull(Operacoes.primeiraAutenticacaoQuebrada(confirmada))
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.aprovarAposta(confirmada, "c", agora()) }
+        assertThrows(IllegalArgumentException::class.java) { Operacoes.descartarAposta(confirmada, "c") }
 
         // Descartar a do meio: o valor volta e a de depois sobe um número.
         e = Operacoes.descartarAposta(e, "b")

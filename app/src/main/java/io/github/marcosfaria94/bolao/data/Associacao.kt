@@ -358,9 +358,7 @@ object Associacao {
             )
         }
 
-        livres.mapNotNull { id -> est.apostas.firstOrNull { it.id == id } }.forEach { a ->
-            avisos += Aviso(Tipo.AINDA_FALTA, "${nomeDaAposta(a)}: ainda sem o comprovante da Caixa.")
-        }
+        // Desde a 0.36 o comprovante da Caixa é opcional: as apostas sem ele não entram no relatório como "ainda falta".
         Operacoes.rateiosSemPix(est).forEach { r ->
             val faltam = est.pessoas.filter { !r.pix.containsKey(it.id) }.joinToString(", ") { it.apelido }
             avisos += Aviso(Tipo.AINDA_FALTA, "Rateio Nº${r.numeroNoMes}: ainda falta o Pix de $faltam.")

@@ -81,6 +81,11 @@ import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.comum.Secao
 import io.github.marcosfaria94.bolao.ui.comum.TextoVazio
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
+import io.github.marcosfaria94.bolao.ui.comum.CONFIRMAR
+import io.github.marcosfaria94.bolao.ui.comum.confirmarApostas
+import io.github.marcosfaria94.bolao.ui.comum.mensagemDaConfirmacao
+import io.github.marcosfaria94.bolao.ui.comum.textoDaConfirmacao
+import io.github.marcosfaria94.bolao.ui.comum.tituloDaConfirmacao
 import io.github.marcosfaria94.bolao.ui.tema.corApuracao
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
 import io.github.marcosfaria94.bolao.ui.teste.ModoTeste
@@ -110,6 +115,27 @@ class ComprovantesViewModel(app: Application) : AndroidViewModel(app) {
 
     var aprovando by mutableStateOf(false)
         private set
+
+    /** Confirmando as apostas (desde a 0.36: feitas no site da Caixa, sem o comprovante da Caixa). */
+    var confirmando by mutableStateOf(false)
+        private set
+
+    /** Confirma todas as apostas a confirmar (desde a 0.36), criando os comprovantes do bolão. */
+    fun confirmarTodas(context: Context, aoFim: (String) -> Unit) {
+        if (confirmando) return
+        confirmando = true
+        viewModelScope.launch {
+            try {
+                val e = repo.atual()
+                val feitas = confirmarApostas(context, Operacoes.apostasSemComprovante(e).map { it.id }, repo)
+                aoFim(mensagemDaConfirmacao(feitas, e))
+            } catch (t: Throwable) {
+                aoFim("Não foi possível confirmar tudo: ${t.message}")
+            } finally {
+                confirmando = false
+            }
+        }
+    }
 
     fun adicionar(uris: List<Uri>, aoErro: (String) -> Unit) {
         viewModelScope.launch {
@@ -249,7 +275,9 @@ class ComprovantesViewModel(app: Application) : AndroidViewModel(app) {
  * Aba Comprovantes (desde a 0.10): as apostas e os rateios são registrados antes dos comprovantes;
  * aqui se escolhem de uma vez os PDFs da Caixa e dos Pix, o app lê cada um e põe no lugar certo
  * ("Registrar comprovantes"), e depois vem a conferência ("Aprovar todos"), que cria os
- * comprovantes do bolão para enviar ao grupo.
+ * comprovantes do bolão para enviar ao grupo. Desde a 0.36 as apostas não esperam o comprovante da
+ * Caixa: elas ficam em "Confirmar apostas" (o "Confirmar todas" cria os comprovantes do bolão) e o
+ * PDF da Caixa é opcional.
  */
 @Composable
 fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesViewModel = viewModel()) {
@@ -261,6 +289,7 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
     val avisar: (String) -> Unit = { escopo.launch { avisos.showSnackbar(it) } }
     var confirmarAprovacao by remember { mutableStateOf(false) }
     var confirmarDescarte by remember { mutableStateOf(false) }
+    var pedirConfirmacao by remember { mutableStateOf(false) }
 
     val semComprovante = Operacoes.apostasSemComprovante(estado)
     val rateiosSemPix = Operacoes.rateiosSemPix(estado)
@@ -274,12 +303,52 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
     }
 
     LazyColumn(contentPadding = PaddingTela, verticalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.fillMaxSize()) {
+        // As apostas a confirmar (desde a 0.36, no lugar de "Esperando comprovante"): feitas no site da Caixa e pagas,
+        // confirma-se de uma vez; até lá, dá para descartar.
+        if (semComprovante.isNotEmpty()) {
+            item(key = "confirmar") {
+                Secao(SECAO_CONFIRMAR, Modifier.padding(top = 8.dp)) {
+                    Column(Modifier.padding(vertical = 4.dp)) {
+                        Text(
+                            TEXTO_CONFIRMAR,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+                        )
+                        semComprovante.forEachIndexed { i, a ->
+                            if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            LinhaEsperando(
+                                emblema = { SeloModalidade(a.modalidade, 40.dp) },
+                                titulo = "Aposta Nº${a.numero} · ${a.modalidade.nome}",
+                                texto = "Registrada ${Datas.relativa(a.dataAposta, LocalDate.now()).lowercase()} · ${Dinheiro.rs(a.valor)}",
+                                aoTocar = { abrir("aposta/${a.id}") },
+                            )
+                        }
+                        Button(
+                            onClick = { pedirConfirmacao = true },
+                            enabled = !vm.confirmando,
+                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        ) {
+                            if (vm.confirmando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            else Text(textoConfirmarTodas(semComprovante.size))
+                        }
+                        // Desde a 0.25: descarta de uma vez as apostas que ainda não valem (com a confirmação).
+                        TextButton(onClick = { confirmarDescarte = true }, enabled = !vm.confirmando, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Outlined.DeleteSweep, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(DESCARTAR_TUDO, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        }
+
         item(key = "anexar") {
-            Secao("Anexar comprovantes", Modifier.padding(top = 8.dp)) {
+            Secao("Anexar comprovantes", if (semComprovante.isEmpty()) Modifier.padding(top = 8.dp) else Modifier) {
                 Column(Modifier.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "Escolha de uma vez os PDFs da Caixa (das apostas) e dos Pix (do rateio). O app lê cada um e " +
-                            "põe no lugar certo; depois, é só conferir e aprovar.",
+                        "Escolha de uma vez os PDFs dos Pix (do rateio) e, se quiser, os da Caixa (das apostas, que não são " +
+                            "mais cobrados). O app lê cada um e põe no lugar certo; depois, é só conferir e aprovar.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -350,31 +419,13 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
             }
         }
 
-        if (semComprovante.isNotEmpty() || rateiosSemPix.isNotEmpty()) {
+        // Só os rateios esperam comprovante (os Pix) desde a 0.36; as apostas ficam em "Confirmar apostas".
+        if (rateiosSemPix.isNotEmpty()) {
             item(key = "esperando") {
                 Secao("Esperando comprovante") {
                     Column(Modifier.padding(vertical = 4.dp)) {
-                        semComprovante.forEachIndexed { i, a ->
-                            if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            LinhaEsperando(
-                                emblema = { SeloModalidade(a.modalidade, 40.dp) },
-                                titulo = "Aposta Nº${a.numero} · ${a.modalidade.nome}",
-                                texto = "Registrada ${Datas.relativa(a.dataAposta, LocalDate.now()).lowercase()} · ${Dinheiro.rs(a.valor)}",
-                                aoTocar = { abrir("aposta/${a.id}") },
-                            )
-                        }
-                        // Desde a 0.25: descarta de uma vez as apostas que esperam o comprovante (com a confirmação).
-                        // Só os jogos (desde a 0.26): fica logo abaixo das apostas, e os rateios não entram.
-                        if (semComprovante.isNotEmpty()) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            TextButton(onClick = { confirmarDescarte = true }, modifier = Modifier.fillMaxWidth()) {
-                                Icon(Icons.Outlined.DeleteSweep, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(DESCARTAR_TUDO, color = MaterialTheme.colorScheme.error)
-                            }
-                        }
                         rateiosSemPix.forEachIndexed { i, r ->
-                            if (i > 0 || semComprovante.isNotEmpty()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             val faltam = estado.pessoas.filter { !r.pix.containsKey(it.id) }
                             LinhaEsperando(
                                 emblema = { EmblemaDesenho(Desenhos.Moedas, 40.dp) },
@@ -432,8 +483,8 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
         if (nada && vm.escolhidos.isEmpty()) {
             item(key = "vazio") {
                 TextoVazio(
-                    if (estado.enviaAoGrupo) "Tudo em dia: nenhum registro esperando comprovante, conferência ou envio."
-                    else "Tudo em dia: nenhum registro esperando comprovante ou conferência.",
+                    if (estado.enviaAoGrupo) "Tudo em dia: nenhum registro a confirmar, esperando comprovante, conferência ou envio."
+                    else "Tudo em dia: nenhum registro a confirmar, esperando comprovante ou conferência.",
                 )
             }
         }
@@ -452,6 +503,19 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
                 vm.aprovarTodos(ctx, avisar)
             },
             aoFechar = { confirmarAprovacao = false },
+        )
+    }
+
+    if (pedirConfirmacao) {
+        DialogoConfirmar(
+            titulo = tituloDaConfirmacao(semComprovante.map { it.numero }.sorted()),
+            texto = textoDaConfirmacao(semComprovante.size, estado),
+            confirmar = CONFIRMAR,
+            aoConfirmar = {
+                pedirConfirmacao = false
+                vm.confirmarTodas(ctx, avisar)
+            },
+            aoFechar = { pedirConfirmacao = false },
         )
     }
 
@@ -479,16 +543,25 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
     vm.relatorio?.let { lista -> RelatorioDaLeitura(lista, aoFechar = { vm.relatorio = null }) }
 }
 
-/** O botão da seção "Esperando comprovante" (desde a 0.25): descarta de uma vez as apostas sem comprovante. */
+/** O título da seção das apostas a confirmar (desde a 0.36; até a 0.35 elas ficavam em "Esperando comprovante"). */
+const val SECAO_CONFIRMAR = "Confirmar apostas"
+
+/** O que fazer com as apostas a confirmar. */
+const val TEXTO_CONFIRMAR = "Faça as apostas no site da Caixa (botão Caixa, \"Transcrever\") e confirme depois de pagar."
+
+/** O botão que confirma as apostas: "Confirmar a aposta" ou "Confirmar todas (3)". */
+fun textoConfirmarTodas(apostas: Int): String = if (apostas == 1) "Confirmar a aposta" else "Confirmar todas ($apostas)"
+
+/** O botão da seção das apostas a confirmar (desde a 0.25): descarta de uma vez as que ainda não valem. */
 const val DESCARTAR_TUDO = "Descartar tudo"
 
 /**
  * O texto da confirmação do "Descartar tudo" (só os jogos, desde a 0.26): quantas apostas saem do app e
- * quanto volta ao saldo ([valor], em centavos).
+ * quanto volta ao saldo ([valor], em centavos). Desde a 0.36, "ainda não confirmada" (era "ainda sem comprovante").
  */
 fun textoDescartarTudo(apostas: Int, valor: Long): String =
-    (if (apostas == 1) "1 aposta ainda sem comprovante sai" else "$apostas apostas ainda sem comprovante saem") +
-        " do app, e ${Dinheiro.rs(valor)} volta ao saldo. As apostas com o comprovante anexado, esperando a " +
+    (if (apostas == 1) "1 aposta ainda não confirmada sai" else "$apostas apostas ainda não confirmadas saem") +
+        " do app, e ${Dinheiro.rs(valor)} volta ao saldo. As apostas com o comprovante da Caixa anexado, esperando a " +
         "conferência, e os rateios ficam."
 
 

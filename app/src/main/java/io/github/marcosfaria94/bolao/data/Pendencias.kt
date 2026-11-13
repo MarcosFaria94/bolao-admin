@@ -131,14 +131,14 @@ object Pendencias {
             )
         }
 
-        // Apostas registradas esperando o comprovante da Caixa (aba Comprovantes).
+        // Apostas registradas que falta confirmar (desde a 0.36; até a 0.35, esperando o comprovante da Caixa).
         Operacoes.apostasSemComprovante(e).forEach { a ->
             val registro = e.lancamentos.firstOrNull { it.apostaId == a.id && it.tipo == TipoLancamento.APOSTA }?.criadoEm ?: a.criadaEm
             val desde = instante(registro, fuso)
             lista += Pendencia(
                 "anexo-${a.id}", Pendencia.Tipo.ANEXO,
-                "Anexar o comprovante da Caixa",
-                "Aposta ${nome(a)}: sem o comprovante da Caixa conferido, a aposta não vale para o bolão.",
+                "Confirmar a aposta",
+                "Aposta ${nome(a)}: faça a aposta no site da Caixa e confirme; sem a confirmação, ela não vale para o bolão.",
                 desde, desde.plusMinutes(MINUTOS_ANEXO), ABA_COMPROVANTES,
                 modalidade = a.modalidade, concurso = a.concurso,
             )

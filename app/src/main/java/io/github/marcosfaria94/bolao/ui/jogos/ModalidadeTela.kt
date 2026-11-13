@@ -102,7 +102,6 @@ import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Indices
 import io.github.marcosfaria94.bolao.data.Operacoes
-import io.github.marcosfaria94.bolao.data.Pendencias
 import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.PremioDoConcurso
@@ -114,6 +113,7 @@ import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Probabilidades
 import io.github.marcosfaria94.bolao.ui.aposta.ApostaEmEdicao
 import io.github.marcosfaria94.bolao.ui.aposta.AvisoDoComprovante
+import io.github.marcosfaria94.bolao.ui.caixa.ROTA_CAIXA
 import io.github.marcosfaria94.bolao.ui.aposta.SecaoApostaRegistrada
 import io.github.marcosfaria94.bolao.ui.aposta.SecaoVolante
 import io.github.marcosfaria94.bolao.ui.aposta.novaAposta
@@ -155,8 +155,8 @@ import java.time.LocalDate
  * volante (com a apuração e os comprovantes); em andamento, ela é a do volante.
  *
  * Desde a 0.25, ao registrar a aposta do volante a página não vai para a aposta registrada: continua no
- * volante, vazio e no mesmo concurso, para mais apostas, e no alto fica o aviso do comprovante da Caixa
- * que falta ([AvisoDoComprovante]), com o botão que abre os Comprovantes.
+ * volante, vazio e no mesmo concurso, para mais apostas, e no alto fica o aviso das apostas que falta
+ * confirmar ([AvisoDoComprovante]), com o botão que leva à Caixa (desde a 0.36; antes, aos Comprovantes).
  * [detalhes]: abre direto nos Detalhes (segurar a modalidade em Jogos); aí o voltar sai da página.
  *
  * Desde a 0.27: no alto, a tarja da modalidade (como as da Caixa) com o concurso e a chance; no quadro do
@@ -247,7 +247,7 @@ fun ModalidadeTela(
     // Registrada (a aberta): a página mostra a aposta registrada.
     val registrada: Aposta? = aberta?.takeIf { daRegistrada }
     val aposta: Aposta = registrada ?: vm!!.aposta
-    // As apostas registradas nesta página que ainda esperam o comprovante da Caixa (o aviso do alto do volante).
+    // As apostas registradas nesta página que ainda não foram confirmadas (o aviso do alto do volante).
     val semComprovante = vm?.let { v ->
         val ids = v.registradasAqui.toSet()
         Operacoes.apostasSemComprovante(estado).filter { it.id in ids }
@@ -342,7 +342,7 @@ fun ModalidadeTela(
                             if (diferenca != 0) escopo.launch { rolagem.scrollBy(diferenca.toFloat()) }
                         },
                     ) {
-                        AvisoDoComprovante(semComprovante, aoAnexar = { abrir(Pendencias.ABA_COMPROVANTES) })
+                        AvisoDoComprovante(semComprovante, aoIrParaACaixa = { abrir(ROTA_CAIXA) })
                     }
                 } else if (alturaDoAviso != 0) {
                     LaunchedEffect(Unit) {

@@ -17,7 +17,6 @@ import io.github.marcosfaria94.bolao.ui.ajustes.GRUPO_FEEDBACK
 import io.github.marcosfaria94.bolao.ui.ajustes.SecaoAjuste
 import io.github.marcosfaria94.bolao.ui.ajustes.alternarLista
 import io.github.marcosfaria94.bolao.ui.ajustes.envolver
-import io.github.marcosfaria94.bolao.ui.caixa.GestoDaCaixa
 import io.github.marcosfaria94.bolao.ui.comum.trocaPorDeslize
 import io.github.marcosfaria94.bolao.ui.jogos.OrdemDaTabela
 import io.github.marcosfaria94.bolao.ui.jogos.nomeNaPremiacao
@@ -155,32 +154,7 @@ class Novidades032Test {
         assertNull(trocaPorDeslize(2, 5, dx = -20f, dy = 30f))
     }
 
-    @Test
-    fun gestoNaPaginaDaCaixa() {
-        val g = GestoDaCaixa(limite = 10f)
-        // Para os lados, com a página sem ter para onde rolar: troca de aba, e o arrasto vai para as abas.
-        g.inicio(100f, 300f)
-        assertEquals(0f, g.mover(105f, 302f) { false })
-        assertEquals(GestoDaCaixa.Modo.INDEFINIDO, g.modo)
-        assertEquals(0f, g.mover(80f, 303f) { false })
-        assertEquals(GestoDaCaixa.Modo.TROCA, g.modo)
-        assertEquals(-30f, g.mover(50f, 310f) { false })
-        g.fim()
-        // A página ampliada ainda rola para aquele lado: fica com a página.
-        g.inicio(100f, 300f)
-        g.mover(70f, 300f) { lado -> lado == 1 }
-        assertEquals(GestoDaCaixa.Modo.PAGINA, g.modo)
-        assertEquals(0f, g.mover(10f, 300f) { true })
-        // Para cima ou para baixo: a página rola.
-        g.inicio(100f, 300f)
-        g.mover(110f, 260f) { false }
-        assertEquals(GestoDaCaixa.Modo.PAGINA, g.modo)
-        // Dois dedos (ampliar): a página.
-        g.inicio(100f, 300f)
-        g.outroDedo()
-        g.mover(40f, 300f) { false }
-        assertEquals(GestoDaCaixa.Modo.PAGINA, g.modo)
-    }
+    // O gestoNaPaginaDaCaixa saiu na 0.36: a página da Caixa não troca mais de aba (o GestoDaCaixa foi apagado).
 
     @Test
     fun contatoComOLimiteDeCincoMinutos() {

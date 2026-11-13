@@ -41,7 +41,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Casino
-import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -96,6 +95,7 @@ import io.github.marcosfaria94.bolao.imagem.Recibos
 import io.github.marcosfaria94.bolao.net.CaixaApi
 import io.github.marcosfaria94.bolao.ui.comum.Animacoes
 import io.github.marcosfaria94.bolao.ui.comum.Aviso
+import io.github.marcosfaria94.bolao.ui.comum.Icones
 import io.github.marcosfaria94.bolao.ui.comum.CampoDinheiro
 import io.github.marcosfaria94.bolao.ui.comum.CampoInteiro
 import io.github.marcosfaria94.bolao.ui.comum.DialogoSimNao
@@ -317,8 +317,9 @@ private fun Aposta.com(d: DadosConcurso): Aposta = copy(
  * completo ([ficaEmAndamento]); senão é descartada (o aviso fica logo abaixo do "Completar"). Desde a
  * 0.22 não há mais o "Descartar rascunho": para descartar, é limpar o volante e sair.
  *
- * Desde a 0.10 o registro não pede o comprovante da Caixa: ele é anexado depois, na aba
- * Comprovantes (até a conferência, a aposta ainda pode ser descartada). Antes de registrar, o app
+ * Desde a 0.10 o registro não pede o comprovante da Caixa; desde a 0.36 ele nem é mais cobrado: a
+ * aposta é feita no site da Caixa e confirmada no app (até a confirmação, ela ainda pode ser
+ * descartada). Antes de registrar, o app
  * confere na Caixa se o concurso da aposta ainda é o que está recebendo apostas; se já foi
  * sorteado, a aposta passa para o próximo.
  *
@@ -628,16 +629,7 @@ fun SecaoVolante(
     }
     if (completo) pendencias.firstOrNull()?.let { Aviso(it, alerta = true) }
     if (pronta && !individual && bloqueio == null) {
-        Aviso(
-            if (apostas > 1) {
-                "Registre as apostas e faça o jogo no app Loterias CAIXA com estes números" +
-                    (if (comEspelho) ", marcando a Aposta espelho" else "") +
-                    (if (concursos > 1) ", com a teimosinha de $concursos concursos" else "") +
-                    ". Depois, anexe " + (if (comEspelho) "os comprovantes" else "o comprovante") + " da Caixa na aba Comprovantes."
-            } else {
-                "Registre a aposta e faça o jogo no app Loterias CAIXA com estes números. Depois, anexe o comprovante da Caixa na aba Comprovantes."
-            },
-        )
+        Aviso(textoDoVolantePronto(apostas, comEspelho, concursos))
     }
     if (conferindo) {
         Text(
@@ -657,7 +649,8 @@ fun SecaoVolante(
             estado,
             titulo,
             aoFechar = { vendo = false },
-            previa = Recibos.previa(estado, TipoComprovante.APOSTA, Operacoes.textoAposta(estado, r, hoje), 1),
+            // Desde a 0.36 o comprovante da Caixa não vai mais junto (é opcional): a prévia sem o anexo.
+            previa = Recibos.previa(estado, TipoComprovante.APOSTA, Operacoes.textoAposta(estado, r, hoje), 0),
             anexos = emptyList(),
         )
     }
@@ -681,11 +674,11 @@ fun SecaoVolante(
         val explicacao = if (individual) {
             "Desconta ${Dinheiro.rs(total)} do saldo. Dá para excluir " + (if (varias) "as apostas" else "a aposta") + " depois."
         } else if (varias) {
-            "Desconta ${Dinheiro.rs(total)} do saldo. Depois, anexe " + (if (comEspelho) "os comprovantes" else "o comprovante") +
-                " da Caixa na aba Comprovantes: até a conferência, as apostas ainda podem ser descartadas."
+            "Desconta ${Dinheiro.rs(total)} do saldo. Depois, faça as apostas no site da Caixa (botão Caixa, \"Transcrever\") " +
+                "e confirme: até a confirmação, elas ainda podem ser descartadas."
         } else {
-            "Desconta ${Dinheiro.rs(r.valor)} do saldo. Depois, anexe o comprovante da Caixa na aba Comprovantes: " +
-                "até a conferência dele, a aposta ainda pode ser descartada."
+            "Desconta ${Dinheiro.rs(r.valor)} do saldo. Depois, faça a aposta no site da Caixa (botão Caixa, \"Transcrever\") " +
+                "e confirme: até a confirmação, ela ainda pode ser descartada."
         }
         DialogoSimNao(
             titulo = if (varias) "Deseja registrar as apostas?" else "Deseja registrar aposta?",
@@ -701,31 +694,42 @@ fun SecaoVolante(
 
 /**
  * O aviso do alto do volante depois do registro (desde a 0.25): as apostas registradas na página que ainda
- * esperam o comprovante da Caixa e o botão que abre os Comprovantes.
+ * não foram confirmadas e (desde a 0.36; até a 0.35, o "Anexar comprovantes") o botão que leva à Caixa.
  */
 @Composable
-fun AvisoDoComprovante(apostas: List<Aposta>, aoAnexar: () -> Unit) {
+fun AvisoDoComprovante(apostas: List<Aposta>, aoIrParaACaixa: () -> Unit) {
     if (apostas.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Aviso(textoFaltaComprovante(apostas.map { it.numero }), alerta = true)
-        OutlinedButton(onClick = aoAnexar, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
+        OutlinedButton(onClick = aoIrParaACaixa, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icones.TrevoDaCaixa, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text(ANEXAR_COMPROVANTES)
+            Text(IR_PARA_A_CAIXA)
         }
     }
 }
 
-/** O botão do aviso do comprovante que falta: abre os Comprovantes. */
-const val ANEXAR_COMPROVANTES = "Anexar comprovantes"
-
-/** "Falta o comprovante da Caixa da aposta Nº3." (ou "das apostas Nº3, Nº4 e Nº5"), com o que fazer. */
+/**
+ * "Falta confirmar a aposta Nº3." (ou "as apostas Nº3, Nº4 e Nº5"), com o que fazer (desde a 0.36; até a 0.35,
+ * "Falta o comprovante da Caixa...").
+ */
 fun textoFaltaComprovante(numeros: List<Int>): String {
     val lista = numeros.sorted().map { "Nº$it" }
-    val quais = if (lista.size == 1) "da aposta ${lista[0]}" else "das apostas " + lista.dropLast(1).joinToString(", ") + " e " + lista.last()
-    val valer = if (lista.size == 1) "ela valer" else "elas valerem"
-    return "Falta o comprovante da Caixa $quais. Anexe em Comprovantes para $valer no bolão."
+    val quais = if (lista.size == 1) "a aposta ${lista[0]}" else "as apostas " + lista.dropLast(1).joinToString(", ") + " e " + lista.last()
+    val fazer = if (lista.size == 1) "faça a aposta" else "faça as apostas"
+    return "Falta confirmar $quais: $fazer no site da Caixa (\"Transcrever\") e confirme depois de pagar."
 }
+
+/** O aviso do volante pronto, no bolão: registrar, fazer o jogo no site da Caixa e confirmar (desde a 0.36). */
+fun textoDoVolantePronto(apostas: Int, comEspelho: Boolean, concursos: Int): String =
+    if (apostas > 1) {
+        "Registre as apostas e faça o jogo no site da Caixa (botão Caixa, \"Transcrever\")" +
+            (if (comEspelho) ", com a Aposta espelho" else "") +
+            (if (concursos > 1) ", com a teimosinha de $concursos concursos" else "") +
+            ". Depois de pagar, confirme."
+    } else {
+        "Registre a aposta e faça o jogo no site da Caixa (botão Caixa, \"Transcrever\"). Depois de pagar, confirme."
+    }
 
 /** O botão do volante pronto: "Registrar aposta" ou, com a espelho ou a teimosinha, "Registrar 4 apostas". */
 fun textoRegistrar(apostas: Int): String = if (apostas > 1) "Registrar $apostas apostas" else "Registrar aposta"
@@ -815,10 +819,11 @@ fun mensagemDoRegistro(feitas: List<Aposta>, individual: Boolean): String {
         else -> "Apostas Nº${feitas.minOf { it.numero }} a Nº${feitas.maxOf { it.numero }} registradas" +
             (if (teimosinha) " (teimosinha de ${primeira.teimosinha} concursos)" else "") + "."
     }
+    // Desde a 0.36, o lembrete de fazer o jogo na Caixa e confirmar (até a 0.35, anexar o comprovante da Caixa).
     val lembrete = when {
         individual -> ""
-        feitas.size == 2 && espelho -> " Anexe os comprovantes da Caixa na aba Comprovantes."
-        else -> " Anexe o comprovante da Caixa na aba Comprovantes."
+        feitas.size == 1 -> " Faça a aposta na Caixa e confirme."
+        else -> " Faça as apostas na Caixa e confirme."
     }
     return texto + lembrete
 }

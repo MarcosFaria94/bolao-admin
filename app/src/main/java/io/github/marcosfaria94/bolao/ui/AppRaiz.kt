@@ -123,15 +123,14 @@ import io.github.marcosfaria94.bolao.ui.cadastro.CadastroTela
 import io.github.marcosfaria94.bolao.ui.caixa.CaixaTela
 import io.github.marcosfaria94.bolao.ui.caixa.NavegadorDaCaixa
 import io.github.marcosfaria94.bolao.ui.caixa.PaginaFixaDaCaixa
-import io.github.marcosfaria94.bolao.ui.caixa.posicaoDaAba
 import io.github.marcosfaria94.bolao.ui.caixa.ROTA_CAIXA
 import io.github.marcosfaria94.bolao.ui.caixa.ROTULO_CAIXA
 import io.github.marcosfaria94.bolao.ui.caixa.TITULO_CAIXA
 import io.github.marcosfaria94.bolao.ui.caixa.tecladoAberto
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.SideEffect
-import io.github.marcosfaria94.bolao.ui.comum.LIMIAR_DA_PAGINA
+import androidx.compose.foundation.background
+import androidx.compose.ui.input.pointer.pointerInput
 import io.github.marcosfaria94.bolao.ui.comprovantes.ComprovantesTela
 import io.github.marcosfaria94.bolao.ui.comum.BarraTitulo
 import io.github.marcosfaria94.bolao.ui.comum.ComprovanteTela
@@ -162,9 +161,10 @@ import java.time.LocalDateTime
 import java.time.YearMonth
 
 /**
- * As páginas que se trocam deslizando o dedo (as abas da barra de baixo): as mesmas nos dois modos. Desde a 0.32 a
- * Caixa é a terceira (pedido do usuário; na 0.31 era um botão à parte, depois dos Ajustes, que abria por cima das
- * abas e não girava com elas). [titulo]: o da barra de cima (a Caixa diz "Loterias Caixa").
+ * As abas da barra de baixo, nesta ordem: as mesmas nos dois modos. Desde a 0.32 a Caixa é a terceira (pedido do
+ * usuário; na 0.31 era um botão depois dos Ajustes). Desde a 0.36 a Caixa não gira com as outras ([ABAS_QUE_GIRAM]):
+ * abre só tocando no botão, por cima das abas, e deslizar o dedo nela fica todo com o site. [titulo]: o da barra de
+ * cima (a Caixa diz "Loterias Caixa").
  */
 private enum class Aba(val rota: String, val rotulo: String, val icone: ImageVector, val iconeEscolhido: ImageVector, val titulo: String = rotulo) {
     HOME("home", "Home", Icons.Outlined.Home, Icons.Filled.Home),
@@ -181,12 +181,18 @@ private enum class Aba(val rota: String, val rotulo: String, val icone: ImageVec
  */
 private const val VOLTAS_DAS_ABAS = 1000
 
-private fun abaDa(pagina: Int): Aba = Aba.entries[pagina.mod(Aba.entries.size)]
+/**
+ * As abas que se trocam deslizando o dedo (desde a 0.36 sem a Caixa: dos Jogos o dedo vai direto aos Ajustes e dos
+ * Ajustes, direto aos Jogos; de 0.32 a 0.35 a Caixa ficava entre eles e o deslize na página do site trocava de aba).
+ */
+private val ABAS_QUE_GIRAM = listOf(Aba.HOME, Aba.JOGOS, Aba.AJUSTES)
 
-/** A página da aba [aba] mais perto da página [atual] (sem dar a volta inteira). */
+private fun abaDa(pagina: Int): Aba = ABAS_QUE_GIRAM[pagina.mod(ABAS_QUE_GIRAM.size)]
+
+/** A página da aba [aba] (uma das que giram) mais perto da página [atual] (sem dar a volta inteira). */
 private fun paginaDa(aba: Aba, atual: Int): Int {
-    val n = Aba.entries.size
-    val d = (aba.ordinal - atual.mod(n)).mod(n)
+    val n = ABAS_QUE_GIRAM.size
+    val d = (ABAS_QUE_GIRAM.indexOf(aba).coerceAtLeast(0) - atual.mod(n)).mod(n)
     return atual + if (d > n / 2) d - n else d
 }
 
@@ -329,9 +335,17 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     LaunchedEffect(itens) { atualizarConcursos(ctx, itens) }
 
     val abas = Aba.entries
-    val paginas = rememberPagerState(initialPage = abas.size * VOLTAS_DAS_ABAS + abaInicial.ordinal) { abas.size * VOLTAS_DAS_ABAS * 2 }
-    /** Vai para a aba [aba] na hora (sem animação), pelo caminho mais curto. */
-    suspend fun mostrar(aba: Aba) = paginas.scrollToPage(paginaDa(aba, paginas.currentPage))
+    val giram = ABAS_QUE_GIRAM
+    // Atrás da Caixa (que abre por cima das abas, desde a 0.36), os Jogos.
+    val inicialQueGira = if (abaInicial in giram) abaInicial else Aba.JOGOS
+    val paginas = rememberPagerState(initialPage = giram.size * VOLTAS_DAS_ABAS + giram.indexOf(inicialQueGira)) { giram.size * VOLTAS_DAS_ABAS * 2 }
+    // A tela da Caixa aberta (desde a 0.36 ela não é uma página do pager: abre por cima das abas, tocando no botão).
+    var caixaAberta by rememberSaveable { mutableStateOf(abaInicial == Aba.CAIXA) }
+    /** Vai para a aba [aba] na hora (sem animação), pelo caminho mais curto; a Caixa abre por cima das outras. */
+    suspend fun mostrar(aba: Aba) {
+        caixaAberta = aba == Aba.CAIXA
+        if (aba != Aba.CAIXA) paginas.scrollToPage(paginaDa(aba, paginas.currentPage))
+    }
     val barra = remember { BarraDaTela() }
     // A página da Caixa (desde a 0.31): o mesmo navegador enquanto a sessão está aberta (voltar à tela da Caixa
     // encontra a página onde estava, com a conta aberta); fecha ao trocar de sessão.
@@ -339,29 +353,6 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     DisposableEffect(caixa) { onDispose { caixa.destruir() } }
     // Tocar na aba em que já se está: a lista dela volta ao começo (um contador por aba).
     val toques = remember { mutableStateListOf(*Array(Aba.entries.size) { 0 }) }
-    // Deslizar o dedo para os lados na página da Caixa (desde a 0.32): a página passa o arrasto e as abas andam junto,
-    // como num deslize em qualquer outra aba; ao soltar, vão para a aba vizinha (passou da fração, ou foi rápido) ou
-    // voltam.
-    val inicioDaTroca = remember { intArrayOf(0) }
-    SideEffect {
-        caixa.aoComecarTroca = { inicioDaTroca[0] = paginas.currentPage }
-        caixa.aoArrastar = { dx -> paginas.dispatchRawDelta(-dx) }
-        caixa.aoSoltar = { vx ->
-            escopo.launch {
-                val inicio = inicioDaTroca[0]
-                val andado = paginas.currentPage + paginas.currentPageOffsetFraction - inicio
-                val alvo = when {
-                    vx < -VELOCIDADE_DA_TROCA -> inicio + 1
-                    vx > VELOCIDADE_DA_TROCA -> inicio - 1
-                    andado > LIMIAR_DA_PAGINA -> inicio + 1
-                    andado < -LIMIAR_DA_PAGINA -> inicio - 1
-                    else -> inicio
-                }
-                paginas.animateScrollToPage(alvo)
-            }
-        }
-    }
-
     /** Vai para a aba [aba], fechando o que estiver aberto por cima. */
     fun irParaAba(aba: Aba) {
         if (nav.currentBackStackEntry?.destination?.route != ROTA_ABAS) nav.popBackStack(ROTA_ABAS, inclusive = false)
@@ -425,9 +416,10 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
     val entrada by nav.currentBackStackEntryAsState()
     val rota = entrada?.destination?.route ?: ROTA_ABAS
     val ehAba = rota == ROTA_ABAS
-    val abaAtual = abaDa(paginas.currentPage)
-    // A aba da Caixa (desde a 0.32 uma aba; na 0.31, uma tela por cima delas): com o teclado aberto, a barra de baixo some.
-    val naCaixa = ehAba && abaAtual == Aba.CAIXA
+    val abaAtual = if (caixaAberta) Aba.CAIXA else abaDa(paginas.currentPage)
+    // A tela da Caixa (desde a 0.36 por cima das abas, como na 0.31; de 0.32 a 0.35, uma página entre os Jogos e os
+    // Ajustes): com o teclado aberto, a barra de baixo some.
+    val naCaixa = ehAba && caixaAberta
     val tecladoNaCaixa = naCaixa && tecladoAberto()
     // A ação que a tela de cima pôs na barra (o "Detalhes →" da página do jogo).
     val acao = barra.acao?.takeIf { !ehAba && it.dono === entrada }
@@ -457,11 +449,11 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
 
     // A rolagem da Home recomeça quando se vai para outra aba.
     var visitaDaHome by rememberSaveable { mutableIntStateOf(0) }
-    LaunchedEffect(paginas.currentPage) { if (abaAtual != Aba.HOME) visitaDaHome++ }
+    LaunchedEffect(paginas.currentPage, caixaAberta) { if (abaAtual != Aba.HOME) visitaDaHome++ }
 
     // Toda vez que se entra nos Jogos (pela barra, deslizando ou voltando de um jogo): a agenda dos sorteios
     // decide se precisa consultar a Caixa (desde a 0.20, os dados valem até o próximo sorteio).
-    val abaAssentada = abaDa(paginas.settledPage)
+    val abaAssentada = if (caixaAberta) Aba.CAIXA else abaDa(paginas.settledPage)
     LaunchedEffect(ehAba, abaAssentada) { if (ehAba && abaAssentada == Aba.JOGOS) ctx.bolao.indices.atualizarAoEntrar() }
     LaunchedEffect(abaAssentada) { aoMudarDeAba(abaAssentada) }
 
@@ -596,7 +588,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             popEnterTransition = { EnterTransition.None },
             popExitTransition = { ExitTransition.None },
         ) {
-            // As abas: Home, Jogos, Caixa e Ajustes, uma do lado da outra (deslizar o dedo troca de aba).
+            // As abas: Home, Jogos e Ajustes, uma do lado da outra (deslizar o dedo troca de aba), e a Caixa por cima delas.
             composable(ROTA_ABAS) {
                 // O voltar do celular numa página que não é a Home volta para a Home; na Caixa, antes, as páginas de
                 // antes do site.
@@ -606,10 +598,13 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                 // Puxar qualquer aba para baixo (do alto da lista) abre o Painel de Jogos (até a 0.16, as
                 // Notificações). Para os lados, as abas giram (da Home para a direita, os Ajustes).
                 val puxaoVertical = rememberPuxaoAlemDaBorda(vertical = true, noInicio = { abrirPainel() })
+                Box(Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxSize().nestedScroll(puxaoVertical)) {
                     HorizontalPager(
                         state = paginas,
                         flingBehavior = soltarDasPaginas(paginas),
+                        // Com a Caixa aberta por cima, as abas de baixo ficam paradas.
+                        userScrollEnabled = !caixaAberta,
                         modifier = Modifier
                             .fillMaxSize()
                             .acompanharPuxao(puxaoVertical),
@@ -628,15 +623,29 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                                 abrirIndices = { abrir(ROTA_INDICES) },
                                 abrirEspecial = { esp, detalhes -> abrir("especial/${esp.modalidade.name}/${esp.concurso}?detalhes=$detalhes") },
                             )
-                            // A página da Caixa (desde a 0.32 uma aba): o site usa os dedos; para os lados, troca de aba.
-                            Aba.CAIXA -> CaixaTela(estado, caixa)
                             Aba.AJUSTES -> AjustesTela(estado, atualizacao, abrir = ::abrir, paraOTopo = toques[aba.ordinal])
+                            // A Caixa não é uma página do pager (desde a 0.36): abre por cima, logo abaixo.
+                            Aba.CAIXA -> Unit
                         }
                     }
                     IndicadorDoPuxao(
                         puxaoVertical, puxando = "Painel de Jogos", pronto = "Painel de Jogos", icone = Icones.Painel,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp),
                     )
+                }
+                // A tela da Caixa, por cima das abas (desde a 0.36): a página do site fica na camada fixa
+                // (PaginaFixaDaCaixa), no lugar que a tela reserva. O fundo segura os toques: com um pointerInput, o
+                // toque fica nela e não chega às abas de baixo (sem consumir nada, para não cancelar os botões da faixa).
+                if (caixaAberta) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background)
+                            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
+                    ) {
+                        CaixaTela(estado, caixa)
+                    }
+                }
                 }
             }
             // Todas as telas por cima das abas voltam puxando para baixo (do alto da lista): o aviso diz
@@ -764,11 +773,9 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                 TelaDeCima(nav, e) { PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty(), ::abrir) { fechar(nav, e) } }
             }
         }
-        // A página da Caixa congelada (desde a 0.33): o site numa camada por cima das abas, presa à janela, andando junto
-        // com as abas (a aba da Caixa só reserva o lugar); fora da aba, ou com outra tela por cima, fica de lado.
-        PaginaFixaDaCaixa(caixa) {
-            if (!ehAba) null else posicaoDaAba(paginas.currentPage + paginas.currentPageOffsetFraction, abas.size) { abaDa(it) == Aba.CAIXA }
-        }
+        // A página da Caixa congelada (desde a 0.33): o site numa camada por cima das abas, presa à janela (a tela da Caixa
+        // só reserva o lugar); com a Caixa fechada, ou com outra tela por cima, fica de lado.
+        PaginaFixaDaCaixa(caixa) { if (ehAba && caixaAberta) 0f else null }
         // Os avisos no alto da tela (desde a 0.29).
         SnackbarHost(LocalAvisos.current, Modifier.align(Alignment.TopCenter))
         }
@@ -847,9 +854,6 @@ private fun PaginaDaAposta(estado: Estado, id: String, abrir: (String) -> Unit, 
 
 /** Tamanho dos ícones da barra de baixo (as 4 abas, com a Caixa; o padrão é 24dp). */
 private val ICONE_DA_ABA = 31.dp
-
-/** A velocidade (px/s) de um deslize rápido na página da Caixa que já troca de aba ao soltar. */
-private const val VELOCIDADE_DA_TROCA = 900f
 
 /** Tamanho do ícone do Painel de Jogos na barra de cima (até a 0.17, a bola de 38dp; até a 0.16, um bilhete e o sino). */
 private val TAMANHO_DO_ICONE = 38.dp

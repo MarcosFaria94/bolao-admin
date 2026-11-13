@@ -205,7 +205,7 @@ fun tituloDoMovimento(e: Estado, mv: Movimento): String {
 /** Cor da etiqueta da situação. */
 enum class TomEtiqueta { NEUTRO, AZUL, LARANJA, OURO, VERMELHO, ROXO }
 
-/** A etiqueta da situação de um item ("Sorteio hoje", "Não premiada", "Mensal", "Sem comprovante"...). */
+/** A etiqueta da situação de um item ("Sorteio hoje", "Não premiada", "Mensal", "A confirmar"...). */
 data class Etiqueta(val texto: String, val tom: TomEtiqueta)
 
 /**
@@ -221,7 +221,8 @@ fun etiquetaDoMovimento(e: Estado, mv: Movimento, hoje: LocalDate): Etiqueta? {
         TipoLancamento.APOSTA -> {
             val a = l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } } ?: return null
             when {
-                Operacoes.aguardandoComprovante(a) -> Etiqueta("Sem comprovante", TomEtiqueta.VERMELHO)
+                // Desde a 0.36, "A confirmar" (até a 0.35, "Sem comprovante").
+                Operacoes.aguardandoComprovante(a) -> Etiqueta("A confirmar", TomEtiqueta.VERMELHO)
                 Operacoes.aguardandoConferencia(a) -> Etiqueta("A conferir", TomEtiqueta.ROXO)
                 else -> {
                     val s = situacaoDe(a, hoje)

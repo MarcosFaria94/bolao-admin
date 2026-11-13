@@ -14,7 +14,6 @@ import io.github.marcosfaria94.bolao.domain.indices.ResultadoK
 import io.github.marcosfaria94.bolao.net.CaixaParser
 import io.github.marcosfaria94.bolao.ui.ajustes.GRUPO_FEEDBACK
 import io.github.marcosfaria94.bolao.ui.ajustes.SecaoAjuste
-import io.github.marcosfaria94.bolao.ui.caixa.posicaoDaAba
 import io.github.marcosfaria94.bolao.ui.jogos.IR_AO_CONCURSO
 import io.github.marcosfaria94.bolao.ui.jogos.ROTULO_DO_CONCURSO
 import io.github.marcosfaria94.bolao.ui.jogos.SEM_INDICES_NO_ESPECIAL
@@ -221,19 +220,6 @@ class Novidades033Test {
         // O último grupo dos Ajustes se chama FEEDBACK (era APOIO).
         assertEquals("FEEDBACK", GRUPO_FEEDBACK)
         for (individual in listOf(false, true)) assertEquals(GRUPO_FEEDBACK, SecaoAjuste.grupos(individual).last().first)
-        // A página da Caixa congelada anda com as abas (Home, Jogos, Caixa, Ajustes, girando): a aba da Caixa está nas
-        // páginas 2, 6, 10...
-        val caixa = { k: Int -> k.mod(4) == 2 }
-        assertEquals(0f, posicaoDaAba(6f, 4, caixa)!!, 1e-6f)
-        // A caminho dos Ajustes (da Caixa para a direita): saindo pela esquerda.
-        assertEquals(-0.25f, posicaoDaAba(6.25f, 4, caixa)!!, 1e-6f)
-        // Dos Jogos para a Caixa: entrando pela direita.
-        assertEquals(0.4f, posicaoDaAba(5.6f, 4, caixa)!!, 1e-6f)
-        // Na Home, nos Jogos e nos Ajustes assentados: fora da tela.
-        assertNull(posicaoDaAba(4f, 4, caixa))
-        assertNull(posicaoDaAba(5f, 4, caixa))
-        assertNull(posicaoDaAba(7f, 4, caixa))
-        // Dos Ajustes para a Home, a Caixa da volta seguinte (página 10) continua longe.
-        assertNull(posicaoDaAba(7.9f, 4, caixa))
+        // A posição da página da Caixa congelada no pager (posicaoDaAba) saiu na 0.36: a Caixa abre por cima das abas.
     }
 }

@@ -10,9 +10,6 @@ import android.net.Uri
 import android.os.Environment
 import android.util.Base64
 import android.view.ViewGroup
-import kotlin.math.abs
-import android.view.ViewConfiguration
-import android.view.VelocityTracker
 import android.view.MotionEvent
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
@@ -80,6 +77,14 @@ import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.domain.Especiais
 import io.github.marcosfaria94.bolao.domain.Transcricao
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.ui.platform.LocalContext
+import io.github.marcosfaria94.bolao.ui.comum.CONFIRMAR
+import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
+import io.github.marcosfaria94.bolao.ui.comum.confirmarApostas
+import io.github.marcosfaria94.bolao.ui.comum.mensagemDaConfirmacao
+import io.github.marcosfaria94.bolao.ui.comum.textoDaConfirmacao
+import io.github.marcosfaria94.bolao.ui.comum.tituloDaConfirmacao
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -92,8 +97,9 @@ import kotlin.coroutines.resume
 
 /**
  * A tela da Caixa (desde a 0.31): o Loterias Online da Caixa dentro do app, pelo botão do trevo na barra de baixo.
- * Desde a 0.32 é a terceira aba (Home, Jogos, Caixa, Ajustes), que também se troca deslizando o dedo; "caixa" é o
- * endereço dela (abrir("caixa") vai para a aba).
+ * Desde a 0.32 fica em terceiro na barra (Home, Jogos, Caixa, Ajustes); "caixa" é o endereço dela (abrir("caixa") vai
+ * para ela). Desde a 0.36 ela abre só pelo botão: deslizar o dedo fica todo com o site (de 0.32 a 0.35, deslizar para
+ * os lados na página trocava de aba e atrapalhava o site) e, nas abas, dos Jogos o dedo vai direto aos Ajustes.
  */
 const val ROTA_CAIXA = "caixa"
 
@@ -149,16 +155,13 @@ class NavegadorDaCaixa(private val contexto: Context) {
     /** As apostas que já foram para o carrinho do site (pelos ids). */
     val transcritas = mutableStateListOf<String>()
 
-    /**
-     * Deslizar o dedo para os lados na página troca de aba (desde a 0.32, como nas outras abas): a página avisa o
-     * começo da troca, quanto o dedo andou (px, positivo = para a direita) e a velocidade ao soltar (px/s), e a raiz
-     * do app leva as abas junto ([PaginaDaCaixa], [GestoDaCaixa]).
-     */
-    var aoComecarTroca: (() -> Unit)? = null
-    var aoArrastar: ((Float) -> Unit)? = null
-    var aoSoltar: ((Float) -> Unit)? = null
-
     private var web: WebView? = null
+
+    /** O endereço que não abriu (para o "Tentar de novo" ir nele, e não recarregar a página de antes). */
+    private var falhou: String? = null
+
+    /** Quantas vezes seguidas um endereço http:// virou https:// (desde a 0.36; para não ficar indo e voltando). */
+    private var trocasParaHttps = 0
 
     /** O script do "Transcrever" (assets/caixa/transcrever.js). */
     private val script: String by lazy { contexto.assets.open("caixa/transcrever.js").bufferedReader().use { it.readText() } }
@@ -187,10 +190,31 @@ class NavegadorDaCaixa(private val contexto: Context) {
         return true
     }
 
+    /**
+     * O "Recarregar a página" da barra de cima e o "Tentar de novo" do aviso de erro. Desde a 0.36, depois de um erro,
+     * vai de novo no endereço que não abriu (com https:// no lugar de http://); até a 0.35 recarregava a página, que
+     * podia ser o próprio endereço bloqueado (net::ERR_CLEARTEXT_NOT_PERMITTED), e o erro só saía reiniciando o app.
+     */
     fun recarregar() {
         erro = null
+        trocasParaHttps = 0
         val w = web ?: return
-        if (w.url.isNullOrBlank()) w.loadUrl(Transcricao.ENDERECO) else w.reload()
+        val alvo = falhou ?: w.url
+        falhou = null
+        when {
+            alvo.isNullOrBlank() || !alvo.startsWith("http", ignoreCase = true) -> w.loadUrl(Transcricao.ENDERECO)
+            enderecoSeguro(alvo) != null -> w.loadUrl(enderecoSeguro(alvo)!!)
+            alvo == w.url -> w.reload()
+            else -> w.loadUrl(alvo)
+        }
+    }
+
+    /** A página inicial do site (o botão do aviso de erro, desde a 0.36): sai de qualquer página que não abre. */
+    fun paginaInicial() {
+        erro = null
+        falhou = null
+        trocasParaHttps = 0
+        web?.loadUrl(Transcricao.ENDERECO)
     }
 
     /** Tocar no botão da Caixa já na tela da Caixa: a página volta ao começo (como as listas das abas). */
@@ -199,7 +223,7 @@ class NavegadorDaCaixa(private val contexto: Context) {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun criar(tela: Context): WebView = PaginaDaCaixa(tela, this).apply {
+    private fun criar(tela: Context): WebView = PaginaDaCaixa(tela).apply {
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -236,7 +260,16 @@ class NavegadorDaCaixa(private val contexto: Context) {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val uri = request.url
             return when (uri.scheme?.lowercase()) {
-                "http", "https" -> false
+                "https" -> false
+                // Desde a 0.36: um link (ou redirecionamento) para http:// vai pelo https:// (o Android não abre
+                // endereço sem cadeado: dava net::ERR_CLEARTEXT_NOT_PERMITTED).
+                "http" -> {
+                    val seguro = enderecoSeguro(uri.toString())
+                    if (seguro == null || trocasParaHttps >= LIMITE_DE_TROCAS) return false
+                    trocasParaHttps++
+                    view.post { view.loadUrl(seguro) }
+                    true
+                }
                 // Pagamento (Pix, app do banco), telefone, e-mail...: o app de fora.
                 else -> {
                     abrirFora(view, uri.toString())
@@ -256,11 +289,22 @@ class NavegadorDaCaixa(private val contexto: Context) {
 
         override fun onPageFinished(view: WebView, url: String?) {
             endereco = url
+            if (erro == null && url?.startsWith("https://") == true) trocasParaHttps = 0
             runCatching { CookieManager.getInstance().flush() }
         }
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-            if (request.isForMainFrame) erro = "O site da Caixa não abriu (${error.description})."
+            if (!request.isForMainFrame) return
+            val url = request.url.toString()
+            // Uma página http:// que escapou (ex.: um formulário): vai de novo, pelo https:// (desde a 0.36).
+            val seguro = enderecoSeguro(url)
+            if (seguro != null && trocasParaHttps < LIMITE_DE_TROCAS) {
+                trocasParaHttps++
+                view.post { view.loadUrl(seguro) }
+                return
+            }
+            falhou = url
+            erro = "O site da Caixa não abriu (${error.description})."
         }
     }
 
@@ -357,151 +401,24 @@ class NavegadorDaCaixa(private val contexto: Context) {
 }
 
 /**
- * Quem fica com o dedo na página da Caixa (desde a 0.32): a página do site (rolar, tocar, ampliar) ou as abas
- * (deslizar para os lados troca de aba). Decide no começo do arrasto, passado o [limite] (px): para os lados (bem
- * mais do que para cima ou para baixo) e com a página sem ter para onde rolar daquele lado, as abas; senão, a página.
- * Com dois dedos (ampliar), sempre a página. Só números: as contas ficam testáveis sem o Android.
- */
-class GestoDaCaixa(private val limite: Float) {
-    enum class Modo { INDEFINIDO, PAGINA, TROCA }
-
-    var modo: Modo = Modo.INDEFINIDO
-        private set
-
-    private var x0 = 0f
-    private var y0 = 0f
-    private var ultimoX = 0f
-
-    /** O dedo encostou em ([x], [y]) (na tela). */
-    fun inicio(x: Float, y: Float) {
-        modo = Modo.INDEFINIDO
-        x0 = x
-        y0 = y
-        ultimoX = x
-    }
-
-    /** Um segundo dedo (ampliar a página): o gesto é da página. */
-    fun outroDedo() {
-        if (modo == Modo.INDEFINIDO) modo = Modo.PAGINA
-    }
-
-    /**
-     * O dedo andou até ([x], [y]). [podeRolar] diz se a página ainda rola para aquele lado (1 = mostrar mais à
-     * direita, quando o dedo vai para a esquerda; -1 = à esquerda). Devolve quanto as abas andam (px; 0 fora da troca).
-     */
-    fun mover(x: Float, y: Float, podeRolar: (Int) -> Boolean): Float {
-        if (modo == Modo.INDEFINIDO) {
-            val dx = x - x0
-            val dy = y - y0
-            if (abs(dx) <= limite && abs(dy) <= limite) return 0f
-            val paraOsLados = abs(dx) > abs(dy) * DOMINIO_DO_LADO
-            modo = if (paraOsLados && !podeRolar(if (dx < 0) 1 else -1)) Modo.TROCA else Modo.PAGINA
-            ultimoX = x
-            return 0f
-        }
-        if (modo != Modo.TROCA) return 0f
-        val d = x - ultimoX
-        ultimoX = x
-        return d
-    }
-
-    /** O dedo saiu (ou o gesto foi cancelado). */
-    fun fim() {
-        modo = Modo.INDEFINIDO
-    }
-
-    private companion object {
-        /** Para os lados quer dizer bem mais para os lados do que para cima ou para baixo. */
-        const val DOMINIO_DO_LADO = 1.5f
-    }
-}
-
-/**
- * A página do site (desde a 0.32): o WebView que divide o dedo com as abas ([GestoDaCaixa]). As abas não pegam o
- * gesto sozinhas (a página pede isso a cada toque): quando é uma troca de aba, a página cancela o gesto dela e passa o
- * arrasto e a velocidade para o [navegador].
+ * A página do site: um WebView que fica com o dedo todo (desde a 0.36; de 0.32 a 0.35 ele dividia o dedo com as abas e
+ * deslizar para os lados trocava de aba). Nada por cima dela pega o arrasto: rolar, tocar e ampliar são do site.
  */
 @SuppressLint("ViewConstructor", "ClickableViewAccessibility")
-private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorDaCaixa) : WebView(contexto) {
-    private val gesto = GestoDaCaixa(ViewConfiguration.get(contexto).scaledTouchSlop.toFloat())
-    private var rastreador: VelocityTracker? = null
-    private val lugar = IntArray(2)
-
-    /**
-     * O toque na tela (desde a 0.33: a posição da página agora + o toque nela; a página anda junto com as abas durante
-     * a troca, então a posição dentro dela não serve; o "raw" do Android dá o mesmo, mas não em todo lugar).
-     */
-    private fun naTela(e: MotionEvent): Pair<Float, Float> {
-        getLocationOnScreen(lugar)
-        return e.x + lugar[0] to e.y + lugar[1]
-    }
-
-    private fun soltarRastreador() {
-        rastreador?.recycle()
-        rastreador = null
-    }
-
+private class PaginaDaCaixa(contexto: Context) : WebView(contexto) {
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        val acao = e.actionMasked
-        val (tx, ty) = naTela(e)
-        if (acao == MotionEvent.ACTION_DOWN) {
-            gesto.inicio(tx, ty)
-            // As abas não ficam com o arrasto por conta própria: quem decide é o gesto, aqui.
-            parent?.requestDisallowInterceptTouchEvent(true)
-            soltarRastreador()
-            rastreador = VelocityTracker.obtain()
-        } else if (acao == MotionEvent.ACTION_POINTER_DOWN) {
-            gesto.outroDedo()
-        }
-        // A velocidade pela posição na tela (a página anda junto com as abas durante a troca).
-        rastreador?.let { r ->
-            val c = MotionEvent.obtain(e)
-            c.setLocation(tx, ty)
-            r.addMovement(c)
-            c.recycle()
-        }
-        val antes = gesto.modo
-        if (acao == MotionEvent.ACTION_MOVE && e.pointerCount == 1) {
-            val d = gesto.mover(tx, ty) { lado -> runCatching { canScrollHorizontally(lado) }.getOrDefault(false) }
-            if (gesto.modo == GestoDaCaixa.Modo.TROCA) {
-                if (antes != GestoDaCaixa.Modo.TROCA) {
-                    // A página esquece o gesto (não rola nem toca nada).
-                    val cancelar = MotionEvent.obtain(e)
-                    cancelar.action = MotionEvent.ACTION_CANCEL
-                    super.onTouchEvent(cancelar)
-                    cancelar.recycle()
-                    navegador.aoComecarTroca?.invoke()
-                }
-                if (d != 0f) navegador.aoArrastar?.invoke(d)
-                return true
-            }
-        }
-        if (gesto.modo == GestoDaCaixa.Modo.TROCA) {
-            if (acao == MotionEvent.ACTION_UP || acao == MotionEvent.ACTION_CANCEL) {
-                val v = if (acao == MotionEvent.ACTION_UP) {
-                    rastreador?.let {
-                        it.computeCurrentVelocity(1000)
-                        it.xVelocity
-                    } ?: 0f
-                } else {
-                    0f
-                }
-                navegador.aoSoltar?.invoke(v)
-                gesto.fim()
-                soltarRastreador()
-            }
-            return true
-        }
-        if (acao == MotionEvent.ACTION_UP || acao == MotionEvent.ACTION_CANCEL) {
-            gesto.fim()
-            soltarRastreador()
-        }
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
         val usado = super.onTouchEvent(e)
-        // Desde a 0.33 a página fica fora das abas (PaginaFixaDaCaixa): ela fica com o toque desde o começo, para o
-        // deslize para os lados sempre chegar ao gesto daqui (por baixo dela não há mais as abas para pegar o arrasto).
-        return usado || acao == MotionEvent.ACTION_DOWN
+        return usado || e.actionMasked == MotionEvent.ACTION_DOWN
     }
 }
+
+/** O endereço http:// com https:// (o mesmo, com cadeado; desde a 0.36); outro endereço, null. */
+fun enderecoSeguro(url: String?): String? =
+    url?.takeIf { it.startsWith("http://", ignoreCase = true) }?.let { "https://" + it.substring("http://".length) }
+
+/** Quantas vezes seguidas o app troca http:// por https:// antes de mostrar o erro (um site que volta sempre ao http). */
+private const val LIMITE_DE_TROCAS = 5
 
 /**
  * A tela da Caixa: a página do site, a barra de carregamento em cima e, numa página de modalidade, a faixa do
@@ -510,9 +427,13 @@ private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorD
  */
 @Composable
 fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
+    val ctx = LocalContext.current
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
     var resposta by remember { mutableStateOf<Transcricao.Resposta?>(null) }
+    // As apostas do carrinho esperando a confirmação na janela (desde a 0.36); null = fechada.
+    var aConfirmar by remember { mutableStateOf<List<Transcricao.Item>?>(null) }
+    var confirmando by remember { mutableStateOf(false) }
     val teclado = tecladoAberto()
 
     LaunchedEffect(navegador.aviso) {
@@ -555,6 +476,9 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
                     navegador.transcritas.removeAll(feitos.flatMap { it.ids })
                     feitos.firstOrNull()?.let(::transcrever)
                 },
+                // No bolão (desde a 0.36), as do carrinho se confirmam aqui depois de pagas; no Individual não há o que confirmar.
+                aoConfirmar = if (estado.individual) null else { feitos -> aConfirmar = feitos },
+                confirmando = confirmando,
             )
         }
     }
@@ -567,6 +491,32 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
             confirmButton = { TextButton(onClick = { resposta = null }) { Text("OK") } },
         )
     }
+
+    aConfirmar?.let { feitos ->
+        val ids = feitos.flatMap { it.ids }
+        val numeros = estado.apostas.filter { it.id in ids }.map { it.numero }.sorted()
+        DialogoConfirmar(
+            titulo = tituloDaConfirmacao(numeros),
+            texto = textoDaConfirmacao(numeros.size, estado),
+            confirmar = CONFIRMAR,
+            aoConfirmar = {
+                aConfirmar = null
+                confirmando = true
+                escopo.launch {
+                    try {
+                        val feitas = confirmarApostas(ctx, ids)
+                        navegador.transcritas.removeAll(ids)
+                        avisos.showSnackbar(mensagemDaConfirmacao(feitas, estado))
+                    } catch (t: Throwable) {
+                        avisos.showSnackbar("Não foi possível confirmar: ${t.message}")
+                    } finally {
+                        confirmando = false
+                    }
+                }
+            },
+            aoFechar = { aConfirmar = null },
+        )
+    }
 }
 
 /** O alto (px, na raiz) e o tamanho do lugar da página na aba da Caixa (desde a 0.33). */
@@ -577,10 +527,9 @@ const val DESCRICAO_DA_PAGINA = "Página das Loterias Caixa"
 
 /**
  * A página da Caixa congelada (desde a 0.33): o WebView numa camada por cima das abas, preso à janela desde a primeira
- * vez que a aba da Caixa abre até a sessão fechar, com a barra de carregamento e o aviso de erro. [posicao] diz onde
- * a aba da Caixa está agora, em páginas (0 = na tela; -0,5 = metade saindo pela esquerda; null = fora da tela ou atrás
- * de outra tela), lido na hora de posicionar (anda junto com as abas no mesmo quadro). Fora da tela a página continua
- * presa e do mesmo tamanho, só que de lado: não se redesenha nem recarrega ao voltar.
+ * vez que a tela da Caixa abre até a sessão fechar, com a barra de carregamento e o aviso de erro. [posicao] diz onde
+ * a tela da Caixa está agora (0 = na tela; null = fora dela ou com outra tela por cima), lido na hora de posicionar.
+ * Fora da tela a página continua presa e do mesmo tamanho, só que de lado: não se redesenha nem recarrega ao voltar.
  */
 @Composable
 fun PaginaFixaDaCaixa(navegador: NavegadorDaCaixa, posicao: () -> Float?) {
@@ -609,21 +558,9 @@ fun PaginaFixaDaCaixa(navegador: NavegadorDaCaixa, posicao: () -> Float?) {
                     modifier = Modifier.fillMaxWidth().height(3.dp).align(Alignment.TopCenter),
                 )
             }
-            navegador.erro?.let { ErroDaPagina(it) { navegador.recarregar() } }
+            navegador.erro?.let { ErroDaPagina(it, aoTentar = { navegador.recarregar() }, aoIrAoInicio = { navegador.paginaInicial() }) }
         }
     }
-}
-
-/**
- * Onde a aba da Caixa está, em páginas, com as abas na posição [agora] (a página de agora mais a fração do arrasto):
- * a página da Caixa mais perto menos [agora] (0 = na tela; null = longe, a uma página ou mais). [caixa] diz se a
- * página k das abas (que giram, [abas] por volta) é a da Caixa.
- */
-fun posicaoDaAba(agora: Float, abas: Int, caixa: (Int) -> Boolean): Float? {
-    val base = kotlin.math.floor(agora).toInt()
-    val k = (base - abas..base + abas + 1).filter(caixa).minByOrNull { abs(it - agora) } ?: return null
-    val d = k - agora
-    return if (abs(d) < 1f) d else null
 }
 
 /**
@@ -640,9 +577,9 @@ fun tituloDaResposta(r: Transcricao.Resposta): String = when {
     else -> "Não deu para transcrever"
 }
 
-/** A página não abriu: o aviso e o "Tentar de novo". */
+/** A página não abriu: o aviso, o "Tentar de novo" e (desde a 0.36) a "Página inicial" do site. */
 @Composable
-private fun ErroDaPagina(mensagem: String, aoTentar: () -> Unit) {
+private fun ErroDaPagina(mensagem: String, aoTentar: () -> Unit, aoIrAoInicio: () -> Unit) {
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(32.dp),
         verticalArrangement = Arrangement.Center,
@@ -652,21 +589,44 @@ private fun ErroDaPagina(mensagem: String, aoTentar: () -> Unit) {
         Spacer(Modifier.height(12.dp))
         Text(mensagem, style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(16.dp))
-        OutlinedButton(onClick = aoTentar) { Text("Tentar de novo") }
+        OutlinedButton(onClick = aoTentar) { Text(TENTAR_DE_NOVO) }
+        TextButton(onClick = aoIrAoInicio) { Text(PAGINA_INICIAL) }
     }
 }
+
+/** Os botões do aviso de erro da página (desde a 0.36, a página inicial também). */
+const val TENTAR_DE_NOVO = "Tentar de novo"
+const val PAGINA_INICIAL = "Página inicial"
 
 /** O nome do concurso da página: o especial ("Mega da Virada") ou a modalidade. */
 fun nomeDaPagina(p: Transcricao.Pagina): String =
     if (p.especial) Especiais.CONHECIDOS.firstOrNull { it.modalidade == p.modalidade }?.nome ?: p.modalidade.nome else p.modalidade.nome
 
-/** O texto da faixa quando não há aposta da modalidade esperando o comprovante. */
-fun semApostaParaTranscrever(p: Transcricao.Pagina): String = "Nenhuma aposta da ${nomeDaPagina(p)} esperando comprovante."
+/** O texto da faixa quando não há aposta da modalidade para transcrever (até a 0.35, "esperando comprovante"). */
+fun semApostaParaTranscrever(p: Transcricao.Pagina): String = "Nenhuma aposta da ${nomeDaPagina(p)} para transcrever."
 
 /**
- * A faixa do "Transcrever" (numa página de modalidade do site): o selo da modalidade, a próxima aposta que espera o
- * comprovante (o número dela e o jogo, e "1 de 3" quando há mais de uma) e o botão. Todas já no carrinho: o botão
- * vira "De novo" (para quando uma saiu do carrinho).
+ * O texto da faixa com todas as apostas da página no carrinho: no bolão (desde a 0.36), o lembrete de pagar e confirmar.
+ */
+fun noCarrinho(apostas: Int, confirmar: Boolean): String = when {
+    confirmar && apostas == 1 -> "No carrinho: pague no site e confirme."
+    confirmar -> "As $apostas no carrinho: pague no site e confirme."
+    apostas == 1 -> "A aposta já foi para o carrinho."
+    else -> "As $apostas apostas já foram para o carrinho."
+}
+
+/** O botão da faixa que confirma as do carrinho quando ainda há outras para transcrever: "Confirmar as do carrinho (2)". */
+fun confirmarAsDoCarrinho(apostas: Int): String = "Confirmar as do carrinho ($apostas)"
+
+/** O botão da faixa que transcreve de novo as que já foram (quando uma saiu do carrinho). */
+const val TRANSCREVER_DE_NOVO = "Transcrever de novo"
+
+/**
+ * A faixa do "Transcrever" (numa página de modalidade do site): o selo da modalidade, a próxima aposta para transcrever
+ * (o número dela e o jogo, e "1 de 3" quando há mais de uma) e o botão. Todas já no carrinho: o botão vira "De novo"
+ * (para quando uma saiu do carrinho). No bolão (desde a 0.36, com [aoConfirmar]), as do carrinho se confirmam aqui
+ * depois de pagas: com todas no carrinho o botão vira "Confirmar" (e "Transcrever de novo" fica embaixo); com outras
+ * ainda por transcrever, "Confirmar as do carrinho (N)" fica embaixo.
  */
 @Composable
 fun FaixaDoTranscrever(
@@ -676,9 +636,13 @@ fun FaixaDoTranscrever(
     transcrevendo: Boolean,
     aoTranscrever: (Transcricao.Item) -> Unit,
     aoRecomecar: (List<Transcricao.Item>) -> Unit,
+    aoConfirmar: ((List<Transcricao.Item>) -> Unit)? = null,
+    confirmando: Boolean = false,
 ) {
     val feitos = itens.filter { i -> i.ids.isNotEmpty() && i.ids.all { it in transcritas } }
     val proximo = itens.firstOrNull { it !in feitos }
+    val confirmar = aoConfirmar != null
+    val ocupado = transcrevendo || confirmando
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         HorizontalDivider()
         Row(
@@ -694,31 +658,53 @@ fun FaixaDoTranscrever(
                         proximo.titulo + posicao to proximo.detalhe
                     }
                     itens.isEmpty() -> nomeDaPagina(pagina) to semApostaParaTranscrever(pagina)
-                    else -> nomeDaPagina(pagina) to
-                        (if (itens.size == 1) "A aposta já foi para o carrinho." else "As ${itens.size} apostas já foram para o carrinho.")
+                    else -> nomeDaPagina(pagina) to noCarrinho(itens.size, confirmar)
                 }
                 Text(titulo, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
                     detalhe,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3,
+                    // O lembrete do carrinho (pagar e confirmar) inteiro, também com a letra grande.
+                    maxLines = if (proximo == null) 4 else 3,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             Spacer(Modifier.width(10.dp))
-            val deNovo = proximo == null && feitos.isNotEmpty()
-            Button(
-                onClick = { if (deNovo) aoRecomecar(feitos) else proximo?.let(aoTranscrever) },
-                enabled = !transcrevendo && (proximo != null || deNovo),
-            ) {
-                if (transcrevendo) {
-                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                } else {
-                    Icon(Icons.Outlined.AddShoppingCart, contentDescription = null, modifier = Modifier.size(18.dp))
+            val todosNoCarrinho = proximo == null && feitos.isNotEmpty()
+            when {
+                // Todas no carrinho, no bolão: pagar no site e confirmar.
+                todosNoCarrinho && confirmar -> Button(onClick = { aoConfirmar?.invoke(feitos) }, enabled = !ocupado) {
+                    if (confirmando) {
+                        CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    } else {
+                        Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(CONFIRMAR, maxLines = 1)
                 }
-                Spacer(Modifier.width(8.dp))
-                Text(if (deNovo) "De novo" else TRANSCREVER, maxLines = 1)
+                else -> Button(
+                    onClick = { if (todosNoCarrinho) aoRecomecar(feitos) else proximo?.let(aoTranscrever) },
+                    enabled = !ocupado && (proximo != null || todosNoCarrinho),
+                ) {
+                    if (transcrevendo) {
+                        CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    } else {
+                        Icon(Icons.Outlined.AddShoppingCart, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (todosNoCarrinho) "De novo" else TRANSCREVER, maxLines = 1)
+                }
+            }
+        }
+        // No bolão, a outra ação embaixo: transcrever de novo (todas no carrinho) ou confirmar as que já foram.
+        if (confirmar && feitos.isNotEmpty()) {
+            TextButton(
+                onClick = { if (proximo == null) aoRecomecar(feitos) else aoConfirmar?.invoke(feitos) },
+                enabled = !ocupado,
+                modifier = Modifier.align(Alignment.End).padding(end = 8.dp, bottom = 4.dp),
+            ) {
+                Text(if (proximo == null) TRANSCREVER_DE_NOVO else confirmarAsDoCarrinho(feitos.sumOf { it.ids.size }), maxLines = 1)
             }
         }
     }

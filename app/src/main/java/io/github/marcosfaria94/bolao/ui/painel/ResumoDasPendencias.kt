@@ -9,6 +9,9 @@ import io.github.marcosfaria94.bolao.data.Pendencias
 enum class TipoDoResumo(val rotulo: String) {
     /** Desde a 0.30, "Apostas não registradas" (até a 0.29, "Falta registrar"). */
     REGISTRAR("Apostas não registradas"),
+    /** Desde a 0.36: as apostas registradas que falta confirmar (até a 0.35 contavam em "Sem comprovante"). */
+    CONFIRMAR("A confirmar"),
+    /** Desde a 0.36, só os rateios esperando os Pix. */
     SEM_COMPROVANTE("Sem comprovante"),
     CONFERIR("A conferir"),
     ENVIAR("Enviar ao grupo"),
@@ -33,11 +36,13 @@ fun resumoDasPendencias(e: Estado, pendencias: List<Pendencia>): List<ItemDoResu
     fun primeira(t: Pendencia.Tipo): String? = porTipo[t]?.minByOrNull { it.desde }?.destino
     fun quantas(t: Pendencia.Tipo): Int = porTipo[t]?.size ?: 0
     val comprovantes = Pendencias.ABA_COMPROVANTES
-    val semComprovante = if (e.individual) 0 else Operacoes.apostasSemComprovante(e).size + Operacoes.rateiosSemPix(e).size
+    val aConfirmar = if (e.individual) 0 else Operacoes.apostasSemComprovante(e).size
+    val semComprovante = if (e.individual) 0 else Operacoes.rateiosSemPix(e).size
     val conferir = if (e.individual) 0 else Operacoes.apostasParaConferir(e).size + Operacoes.rateiosParaConferir(e).size
     val envios = porTipo[Pendencia.Tipo.ENVIO].orEmpty()
     return listOfNotNull(
         primeira(Pendencia.Tipo.RASCUNHO)?.let { ItemDoResumo(TipoDoResumo.REGISTRAR, quantas(Pendencia.Tipo.RASCUNHO), it) },
+        ItemDoResumo(TipoDoResumo.CONFIRMAR, aConfirmar, comprovantes).takeIf { aConfirmar > 0 },
         ItemDoResumo(TipoDoResumo.SEM_COMPROVANTE, semComprovante, comprovantes).takeIf { semComprovante > 0 },
         ItemDoResumo(TipoDoResumo.CONFERIR, conferir, comprovantes).takeIf { conferir > 0 },
         envios.takeIf { it.isNotEmpty() }?.let { ItemDoResumo(TipoDoResumo.ENVIAR, it.size, if (it.size == 1) it.single().destino else comprovantes) },

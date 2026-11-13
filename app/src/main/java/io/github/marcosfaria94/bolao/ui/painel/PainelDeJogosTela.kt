@@ -403,7 +403,7 @@ fun impedimentoDoFavorito(e: Estado, f: Favorito, concurso: Int, sorteado: Boole
 
 /**
  * O texto da confirmação de apostar os favoritos: para qual concurso vai cada aposta, quanto sai do saldo e,
- * no bolão, o lembrete de fazer os jogos na Caixa e anexar os comprovantes.
+ * no bolão, o lembrete de fazer os jogos na Caixa e confirmar (desde a 0.36; antes, anexar os comprovantes).
  */
 fun textoDosFavoritos(apostas: List<Aposta>, individual: Boolean): String {
     val valor = apostas.sumOf { it.valor }
@@ -415,7 +415,7 @@ fun textoDosFavoritos(apostas: List<Aposta>, individual: Boolean): String {
         val lista = if (concursos.size == 1) concursos[0] else concursos.dropLast(1).joinToString(", ") + " e " + concursos.last()
         "As ${apostas.size} apostas vão para os próximos concursos ($lista)"
     }
-    val lembrete = if (individual) "" else " Depois, faça os jogos no app Loterias CAIXA e anexe os comprovantes na aba Comprovantes."
+    val lembrete = if (individual) "" else " Depois, faça os jogos no site da Caixa (botão Caixa, \"Transcrever\") e confirme."
     return "$destino, e ${Dinheiro.rs(valor)} sai do saldo.$lembrete"
 }
 
@@ -423,7 +423,7 @@ fun textoDosFavoritos(apostas: List<Aposta>, individual: Boolean): String {
 fun mensagemDosFavoritos(feitas: List<Aposta>, individual: Boolean): String {
     if (feitas.size <= 1) return mensagemDoRegistro(feitas, individual)
     val texto = "${feitas.size} apostas registradas (Nº${feitas.minOf { it.numero }} a Nº${feitas.maxOf { it.numero }})."
-    return texto + if (individual) "" else " Anexe os comprovantes da Caixa na aba Comprovantes."
+    return texto + if (individual) "" else " Faça as apostas na Caixa e confirme."
 }
 
 /** Uma exclusão esperando a confirmação: as apostas, o título e o texto da janela. */
@@ -616,6 +616,8 @@ private fun corPendente(): Color = corApuracao()
 @Composable
 private fun visualDo(tipo: TipoDoResumo): Pair<ImageVector, Color> = when (tipo) {
     TipoDoResumo.REGISTRAR -> Icons.Outlined.EditNote to Color(0xFFE07B1F)
+    // Desde a 0.36: as apostas a confirmar (o trevo das Loterias Caixa, onde se aposta) e os Pix que faltam.
+    TipoDoResumo.CONFIRMAR -> Icones.TrevoDaCaixa to Barra.contador
     TipoDoResumo.SEM_COMPROVANTE -> Icons.AutoMirrored.Outlined.ReceiptLong to Barra.contador
     TipoDoResumo.CONFERIR -> Icons.Outlined.TaskAlt to corConferir()
     TipoDoResumo.ENVIAR -> Icons.AutoMirrored.Outlined.Send to corRateio()

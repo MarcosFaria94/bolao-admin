@@ -182,7 +182,8 @@ class TelasTest {
             rateios = e.rateios.map { it.copy(pendenteDeAnexo = true) },
         )
         val tudoEsperando = movimentosDoHistorico(esperando, FiltroHistorico.TUDO, mes)
-        assertEquals(Etiqueta("Sem comprovante", TomEtiqueta.VERMELHO), etiquetaDoMovimento(esperando, tudoEsperando[0], hoje))
+        // Desde a 0.36, "A confirmar" (até a 0.35, "Sem comprovante").
+        assertEquals(Etiqueta("A confirmar", TomEtiqueta.VERMELHO), etiquetaDoMovimento(esperando, tudoEsperando[0], hoje))
         assertEquals(Etiqueta("Esperando os Pix", TomEtiqueta.VERMELHO), etiquetaDoMovimento(esperando, tudoEsperando[1], hoje))
         assertEquals(
             listOf("- R$ 3,50", "- R$ 150,48", "+ R$ 9,00", "+ R$ 7,00", "- R$ 3,00", "+ R$ 150,00"),
@@ -424,7 +425,7 @@ class TelasTest {
         // Registrada e sem comprovante do bolão para enviar: OK.
         assertNull(pendenciaDoJogo(e, q))
         assertEquals("Aposta não registrada", pendenciaDoJogo(e, q.copy(registrada = false)))
-        assertEquals("Sem comprovante", pendenciaDoJogo(e, q.copy(pendenteDeAnexo = true)))
+        assertEquals("A confirmar", pendenciaDoJogo(e, q.copy(pendenteDeAnexo = true)))
         val pdf = Arquivo("c.pdf", "c.pdf", "application/pdf", 0)
         assertEquals("A conferir", pendenciaDoJogo(e, q.copy(pendenteDeAnexo = true, comprovante = pdf)))
         // O comprovante do bolão ainda não enviado ao grupo: pendente; enviado (ou no individual), OK.
@@ -461,7 +462,8 @@ class TelasTest {
         )
         val resumo = resumoDasPendencias(e, Pendencias.de(e, hoje.atTime(12, 0)))
         assertEquals(
-            listOf(TipoDoResumo.REGISTRAR to 1, TipoDoResumo.SEM_COMPROVANTE to 1, TipoDoResumo.CONFERIR to 1, TipoDoResumo.ENVIAR to 1, TipoDoResumo.APORTE to 1),
+            // Desde a 0.36 a aposta sem o comprovante da Caixa é "A confirmar" (CONFIRMAR); "Sem comprovante" ficou para os Pix.
+            listOf(TipoDoResumo.REGISTRAR to 1, TipoDoResumo.CONFIRMAR to 1, TipoDoResumo.CONFERIR to 1, TipoDoResumo.ENVIAR to 1, TipoDoResumo.APORTE to 1),
             resumo.map { it.tipo to it.quantidade },
         )
         // Cada quadrinho abre a tela que resolve: a aposta, os Comprovantes, o comprovante (um só), o aporte.
@@ -676,14 +678,14 @@ class TelasTest {
             valor = 300, criadaEm = 0, registrada = true, teimosinha = teimosinha, teimosinhaOrdem = if (teimosinha > 0) n else 0,
             teimosinhaDe = if (teimosinha > 0) "a1" else null,
         )
-        assertEquals("Aposta Nº3 registrada. Anexe o comprovante da Caixa na aba Comprovantes.", mensagemDoRegistro(listOf(a(3)), individual = false))
+        assertEquals("Aposta Nº3 registrada. Faça a aposta na Caixa e confirme.", mensagemDoRegistro(listOf(a(3)), individual = false))
         assertEquals("Aposta Nº3 registrada.", mensagemDoRegistro(listOf(a(3)), individual = true))
         assertEquals(
-            "Apostas Nº1 e Nº2 (espelho) registradas. Anexe os comprovantes da Caixa na aba Comprovantes.",
+            "Apostas Nº1 e Nº2 (espelho) registradas. Faça as apostas na Caixa e confirme.",
             mensagemDoRegistro(listOf(a(1), a(2)), individual = false),
         )
         assertEquals(
-            "Apostas Nº1 a Nº4 registradas (teimosinha de 4 concursos). Anexe o comprovante da Caixa na aba Comprovantes.",
+            "Apostas Nº1 a Nº4 registradas (teimosinha de 4 concursos). Faça as apostas na Caixa e confirme.",
             mensagemDoRegistro((1..4).map { a(it, 4) }, individual = false),
         )
         assertTrue(bloqueioDaAposta(7149).startsWith("Aposta bloqueada: o concurso 7149 já foi sorteado"))
@@ -735,19 +737,22 @@ class TelasTest {
         assertTrue(proxima.numeros.isEmpty())
         assertEquals(0, proxima.teimosinha)
         assertEquals(e.config.preco(Modalidade.QUINA), proxima.valor)
-        // O aviso do comprovante que falta, no alto do volante.
-        assertEquals("Falta o comprovante da Caixa da aposta Nº3. Anexe em Comprovantes para ela valer no bolão.", textoFaltaComprovante(listOf(3)))
+        // O aviso das apostas que falta confirmar, no alto do volante (desde a 0.36; antes, o comprovante que faltava).
         assertEquals(
-            "Falta o comprovante da Caixa das apostas Nº3, Nº4 e Nº5. Anexe em Comprovantes para elas valerem no bolão.",
+            "Falta confirmar a aposta Nº3: faça a aposta no site da Caixa (\"Transcrever\") e confirme depois de pagar.",
+            textoFaltaComprovante(listOf(3)),
+        )
+        assertEquals(
+            "Falta confirmar as apostas Nº3, Nº4 e Nº5: faça as apostas no site da Caixa (\"Transcrever\") e confirme depois de pagar.",
             textoFaltaComprovante(listOf(5, 3, 4)),
         )
         // A confirmação do "Descartar tudo" dos Comprovantes (só os jogos, desde a 0.26).
         assertEquals(
-            "3 apostas ainda sem comprovante saem do app, e R$ 9,00 volta ao saldo. As apostas com o comprovante anexado, " +
-                "esperando a conferência, e os rateios ficam.",
+            "3 apostas ainda não confirmadas saem do app, e R$ 9,00 volta ao saldo. As apostas com o comprovante da Caixa " +
+                "anexado, esperando a conferência, e os rateios ficam.",
             textoDescartarTudo(3, 900),
         )
-        assertTrue(textoDescartarTudo(1, 300).startsWith("1 aposta ainda sem comprovante sai do app, e R$ 3,00 volta ao saldo."))
+        assertTrue(textoDescartarTudo(1, 300).startsWith("1 aposta ainda não confirmada sai do app, e R$ 3,00 volta ao saldo."))
     }
 
     @Test

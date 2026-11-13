@@ -75,6 +75,13 @@ import io.github.marcosfaria94.bolao.ui.comum.LinhaAnexo
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.VisualizadorComprovante
 import io.github.marcosfaria94.bolao.ui.comum.registrarComprovante
+import io.github.marcosfaria94.bolao.domain.Transcricao
+import io.github.marcosfaria94.bolao.ui.caixa.ROTA_CAIXA
+import io.github.marcosfaria94.bolao.ui.comum.CONFIRMAR
+import io.github.marcosfaria94.bolao.ui.comum.confirmarApostas
+import io.github.marcosfaria94.bolao.ui.comum.mensagemDaConfirmacao
+import io.github.marcosfaria94.bolao.ui.comum.textoDaConfirmacao
+import io.github.marcosfaria94.bolao.ui.comum.tituloDaConfirmacao
 import io.github.marcosfaria94.bolao.ui.comum.depoisDoRegistro
 import io.github.marcosfaria94.bolao.ui.tema.corConferir
 import io.github.marcosfaria94.bolao.ui.tema.corEntrada
@@ -110,7 +117,8 @@ private sealed interface Vendo {
  */
 @Composable
 fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {}, aoSair: () -> Unit = {}) {
-    // Registrada e ainda sem a conferência do comprovante da Caixa: espera o comprovante (e pode ser descartada).
+    // Registrada e ainda não confirmada (desde a 0.36; até a 0.35, sem a conferência do comprovante da Caixa): espera a
+    // confirmação (e pode ser descartada).
     if (a.pendenteDeAnexo) {
         ApostaEsperandoComprovante(estado, a, abrir, aoSair)
         return
@@ -431,9 +439,10 @@ fun SecaoApostaRegistrada(estado: Estado, a: Aposta, abrir: (String) -> Unit = {
 }
 
 /**
- * A aposta registrada que ainda espera o comprovante da Caixa (ou a conferência dele): o registro,
- * os números, o comprovante anexado (se já veio), o atalho para a aba Comprovantes e o descarte
- * (até a conferência, o valor volta ao saldo).
+ * A aposta registrada que ainda não foi confirmada (desde a 0.36; até a 0.35, a que esperava o comprovante da Caixa ou a
+ * conferência dele): o registro, os números, o comprovante da Caixa (se foi anexado, o que ficou opcional), o "Confirmar"
+ * (depois de pagar no site da Caixa; numa teimosinha, ou com a espelho, as que foram pagas juntas), o atalho para a
+ * Caixa e o descarte (até a confirmação, o valor volta ao saldo).
  */
 @Composable
 private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String) -> Unit, aoSair: () -> Unit) {
@@ -443,7 +452,14 @@ private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String
     val escopo = rememberCoroutineScope()
     val hoje = LocalDate.now()
     var descartar by remember { mutableStateOf(false) }
+    var confirmar by remember { mutableStateOf(false) }
+    var confirmando by remember { mutableStateOf(false) }
     val anexado = a.comprovante
+    // As que foram pagas junto com ela (a teimosinha inteira, a espelho) e ainda esperam a confirmação.
+    val juntas = remember(estado, a.id) {
+        val ids = if (anexado == null) Transcricao.vaoJunto(estado, a, hoje).toSet() else setOf(a.id)
+        estado.apostas.filter { it.id in ids && it.registrada && it.pendenteDeAnexo }.ifEmpty { listOf(a) }
+    }
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(tituloDaAposta(a), style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp))
@@ -452,7 +468,7 @@ private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String
                 if (a.ehTeimosinha) LinhaInfo("Teimosinha", "concurso ${a.teimosinhaOrdem} de ${a.teimosinha}")
                 LinhaInfo(
                     "Situação",
-                    if (anexado == null) "Esperando o comprovante da Caixa" else "Comprovante anexado: falta a conferência",
+                    if (anexado == null) SITUACAO_A_CONFIRMAR else "Comprovante anexado: falta a conferência",
                     destaque = true,
                     cor = if (anexado == null) MaterialTheme.colorScheme.error else corConferir(),
                 )
@@ -473,24 +489,59 @@ private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String
                 )
             } else {
                 Text(
-                    "Faça a aposta no app Loterias CAIXA com estes números e anexe o comprovante na aba Comprovantes " +
-                        "(dá para escolher vários PDFs de uma vez). Sem o comprovante conferido, a aposta não vale para o bolão.",
+                    COMO_CONFIRMAR,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Button(onClick = { abrir(Pendencias.ABA_COMPROVANTES) }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (anexado == null) "Anexar na aba Comprovantes" else "Conferir na aba Comprovantes")
+            Button(onClick = { confirmar = true }, enabled = !confirmando, modifier = Modifier.fillMaxWidth()) {
+                if (confirmando) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(textoConfirmarAposta(juntas.size))
+                }
+            }
+            if (anexado == null) {
+                OutlinedButton(onClick = { abrir(ROTA_CAIXA) }, enabled = !confirmando, modifier = Modifier.fillMaxWidth()) {
+                    Text(IR_PARA_A_CAIXA)
+                }
+                TextButton(onClick = { abrir(Pendencias.ABA_COMPROVANTES) }, enabled = !confirmando, modifier = Modifier.fillMaxWidth()) {
+                    Text(ANEXAR_O_DA_CAIXA)
+                }
             }
         }
     }
-    TextButton(onClick = { descartar = true }, modifier = Modifier.fillMaxWidth()) {
+    TextButton(onClick = { descartar = true }, enabled = !confirmando, modifier = Modifier.fillMaxWidth()) {
         Text("Descartar aposta", color = MaterialTheme.colorScheme.error)
+    }
+    if (confirmar) {
+        DialogoConfirmar(
+            titulo = tituloDaConfirmacao(juntas.map { it.numero }.sorted()),
+            texto = textoDaConfirmacao(juntas.size, estado),
+            confirmar = CONFIRMAR,
+            aoConfirmar = {
+                confirmar = false
+                confirmando = true
+                escopo.launch {
+                    try {
+                        val feitas = confirmarApostas(ctx, juntas.map { it.id }, repo)
+                        avisos.showSnackbar(mensagemDaConfirmacao(feitas, estado))
+                    } catch (t: Throwable) {
+                        avisos.showSnackbar("Não foi possível confirmar: ${t.message}")
+                    } finally {
+                        confirmando = false
+                    }
+                }
+            },
+            aoFechar = { confirmar = false },
+        )
     }
     if (descartar) {
         DialogoConfirmar(
             titulo = "Descartar a aposta Nº${a.numero}?",
-            texto = "A aposta ainda não foi conferida: ela sai do app e ${Dinheiro.rs(a.valor)} volta ao saldo." +
+            texto = "A aposta ainda não foi confirmada: ela sai do app e ${Dinheiro.rs(a.valor)} volta ao saldo." +
                 (if (anexado != null) " O comprovante anexado também é apagado." else ""),
             confirmar = "Descartar",
             aoConfirmar = {
@@ -510,6 +561,22 @@ private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String
         )
     }
 }
+
+/** A situação da aposta registrada que ainda não foi confirmada (desde a 0.36; era "Esperando o comprovante da Caixa"). */
+const val SITUACAO_A_CONFIRMAR = "Falta confirmar"
+
+/** O que fazer com a aposta que ainda não foi confirmada (desde a 0.36). */
+const val COMO_CONFIRMAR = "Faça a aposta no site da Caixa (botão Caixa, \"Transcrever\") e, depois de pagar, toque em " +
+    "Confirmar. Sem a confirmação, a aposta não vale para o bolão (até lá, ela ainda pode ser descartada)."
+
+/** O botão da aposta que ainda não foi confirmada: "Confirmar aposta" ou, pagas juntas, "Confirmar as 4 apostas". */
+fun textoConfirmarAposta(apostas: Int): String = if (apostas <= 1) "Confirmar aposta" else "Confirmar as $apostas apostas"
+
+/** O atalho para a tela da Caixa (desde a 0.36). */
+const val IR_PARA_A_CAIXA = "Ir para a Caixa"
+
+/** O comprovante da Caixa, que ficou opcional (desde a 0.36): anexar nos Comprovantes. */
+const val ANEXAR_O_DA_CAIXA = "Anexar o comprovante da Caixa (opcional)"
 
 /** "Enviado ao grupo", "Ainda não enviado ao grupo" ou, nos registros antigos, "sem comprovante". */
 private fun detalheDoEnvio(e: Estado, c: Comprovante?): String = when {

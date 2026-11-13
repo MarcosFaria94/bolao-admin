@@ -33,8 +33,10 @@ val Aposta.palpite: Palpite get() = Palpite(numeros, trevos, extra, palpitesLote
  *
  * Desde a 0.10 a aposta e o rateio são registrados antes do comprovante (da Caixa e dos Pix):
  * enquanto esperam o comprovante e a conferência dele (aba Comprovantes), ainda podem ser
- * descartados; o comprovante do bolão sai na conferência. No modo individual não há comprovante
- * nenhum e tudo pode ser excluído.
+ * descartados; o comprovante do bolão sai na conferência. Desde a 0.36 a aposta não espera mais o
+ * comprovante da Caixa: ela é feita no site da Caixa (o "Transcrever") e confirmada no app, que cria o
+ * comprovante do bolão; anexar o comprovante da Caixa ficou opcional. No modo individual não há
+ * comprovante nenhum e tudo pode ser excluído.
  */
 object Operacoes {
 
@@ -58,15 +60,18 @@ object Operacoes {
         return maxOf(doMes.size, doMes.maxOfOrNull { it.numero } ?: 0) + 1
     }
 
-    // ---------- esperando comprovante (desde a 0.10) ----------
+    // ---------- a confirmar (desde a 0.36; de 0.10 a 0.35, esperando o comprovante da Caixa) ----------
 
-    /** Registrada e esperando o comprovante da Caixa (aba Comprovantes). */
+    /**
+     * Registrada e ainda não confirmada, sem o comprovante da Caixa: falta fazer a aposta no site da Caixa e confirmar
+     * ([aprovarAposta]). Até a 0.35 ela esperava o comprovante da Caixa (que desde a 0.36 é opcional).
+     */
     fun aguardandoComprovante(a: Aposta): Boolean = a.registrada && a.pendenteDeAnexo && a.comprovante == null
 
-    /** Registrada, com o comprovante da Caixa anexado, esperando a conferência (aprovação). */
+    /** Registrada, com o comprovante da Caixa anexado (opcional desde a 0.36), esperando a conferência (aprovação). */
     fun aguardandoConferencia(a: Aposta): Boolean = a.registrada && a.pendenteDeAnexo && a.comprovante != null
 
-    /** Apostas esperando o comprovante da Caixa, na ordem do registro. */
+    /** Apostas a confirmar (sem o comprovante da Caixa), na ordem do registro. */
     fun apostasSemComprovante(e: Estado): List<Aposta> =
         e.apostas.filter { aguardandoComprovante(it) }.sortedWith(compareBy({ it.dataAposta }, { it.numero }, { it.criadaEm }))
 
@@ -425,9 +430,9 @@ object Operacoes {
 
     /**
      * Registra a aposta: dá o número do mês, marca como registrada e desconta do saldo. No bolão, a
-     * aposta fica esperando o comprovante da Caixa (aba Comprovantes) e a conferência, que cria o
-     * comprovante do bolão ([aprovarAposta]); até lá ela pode ser descartada ([descartarAposta]).
-     * No modo individual não há comprovante: a aposta já fica valendo.
+     * aposta fica esperando a confirmação (desde a 0.36; até a 0.35, o comprovante da Caixa e a
+     * conferência), que cria o comprovante do bolão ([aprovarAposta]); até lá ela pode ser descartada
+     * ([descartarAposta]). No modo individual não há comprovante: a aposta já fica valendo.
      */
     fun registrarAposta(e: Estado, id: String, hoje: LocalDate, agora: Long): Estado {
         val a = e.apostas.first { it.id == id }
@@ -623,25 +628,25 @@ object Operacoes {
     }
 
     /**
-     * Conferência (aprovação) do comprovante da Caixa: cria o comprovante do bolão (o bloco APOSTA
-     * do termo, com o saldo de logo antes da aposta e o comprovante da Caixa anexado). Depois disso a
-     * aposta vale como as outras: não pode mais ser descartada, e a apuração já pode sair.
+     * A confirmação da aposta (desde a 0.36; até a 0.35, só a conferência do comprovante da Caixa): cria
+     * o comprovante do bolão (o bloco APOSTA do termo, com o saldo de logo antes da aposta e, se ele foi
+     * anexado, o comprovante da Caixa junto). Depois disso a aposta vale como as outras: não pode mais
+     * ser descartada, e a apuração já pode sair.
      */
     fun aprovarAposta(e: Estado, id: String, agora: Long): Estado {
         val a = e.apostas.first { it.id == id }
         require(a.registrada) { "Registre a aposta antes." }
-        require(a.pendenteDeAnexo) { "Esta aposta já foi conferida." }
-        val anexo = requireNotNull(a.comprovante) { "Anexe o comprovante da Caixa." }
+        require(a.pendenteDeAnexo) { "Esta aposta já foi confirmada." }
         val conferida = a.copy(pendenteDeAnexo = false, notasDoAnexo = emptyList(), antesDoAnexo = null)
         val texto = blocoAposta(e, conferida, a.dataAposta, saldoAntesDe(e, id, TipoLancamento.APOSTA))
         val c = novoComprovante(
             e, TipoComprovante.APOSTA, Mensagens.tituloAposta(a.numero, a.dataAposta), texto, a.dataAposta, agora,
-            anexos = listOf(anexo), apostaId = id,
+            anexos = listOfNotNull(a.comprovante), apostaId = id,
         )
         return e.copy(apostas = e.apostas.map { if (it.id == id) conferida else it }, comprovantes = e.comprovantes + c)
     }
 
-    /** A aposta ainda pode ser descartada (antes da conferência; no modo individual, sempre). */
+    /** A aposta ainda pode ser descartada (antes da confirmação; no modo individual, sempre). */
     fun podeDescartar(e: Estado, a: Aposta): Boolean = !a.registrada || e.individual || a.pendenteDeAnexo
 
     /**
@@ -652,7 +657,7 @@ object Operacoes {
     fun descartarAposta(e: Estado, id: String): Estado {
         val a = e.apostas.firstOrNull { it.id == id } ?: return e
         if (!a.registrada) return excluirRascunho(e, id)
-        require(podeDescartar(e, a)) { "A aposta Nº${a.numero} já foi conferida: não pode mais ser descartada." }
+        require(podeDescartar(e, a)) { "A aposta Nº${a.numero} já foi confirmada: não pode mais ser descartada." }
         val semEla = e.copy(
             apostas = e.apostas.filterNot { it.id == id },
             lancamentos = e.lancamentos.filterNot { it.apostaId == id },
@@ -1030,7 +1035,7 @@ object Operacoes {
     fun impedimentoDoExtrato(e: Estado, mes: YearMonth, hoje: LocalDate): String? = when {
         mesFechado(e, mes) -> "O extrato de ${Datas.mesAno(mes)} já foi registrado."
         pendentesDeAnexo(e, mes) > 0 ->
-            "Há ${pendentesDeAnexo(e, mes)} registro(s) de ${Datas.mesAno(mes)} esperando o comprovante ou a conferência " +
+            "Há ${pendentesDeAnexo(e, mes)} registro(s) de ${Datas.mesAno(mes)} esperando a confirmação, o comprovante ou a conferência " +
                 "(aba Comprovantes): resolva antes de fechar o mês."
         hoje.isBefore(mes.atEndOfMonth()) ->
             if (hoje.plusDays(1) == mes.atEndOfMonth()) "O extrato só pode ser registrado a partir de amanhã, último dia do mês."
@@ -1109,7 +1114,7 @@ object Operacoes {
     fun impedimentosDaExtincao(e: Estado): List<String> = buildList {
         if (e.individual) return@buildList
         val esperando = e.apostas.count { it.registrada && it.pendenteDeAnexo } + e.rateios.count { it.pendenteDeAnexo }
-        if (esperando > 0) add("$esperando registro(s) esperando o comprovante ou a conferência (aba Comprovantes).")
+        if (esperando > 0) add("$esperando registro(s) esperando a confirmação, o comprovante ou a conferência (aba Comprovantes).")
         val naoApuradas = e.apostas.count { it.registrada && !it.pendenteDeAnexo && it.apuracao?.confirmadaEm == null }
         if (naoApuradas > 0) add("$naoApuradas aposta(s) ainda sem apuração.")
         val rascunhos = rascunhos(e).size

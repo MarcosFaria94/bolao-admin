@@ -165,8 +165,9 @@ data class Aposta(
     val apuracao: Apuracao? = null,
     /**
      * Desde a 0.10 a aposta é registrada sem o comprovante da Caixa: ela fica esperando o comprovante
-     * (aba Comprovantes) e a conferência dele. Enquanto isso, pode ser descartada (o valor volta ao
-     * saldo). Na conferência sai o comprovante do bolão e a aposta passa a valer como as outras.
+     * (aba Comprovantes) e a conferência dele; desde a 0.36, só a confirmação (o comprovante da Caixa
+     * ficou opcional). Enquanto isso, pode ser descartada (o valor volta ao saldo). Na confirmação
+     * (ou conferência) sai o comprovante do bolão e a aposta passa a valer como as outras.
      */
     val pendenteDeAnexo: Boolean = false,
     /** O que a leitura do comprovante da Caixa mudou ou não conseguiu ler (para a conferência). */

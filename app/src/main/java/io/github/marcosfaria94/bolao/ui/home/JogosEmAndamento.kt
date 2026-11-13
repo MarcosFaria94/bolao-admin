@@ -55,11 +55,12 @@ fun quantosEmAndamento(e: Estado, hoje: LocalDate): Int = jogosEmAndamento(e, ho
 
 /**
  * O que ainda falta numa aposta em andamento (o "Pendente" do Painel de Jogos), ou null quando ela está
- * OK: registrada, com o comprovante da Caixa conferido e (no bolão) o comprovante enviado ao grupo.
+ * OK: registrada, confirmada (desde a 0.36; até a 0.35, com o comprovante da Caixa conferido) e (no bolão) o
+ * comprovante enviado ao grupo.
  */
 fun pendenciaDoJogo(e: Estado, a: Aposta): String? = when {
     !a.registrada -> "Aposta não registrada"
-    Operacoes.aguardandoComprovante(a) -> "Sem comprovante"
+    Operacoes.aguardandoComprovante(a) -> "A confirmar"
     Operacoes.aguardandoConferencia(a) -> "A conferir"
     !e.individual && Operacoes.comprovanteDaAposta(e, a)?.let { !it.envioDispensado && !e.enviado(it) } == true -> "Enviar ao grupo"
     else -> null

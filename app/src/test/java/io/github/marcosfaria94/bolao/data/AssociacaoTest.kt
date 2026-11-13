@@ -155,7 +155,8 @@ class AssociacaoTest {
         assertEquals(saldoAntes + 300, Operacoes.saldo(r.estado))
         // A "c" continua esperando (e sobe para Nº2).
         assertEquals(listOf("a" to 1, "c" to 2), r.estado.apostas.map { it.id to it.numero })
-        assertTrue(r.avisos.any { it.tipo == Associacao.Tipo.AINDA_FALTA && it.texto.contains("Nº2") })
+        // Desde a 0.36 o comprovante da Caixa é opcional: a que ficou sem ele não entra no relatório como "ainda falta".
+        assertTrue(r.avisos.none { it.tipo == Associacao.Tipo.AINDA_FALTA })
 
         // Num lote seguinte, o comprovante de uma aposta que já tem o seu é repetido.
         val r2 = Associacao.associar(r.estado, listOf(Associacao.Entrada(arquivo("q1-de-novo.pdf", "H9"), caixa("Quina", 7150, "01 02 03 04 05"))))

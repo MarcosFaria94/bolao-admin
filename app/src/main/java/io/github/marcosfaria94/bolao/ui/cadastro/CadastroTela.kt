@@ -542,7 +542,7 @@ private fun PassoModo(vm: CadastroViewModel) {
         OpcaoDeModo(
             titulo = "Informal",
             texto = "Sem termo e sem nada para enviar ao grupo: o cadastro não pede para anexar nada. " +
-                "O app só pede o comprovante da Caixa de cada aposta.",
+                "O app só pede a confirmação de cada aposta, depois de feita no site da Caixa.",
             escolhida = vm.informal,
             aoEscolher = { vm.informal = true },
         )

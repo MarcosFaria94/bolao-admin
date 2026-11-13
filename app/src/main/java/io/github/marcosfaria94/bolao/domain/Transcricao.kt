@@ -78,9 +78,9 @@ object Transcricao {
     // ---------- as apostas que esperam o comprovante ----------
 
     /**
-     * A aposta espera o comprovante da Caixa: registrada e sem o comprovante (no bolão, a espera da aba
-     * Comprovantes). No modo Individual, que não cobra o comprovante, as registradas sem comprovante e ainda
-     * por sortear.
+     * A aposta vai para o site da Caixa: no bolão, a registrada que ainda não foi confirmada (sem o comprovante da
+     * Caixa; desde a 0.36 ela é confirmada depois de transcrita e paga). No modo Individual, que não cobra nada, as
+     * registradas sem comprovante e ainda por sortear.
      */
     fun esperaComprovante(e: Estado, a: Aposta, hoje: LocalDate): Boolean =
         Operacoes.aguardandoComprovante(a) ||
@@ -143,6 +143,15 @@ object Transcricao {
             val t = titulo(membros, comEspelho, espelhoDe)
             Item(primeira, cobertas, plano.copy(titulo = t), t, detalhe(primeira))
         }.sortedWith(compareBy(ordem) { it.aposta })
+    }
+
+    /**
+     * As apostas que vão junto com a [a] no site da Caixa (desde a 0.36, para confirmar de uma vez as que foram pagas
+     * juntas): as do item dela (a teimosinha inteira, a espelho da Lotomania); fora de um item, só ela.
+     */
+    fun vaoJunto(e: Estado, a: Aposta, hoje: LocalDate): List<String> {
+        val p = Pagina(a.modalidade, especial = Especiais.doConcurso(a.modalidade, a.concurso) != null)
+        return itens(e, p, hoje).firstOrNull { a.id in it.ids }?.ids ?: listOf(a.id)
     }
 
     /** "Aposta Nº3"; "Apostas Nº3 e Nº4 (espelho)"; "Aposta Nº3 · teimosinha de 4 concursos". */

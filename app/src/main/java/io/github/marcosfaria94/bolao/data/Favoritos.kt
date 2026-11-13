@@ -111,7 +111,7 @@ object Favoritos {
 
     /**
      * Apostar os favoritos (consolidar em aposta, desde a 0.28): registra as [apostas] (feitas por [aposta]),
-     * uma por uma, como o "Registrar" do volante; no bolão, cada uma fica esperando o comprovante da Caixa.
+     * uma por uma, como o "Registrar" do volante; no bolão, cada uma fica esperando a confirmação.
      * Devolve o estado e as apostas registradas.
      */
     fun consolidar(e: Estado, apostas: List<Aposta>, hoje: LocalDate, agora: Long): Pair<Estado, List<Aposta>> {
