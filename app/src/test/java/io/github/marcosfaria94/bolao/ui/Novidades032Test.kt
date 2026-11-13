@@ -13,7 +13,7 @@ import io.github.marcosfaria94.bolao.domain.indices.ParametrosK
 import io.github.marcosfaria94.bolao.domain.indices.RegistroK
 import io.github.marcosfaria94.bolao.net.Contato
 import io.github.marcosfaria94.bolao.notificacoes.Toque
-import io.github.marcosfaria94.bolao.ui.ajustes.GRUPO_APOIO
+import io.github.marcosfaria94.bolao.ui.ajustes.GRUPO_FEEDBACK
 import io.github.marcosfaria94.bolao.ui.ajustes.SecaoAjuste
 import io.github.marcosfaria94.bolao.ui.ajustes.alternarLista
 import io.github.marcosfaria94.bolao.ui.ajustes.envolver
@@ -243,7 +243,7 @@ class Novidades032Test {
         // O grupo Apoio, com a Doação e o Contato, no fim (nos dois modos).
         for (individual in listOf(false, true)) {
             val grupos = SecaoAjuste.grupos(individual)
-            assertEquals(GRUPO_APOIO, grupos.last().first)
+            assertEquals(GRUPO_FEEDBACK, grupos.last().first)
             assertEquals(listOf(SecaoAjuste.DOACAO, SecaoAjuste.CONTATO), grupos.last().second)
         }
         assertEquals(SecaoAjuste.DOACAO, SecaoAjuste.de("doacao"))

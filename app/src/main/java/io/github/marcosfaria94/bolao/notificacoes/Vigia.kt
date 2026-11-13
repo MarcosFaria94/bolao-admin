@@ -82,7 +82,7 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             val teste = repo.emTeste
             var e = runCatching { vigiar(ctx, repo, agora) }.getOrElse { runCatching { repo.atual() }.getOrNull() } ?: continue
             // O k1, o k2 e as odds do concurso das apostas registradas (desde a 0.21).
-            runCatching { e = repo.atualizar { Operacoes.guardarIndices(it, app.indices.itens.value) } }
+            runCatching { e = repo.atualizar { Operacoes.guardarIndices(it, app.indices.itens.value, app.indices::resultadoDoEspecial) } }
             estados += e
 
             // 3. Avisos. Sem permissão, ficam para a próxima vez (não contam como avisados).

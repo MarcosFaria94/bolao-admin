@@ -73,6 +73,20 @@ object Especiais {
         lista.filter { e -> e.momento().isAfter(agora) && (proximo(e.modalidade)?.let { e.concurso >= it } ?: true) }
             .minByOrNull { it.sorteio }
 
+    /**
+     * A época do ano do concurso especial de cada modalidade (desde a 0.33): o k1 e o k2 do próximo especial saem só dos
+     * especiais dessa época ([IndiceEspecial][io.github.marcosfaria94.bolao.domain.indices.IndiceEspecial]), para a Mega
+     * da Virada não se misturar com outro especial da Mega-Sena (como o de maio de 2026).
+     */
+    fun epoca(m: Modalidade): java.time.MonthDay? = when (m) {
+        Modalidade.MEGA_SENA -> java.time.MonthDay.of(12, 31)
+        Modalidade.LOTOFACIL -> java.time.MonthDay.of(9, 9)
+        Modalidade.QUINA -> java.time.MonthDay.of(6, 24)
+        // A Páscoa muda de data (de 22 de março a 25 de abril).
+        Modalidade.DUPLA_SENA -> java.time.MonthDay.of(4, 8)
+        else -> null
+    }
+
     /** O nome do concurso especial de cada modalidade (o do valor acumulado para ele). */
     fun nomeDoEspecial(m: Modalidade): String? = when (m) {
         Modalidade.MEGA_SENA -> "Mega da Virada"

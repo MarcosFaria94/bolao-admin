@@ -62,7 +62,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.layout.offset
+import kotlin.math.roundToInt
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -111,8 +117,16 @@ private const val LER_RESPOSTA =
  * O navegador da tela da Caixa: a página (um WebView só, guardado enquanto o app está aberto nesta sessão, para
  * voltar à tela e encontrar a página onde estava, com a conta aberta) e o que a tela mostra dela. As apostas que o
  * "Transcrever" já pôs no carrinho ficam em [transcritas] (nesta abertura do app), para não irem de novo.
+ *
+ * Desde a 0.33 a página fica "congelada": o WebView não mora mais dentro da aba (que sai da tela e volta a cada
+ * passagem, e a página se redesenhava e recarregava toda vez que se passava por ela a caminho dos Ajustes), mas numa
+ * camada fixa por cima das abas ([PaginaFixaDaCaixa]), presa à janela enquanto a sessão está aberta; a aba da Caixa só
+ * reserva o lugar ([medida]) e a camada anda junto com as abas.
  */
 class NavegadorDaCaixa(private val contexto: Context) {
+
+    /** O lugar da página na aba da Caixa (o alto e o tamanho, px na raiz), medido pela aba; null = a aba nunca abriu. */
+    var medida by mutableStateOf<MedidaDaPagina?>(null)
 
     /** O endereço da página de agora (o site muda só a parte depois do "#"; o WebViewClient atualiza). */
     var endereco by mutableStateOf<String?>(null)
@@ -411,6 +425,16 @@ class GestoDaCaixa(private val limite: Float) {
 private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorDaCaixa) : WebView(contexto) {
     private val gesto = GestoDaCaixa(ViewConfiguration.get(contexto).scaledTouchSlop.toFloat())
     private var rastreador: VelocityTracker? = null
+    private val lugar = IntArray(2)
+
+    /**
+     * O toque na tela (desde a 0.33: a posição da página agora + o toque nela; a página anda junto com as abas durante
+     * a troca, então a posição dentro dela não serve; o "raw" do Android dá o mesmo, mas não em todo lugar).
+     */
+    private fun naTela(e: MotionEvent): Pair<Float, Float> {
+        getLocationOnScreen(lugar)
+        return e.x + lugar[0] to e.y + lugar[1]
+    }
 
     private fun soltarRastreador() {
         rastreador?.recycle()
@@ -419,8 +443,9 @@ private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorD
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val acao = e.actionMasked
+        val (tx, ty) = naTela(e)
         if (acao == MotionEvent.ACTION_DOWN) {
-            gesto.inicio(e.rawX, e.rawY)
+            gesto.inicio(tx, ty)
             // As abas não ficam com o arrasto por conta própria: quem decide é o gesto, aqui.
             parent?.requestDisallowInterceptTouchEvent(true)
             soltarRastreador()
@@ -431,13 +456,13 @@ private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorD
         // A velocidade pela posição na tela (a página anda junto com as abas durante a troca).
         rastreador?.let { r ->
             val c = MotionEvent.obtain(e)
-            c.setLocation(e.rawX, e.rawY)
+            c.setLocation(tx, ty)
             r.addMovement(c)
             c.recycle()
         }
         val antes = gesto.modo
         if (acao == MotionEvent.ACTION_MOVE && e.pointerCount == 1) {
-            val d = gesto.mover(e.rawX, e.rawY) { lado -> canScrollHorizontally(lado) }
+            val d = gesto.mover(tx, ty) { lado -> runCatching { canScrollHorizontally(lado) }.getOrDefault(false) }
             if (gesto.modo == GestoDaCaixa.Modo.TROCA) {
                 if (antes != GestoDaCaixa.Modo.TROCA) {
                     // A página esquece o gesto (não rola nem toca nada).
@@ -471,7 +496,10 @@ private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorD
             gesto.fim()
             soltarRastreador()
         }
-        return super.onTouchEvent(e)
+        val usado = super.onTouchEvent(e)
+        // Desde a 0.33 a página fica fora das abas (PaginaFixaDaCaixa): ela fica com o toque desde o começo, para o
+        // deslize para os lados sempre chegar ao gesto daqui (por baixo dela não há mais as abas para pegar o arrasto).
+        return usado || acao == MotionEvent.ACTION_DOWN
     }
 }
 
@@ -506,20 +534,16 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        Box(Modifier.fillMaxWidth().weight(1f)) {
-            AndroidView(
-                factory = { navegador.webView(it) },
-                modifier = Modifier.fillMaxSize().semantics { contentDescription = "Página das Loterias Caixa" },
-                onRelease = { (it.parent as? ViewGroup)?.removeView(it) },
-            )
-            if (navegador.progresso in 1..99) {
-                LinearProgressIndicator(
-                    progress = { navegador.progresso / 100f },
-                    modifier = Modifier.fillMaxWidth().height(3.dp).align(Alignment.TopCenter),
-                )
-            }
-            navegador.erro?.let { ErroDaPagina(it) { navegador.recarregar() } }
-        }
+        // O lugar da página (desde a 0.33 a página mesmo fica na camada fixa por cima das abas, PaginaFixaDaCaixa).
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .onGloballyPositioned { c ->
+                    val nova = MedidaDaPagina(c.positionInRoot().y, c.size.width, c.size.height)
+                    if (navegador.medida != nova) navegador.medida = nova
+                },
+        )
         if (pagina != null && !teclado) {
             FaixaDoTranscrever(
                 pagina = pagina,
@@ -543,6 +567,63 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
             confirmButton = { TextButton(onClick = { resposta = null }) { Text("OK") } },
         )
     }
+}
+
+/** O alto (px, na raiz) e o tamanho do lugar da página na aba da Caixa (desde a 0.33). */
+data class MedidaDaPagina(val topo: Float, val largura: Int, val altura: Int)
+
+/** O nome da página do site para a acessibilidade (e os testes). */
+const val DESCRICAO_DA_PAGINA = "Página das Loterias Caixa"
+
+/**
+ * A página da Caixa congelada (desde a 0.33): o WebView numa camada por cima das abas, preso à janela desde a primeira
+ * vez que a aba da Caixa abre até a sessão fechar, com a barra de carregamento e o aviso de erro. [posicao] diz onde
+ * a aba da Caixa está agora, em páginas (0 = na tela; -0,5 = metade saindo pela esquerda; null = fora da tela ou atrás
+ * de outra tela), lido na hora de posicionar (anda junto com as abas no mesmo quadro). Fora da tela a página continua
+ * presa e do mesmo tamanho, só que de lado: não se redesenha nem recarrega ao voltar.
+ */
+@Composable
+fun PaginaFixaDaCaixa(navegador: NavegadorDaCaixa, posicao: () -> Float?) {
+    val medida = navegador.medida ?: return
+    val densidade = LocalDensity.current
+    var origem by remember { mutableStateOf(Offset.Zero) }
+    var largura by remember { mutableIntStateOf(0) }
+    Box(Modifier.fillMaxSize().onGloballyPositioned { origem = it.positionInRoot(); largura = it.size.width }) {
+        Box(
+            Modifier
+                .offset {
+                    val d = posicao()
+                    val x = if (d == null) 2 * maxOf(largura, medida.largura) + 100 else (d * medida.largura).roundToInt()
+                    IntOffset(x, (medida.topo - origem.y).roundToInt())
+                }
+                .size(with(densidade) { medida.largura.toDp() }, with(densidade) { medida.altura.toDp() }),
+        ) {
+            AndroidView(
+                factory = { navegador.webView(it) },
+                modifier = Modifier.fillMaxSize().semantics { contentDescription = DESCRICAO_DA_PAGINA },
+                onRelease = { (it.parent as? ViewGroup)?.removeView(it) },
+            )
+            if (navegador.progresso in 1..99) {
+                LinearProgressIndicator(
+                    progress = { navegador.progresso / 100f },
+                    modifier = Modifier.fillMaxWidth().height(3.dp).align(Alignment.TopCenter),
+                )
+            }
+            navegador.erro?.let { ErroDaPagina(it) { navegador.recarregar() } }
+        }
+    }
+}
+
+/**
+ * Onde a aba da Caixa está, em páginas, com as abas na posição [agora] (a página de agora mais a fração do arrasto):
+ * a página da Caixa mais perto menos [agora] (0 = na tela; null = longe, a uma página ou mais). [caixa] diz se a
+ * página k das abas (que giram, [abas] por volta) é a da Caixa.
+ */
+fun posicaoDaAba(agora: Float, abas: Int, caixa: (Int) -> Boolean): Float? {
+    val base = kotlin.math.floor(agora).toInt()
+    val k = (base - abas..base + abas + 1).filter(caixa).minByOrNull { abs(it - agora) } ?: return null
+    val d = k - agora
+    return if (abs(d) < 1f) d else null
 }
 
 /**

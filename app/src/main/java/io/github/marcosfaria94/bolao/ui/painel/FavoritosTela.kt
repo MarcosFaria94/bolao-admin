@@ -118,7 +118,7 @@ fun FavoritosTela(estado: Estado) {
                     val apostas = planos.map { it.aposta.copy(id = novoId(), criadaEm = agoraMs) }
                     val (x, lista) = Favoritos.consolidar(e, apostas, LocalDate.now(), agoraMs)
                     feitas = lista
-                    Operacoes.guardarIndices(x, itens)
+                    Operacoes.guardarIndices(x, itens, indices::resultadoDoEspecial)
                 }
                 avisos.showSnackbar(mensagemDosFavoritos(feitas, estado.individual))
             } catch (t: Throwable) {

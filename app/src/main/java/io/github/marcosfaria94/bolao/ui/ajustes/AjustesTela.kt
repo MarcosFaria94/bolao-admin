@@ -158,9 +158,9 @@ enum class SecaoAjuste(val id: String) {
     ATUALIZACAO("atualizacao"),
     TESTE("teste"),
     EXTINCAO("extincao"),
-    /** O "Apoie" (desde a 0.32, no grupo Apoio; até a 0.31 ficava no rodapé dos Ajustes). */
+    /** O "Apoie" (desde a 0.32, no grupo Feedback; até a 0.31 ficava no rodapé dos Ajustes). */
     DOACAO("doacao"),
-    /** A mensagem para quem faz o app, por e-mail (desde a 0.32, no grupo Apoio). */
+    /** A mensagem para quem faz o app, por e-mail (desde a 0.32, no grupo Feedback). */
     CONTATO("contato"),
     ;
 
@@ -216,14 +216,15 @@ enum class SecaoAjuste(val id: String) {
             // Sem a Atualização desde a 0.26 (pedido do usuário): o app confere sozinho ao abrir e mostra a janela da versão nova.
             // A Biometria desde a 0.30 (pedido do usuário; antes o app sempre pedia, sem ajuste).
             "CELULAR" to listOf(NOTIFICACOES, BIOMETRIA, BACKUP),
-            // Desde a 0.32 (pedido do usuário): a Doação (o "Apoie", que saiu do rodapé) e o Contato.
-            GRUPO_APOIO to listOf(DOACAO, CONTATO),
+            // Desde a 0.32 (pedido do usuário): a Doação (o "Apoie", que saiu do rodapé) e o Contato; desde a 0.33 o
+            // grupo se chama FEEDBACK (era APOIO).
+            GRUPO_FEEDBACK to listOf(DOACAO, CONTATO),
         )
     }
 }
 
-/** O grupo da Doação e do Contato (desde a 0.32). */
-const val GRUPO_APOIO = "APOIO"
+/** O grupo da Doação e do Contato (desde a 0.32; até a 0.32, "APOIO"). */
+const val GRUPO_FEEDBACK = "FEEDBACK"
 
 private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
     SecaoAjuste.MODO -> Icons.Outlined.Person

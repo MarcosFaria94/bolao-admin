@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +37,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Indices
 import io.github.marcosfaria94.bolao.domain.Dinheiro
+import io.github.marcosfaria94.bolao.domain.Modalidade
+import io.github.marcosfaria94.bolao.domain.indices.IndiceEspecial
+import io.github.marcosfaria94.bolao.domain.Especiais as EspeciaisDaCaixa
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
 import io.github.marcosfaria94.bolao.ui.tema.corDestaque
@@ -64,13 +68,24 @@ private val COMO_LER = listOf(
     "Abaixo de 1 é perda média" to "Em média, toda aposta perde dinheiro: é assim que a loteria funciona. O k1 aponta o jogo que perde menos.",
     "k1 alto com k2 baixo" to "O valor está no prêmio grande, que quase nunca sai (como na Mega-Sena, que costuma ter k2 zero).",
     "Na aba Jogos" to "A lista vem em ordem de k1, e o concurso em destaque é o de maior k1.",
-    "Sem k1 e k2" to "Loteca e Federal não têm os índices; nos concursos especiais (como a Mega da Virada), o app não calcula.",
+    "Sem k1 e k2" to "Loteca e Federal não têm os índices.",
+    "Concursos especiais" to "Na Mega da Virada, na Quina de São João e nos outros especiais, o k1 e o k2 vêm dos últimos especiais já sorteados (veja abaixo).",
+)
+
+/** Quantos especiais entram na média, por extenso (o texto da explicação). */
+private val QUANTOS_ESPECIAIS = IndiceEspecial.QUANTOS
+
+/** A explicação do k1 e do k2 dos concursos especiais (desde a 0.33). */
+val TEXTO_DOS_ESPECIAIS = listOf(
+    "No concurso especial o prêmio não acumula: tudo o que vai para os prêmios, com o acumulado do ano todo, sai no próprio sorteio (sem ganhador numa faixa, o prêmio desce para a de baixo).",
+    "Por isso o retorno de um especial já sorteado é exato: o que ele pagou, já sem o IR, dividido pelo que arrecadou. O k2 é a mesma conta, só com os prêmios frequentes.",
+    "O k1 e o k2 do próximo especial são a média ponderada desse retorno nos últimos $QUANTOS_ESPECIAIS especiais do mesmo tipo (a Mega da Virada só com as outras Mega da Virada): o mais recente pesa mais (5, depois 4, 3, 2 e 1).",
 )
 
 /**
  * Como é o cálculo do k1 e do k2 (desde a 0.19; tocar na Legenda dos Jogos), em linhas gerais: o que
  * cada índice quer dizer, a barra "de cada R$ 1,00" com o jogo em destaque de agora (os índices da
- * Caixa do momento), a receita em 5 passos, as fórmulas e como ler. A raiz cuida de voltar (puxando
+ * Caixa do momento), a receita em 5 passos, as fórmulas, os concursos especiais (desde a 0.33) e como ler. A raiz cuida de voltar (puxando
  * para baixo ou deslizando para o lado).
  */
 @Composable
@@ -78,6 +93,7 @@ fun IndicesTela() {
     val indices = LocalContext.current.bolao.indices
     val itens by indices.itens.collectAsStateWithLifecycle()
     val exemplo = remember(itens) { indices.maiorK1(itens) }
+    val estimativas by indices.especiais.collectAsStateWithLifecycle()
     LazyColumn(
         contentPadding = PaddingTela,
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -147,6 +163,8 @@ fun IndicesTela() {
                 }
             }
         }
+        item(key = "titulo-especiais") { Titulo("CONCURSOS ESPECIAIS") }
+        item(key = "especiais") { Especiais(estimativas) }
         item(key = "titulo-ler") { Titulo("COMO LER") }
         item(key = "ler") {
             Bloco {
@@ -165,6 +183,44 @@ fun IndicesTela() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
             )
+        }
+    }
+}
+
+/**
+ * O k1 e o k2 dos concursos especiais (desde a 0.33): a explicação e, para cada modalidade com especial, a
+ * estimativa e os especiais que entraram na média (o concurso, o retorno dele e o peso).
+ */
+@Composable
+private fun Especiais(estimativas: Map<Modalidade, IndiceEspecial.Estimativa>) {
+    val suave = MaterialTheme.colorScheme.onSurfaceVariant
+    Bloco {
+        Column(Modifier.padding(vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TEXTO_DOS_ESPECIAIS.forEach { t ->
+                Text(t, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, lineHeight = 20.sp), color = suave)
+            }
+            Modalidade.ATIVAS.forEach { m ->
+                val e = estimativas[m] ?: return@forEach
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SeloModalidade(m, 40.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(EspeciaisDaCaixa.nomeDoEspecial(m) ?: m.nome, style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, lineHeight = 21.sp))
+                        Text("k1 ${textoIndice(e.k1)} · k2 ${textoIndice(e.k2)}", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = suave)
+                    }
+                }
+                e.amostras.forEach { a ->
+                    Row(Modifier.fillMaxWidth().padding(start = 52.dp)) {
+                        // O dia do sorteio (sem ele, o concurso), numa linha só.
+                        Text(a.data ?: "Concurso ${a.numero}", style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.5.sp), color = suave, maxLines = 1, modifier = Modifier.weight(1f))
+                        Text("k1 ${textoIndice(a.k1)} · peso ${a.peso.toInt()}", style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.5.sp), color = suave, maxLines = 1)
+                    }
+                }
+            }
+            if (estimativas.isEmpty()) {
+                Text("Sem os especiais já sorteados no celular agora.", style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.5.sp), color = suave)
+            }
         }
     }
 }

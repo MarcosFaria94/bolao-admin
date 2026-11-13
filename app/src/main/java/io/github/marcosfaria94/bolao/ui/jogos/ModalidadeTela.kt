@@ -57,6 +57,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
+import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -502,8 +503,9 @@ private fun QuadroPremio(
  * ele, só a linha da aposta simples. Voltar leva à página do jogo como ela estava (o volante não muda).
  *
  * Desde a 0.28, logo acima do resultado, os botões para ir e voltar nos concursos anteriores e o campo para
- * digitar um concurso ([NavegacaoDoConcurso]; o resultado vem da Caixa). Saindo dos Detalhes ([visivel]
- * falso), volta para o último concurso.
+ * digitar um concurso ([NavegacaoDoConcurso]). Desde a 0.33 o resultado vem do histórico do app ([Historico]: todos
+ * os concursos já sorteados vêm embutidos e os novos se acrescentam a cada consulta); só o que não está nele vai à
+ * Caixa. Saindo dos Detalhes ([visivel] falso), volta para o último concurso.
  */
 @Composable
 private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, atualizando: Boolean, visivel: Boolean = true) {
@@ -514,7 +516,10 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
     var buscando by remember(m) { mutableStateOf(false) }
     var erro by remember(m) { mutableStateOf<String?>(null) }
     var tentativa by remember(m) { mutableIntStateOf(0) }
+    val historico = LocalContext.current.bolao.historico
     LaunchedEffect(visivel) { if (!visivel) escolhido = null }
+    // O histórico da modalidade já fica lido na memória ao abrir os Detalhes (os botões e o campo respondem na hora).
+    LaunchedEffect(m) { runCatching { historico.quantos(m) } }
     val ultimo = u?.numero
     val pedido = escolhido?.takeIf { it != ultimo }
     LaunchedEffect(m, pedido, tentativa) {
@@ -527,7 +532,7 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
         if (outro?.numero == pedido) return@LaunchedEffect
         buscando = true
         outro = try {
-            CaixaApi.guardado(m, pedido) ?: CaixaApi.concurso(m, pedido)
+            historico.concurso(m, pedido) ?: CaixaApi.guardado(m, pedido) ?: CaixaApi.concurso(m, pedido)
         } catch (t: Throwable) {
             erro = erroDoConcurso(pedido)
             null
@@ -862,16 +867,20 @@ fun erroDoConcurso(numero: Int): String = "Não foi possível consultar o concur
 
 /**
  * Os botões para ir e voltar nos concursos (desde a 0.28, logo acima do resultado nos Detalhes): "‹" (o
- * anterior), o campo com o número (digitar outro e tocar em Ir no teclado) e "›" (o seguinte, até o último).
+ * anterior), o campo com o número e "›" (o seguinte, até o último). Desde a 0.33, o campo se chama só "Concurso"
+ * (era "Concurso (o último)" no último) e o botão "Ir" fica embaixo (o Ir do teclado continua valendo); ele só
+ * acende com um número diferente do que está na tela.
  */
 @Composable
 private fun NavegacaoDoConcurso(numero: Int, ultimo: Int, aoIr: (Int) -> Unit) {
     var texto by remember(numero) { mutableStateOf(numero.toString()) }
     val foco = LocalFocusManager.current
+    val digitado = texto.toIntOrNull()?.takeIf { it > 0 }
     fun ir() {
-        texto.toIntOrNull()?.takeIf { it > 0 }?.let(aoIr) ?: run { texto = numero.toString() }
+        digitado?.let(aoIr) ?: run { texto = numero.toString() }
         foco.clearFocus()
     }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         FilledTonalIconButton(onClick = { aoIr(numero - 1) }, enabled = numero > 1, modifier = Modifier.size(48.dp)) {
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = CONCURSO_ANTERIOR)
@@ -880,7 +889,7 @@ private fun NavegacaoDoConcurso(numero: Int, ultimo: Int, aoIr: (Int) -> Unit) {
             value = texto,
             onValueChange = { novo -> texto = novo.filter(Char::isDigit).take(6) },
             singleLine = true,
-            label = { Text(if (numero == ultimo) "Concurso (o último)" else "Concurso") },
+            label = { Text(ROTULO_DO_CONCURSO) },
             textStyle = MaterialTheme.typography.titleMedium.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Go),
             keyboardActions = KeyboardActions(onGo = { ir() }, onDone = { ir() }),
@@ -890,7 +899,21 @@ private fun NavegacaoDoConcurso(numero: Int, ultimo: Int, aoIr: (Int) -> Unit) {
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = PROXIMO_CONCURSO)
         }
     }
+    Button(
+        onClick = { ir() },
+        enabled = digitado != null && digitado.coerceAtMost(ultimo) != numero,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+    ) {
+        Text(IR_AO_CONCURSO, fontWeight = FontWeight.Bold)
+    }
+    }
 }
+
+/** O nome do campo do concurso nos Detalhes (desde a 0.33, sem o "(o último)"). */
+const val ROTULO_DO_CONCURSO = "Concurso"
+
+/** O botão embaixo do campo do concurso (desde a 0.33). */
+const val IR_AO_CONCURSO = "Ir"
 
 const val CONCURSO_ANTERIOR = "Concurso anterior"
 const val PROXIMO_CONCURSO = "Próximo concurso"

@@ -478,7 +478,7 @@ fun SecaoVolante(
                     val (x, lista) = Operacoes.registrarTudo(Operacoes.salvarRascunho(e, final), final.id, hoje, agora)
                     feitas = lista
                     // O k1, o k2 e as odds do concurso ficam guardados na aposta (desde a 0.21).
-                    Operacoes.guardarIndices(x, ctx.bolao.indices.itens.value)
+                    Operacoes.guardarIndices(x, ctx.bolao.indices.itens.value, ctx.bolao.indices::resultadoDoEspecial)
                 }
                 // A página continua no volante, vazio, para a próxima aposta (desde a 0.25), já liberado.
                 aoRegistrar(final, feitas)

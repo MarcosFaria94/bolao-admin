@@ -66,10 +66,11 @@ fun semReferencia(m: Modalidade): Boolean = m == Modalidade.LOTECA || m == Modal
 
 /**
  * Os índices do cartão, cada um com o nome e o valor: [("k1", "0,836"), ("k2", "0,091"),
- * ("odds", "1:34")]. null = texto no lugar ("Sem referência", "Concurso especial...").
+ * ("odds", "1:34")]. null = texto no lugar ("Sem referência", "Concurso especial..."). Desde a 0.33 o concurso
+ * especial tem o k1 e o k2 da média dos últimos especiais (sem histórico, o texto).
  */
 fun indicesDoCartao(item: Indices.Item): List<Pair<String, String>>? = when {
-    semReferencia(item.modalidade) || item.especial -> null
+    semReferencia(item.modalidade) || (item.especial && item.k1 == null) -> null
     else -> listOfNotNull(
         "k1" to textoIndice(item.k1),
         "k2" to textoIndice(item.k2),
@@ -82,7 +83,7 @@ fun linhaIndices(item: Indices.Item): String {
     val odds = item.odds?.let { "    odds  ${IndiceK.exibirOddsInteiras(it)}" }.orEmpty()
     return when {
         semReferencia(item.modalidade) -> "Sem referência$odds"
-        item.especial -> "Concurso especial: sem k1 e k2$odds"
+        item.especial && item.k1 == null -> "$SEM_INDICES_NO_ESPECIAL$odds"
         else -> indicesDoCartao(item)!!.joinToString("    ") { (nome, valor) -> "$nome  $valor" }
     }
 }
@@ -147,8 +148,9 @@ fun CartaoIndice(
 
 /**
  * Um concurso especial à parte nos Jogos (desde a 0.27): o mesmo cartão, com a tarja do especial ("mega da
- * virada"), o concurso, o prêmio e o dia e a hora do sorteio anunciados pela Caixa, e as odds da modalidade
- * (concurso especial não tem k1 nem k2). Tocar abre a página do especial; segurar, os Detalhes.
+ * virada"), o concurso, o prêmio e o dia e a hora do sorteio anunciados pela Caixa, e os índices: desde a 0.33, o
+ * k1 e o k2 da média ponderada dos últimos especiais ([item] = [Indices.doEspecial]) e as odds da modalidade (sem
+ * o histórico dos especiais, só as odds). Tocar abre a página do especial; segurar, os Detalhes.
  */
 @Composable
 fun CartaoEspecial(
@@ -174,12 +176,16 @@ fun CartaoEspecial(
         aoSegurar = aoSegurar,
         aoInformar = aoInformar,
     ) {
-        val odds = item?.odds?.let { "    odds  ${IndiceK.exibirOddsInteiras(it)}" }.orEmpty()
-        Text(SEM_INDICES_NO_ESPECIAL + odds, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (item != null && item.k1 != null) {
+            IndicesNaLinha(item)
+        } else {
+            val odds = item?.odds?.let { "    odds  ${IndiceK.exibirOddsInteiras(it)}" }.orEmpty()
+            Text(SEM_INDICES_NO_ESPECIAL + odds, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
-/** O que os cartões dos concursos especiais dizem no lugar do k1 e do k2. */
+/** O que os cartões dos concursos especiais dizem no lugar do k1 e do k2 (desde a 0.33, só sem o histórico dos especiais). */
 const val SEM_INDICES_NO_ESPECIAL = "Concurso especial: sem k1 e k2"
 
 /** O cartão de um jogo nos Jogos: a tarja de ponta a ponta e, embaixo, o concurso, o preço, o prêmio, o sorteio e os índices. */

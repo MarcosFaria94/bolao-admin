@@ -122,6 +122,8 @@ import io.github.marcosfaria94.bolao.ui.atualizacao.DialogosAtualizacao
 import io.github.marcosfaria94.bolao.ui.cadastro.CadastroTela
 import io.github.marcosfaria94.bolao.ui.caixa.CaixaTela
 import io.github.marcosfaria94.bolao.ui.caixa.NavegadorDaCaixa
+import io.github.marcosfaria94.bolao.ui.caixa.PaginaFixaDaCaixa
+import io.github.marcosfaria94.bolao.ui.caixa.posicaoDaAba
 import io.github.marcosfaria94.bolao.ui.caixa.ROTA_CAIXA
 import io.github.marcosfaria94.bolao.ui.caixa.ROTULO_CAIXA
 import io.github.marcosfaria94.bolao.ui.caixa.TITULO_CAIXA
@@ -761,6 +763,11 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             composable("apuracao/{id}") { e ->
                 TelaDeCima(nav, e) { PaginaDaAposta(estado, e.arguments?.getString("id").orEmpty(), ::abrir) { fechar(nav, e) } }
             }
+        }
+        // A página da Caixa congelada (desde a 0.33): o site numa camada por cima das abas, presa à janela, andando junto
+        // com as abas (a aba da Caixa só reserva o lugar); fora da aba, ou com outra tela por cima, fica de lado.
+        PaginaFixaDaCaixa(caixa) {
+            if (!ehAba) null else posicaoDaAba(paginas.currentPage + paginas.currentPageOffsetFraction, abas.size) { abaDa(it) == Aba.CAIXA }
         }
         // Os avisos no alto da tela (desde a 0.29).
         SnackbarHost(LocalAvisos.current, Modifier.align(Alignment.TopCenter))

@@ -32,6 +32,8 @@ data class RegistroK(
     val ganhadores: Map<Int, Int> = emptyMap(),
     /** Prêmio pago a cada ganhador, por faixa (listaRateioPremio, valorPremio; líquido do IR). */
     val premios: Map<Int, Double> = emptyMap(),
+    /** O dia do sorteio, "dd/mm/aaaa" (desde a 0.33: para separar os concursos especiais de cada tipo). */
+    val dataApuracao: String? = null,
 ) {
     companion object {
         /** Lê os campos do JSON da API (ou dos casos de teste, no mesmo formato). */
@@ -58,6 +60,7 @@ data class RegistroK(
                 val valor = f.numOuNull("valorPremio") ?: return@mapNotNull null
                 faixa to valor
             }.toMap(),
+            dataApuracao = o.texto("dataApuracao"),
         )
     }
 }

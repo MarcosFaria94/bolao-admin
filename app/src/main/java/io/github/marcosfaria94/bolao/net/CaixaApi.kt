@@ -47,6 +47,13 @@ object CaixaApi {
     @Volatile
     var aoReceberUltimo: ((Modalidade, Concurso, String) -> Unit)? = null
 
+    /**
+     * Avisado a cada concurso que chega da Caixa (o último ou um específico), com a resposta dela: o histórico do
+     * celular acrescenta os completos (desde a 0.33, [io.github.marcosfaria94.bolao.data.Historico]).
+     */
+    @Volatile
+    var aoReceberConcurso: ((Modalidade, Concurso, String) -> Unit)? = null
+
     /** Endereços vindos do parametros_k.json (seção "api"). */
     fun configurar(params: String, bases: List<String>) {
         if (params.isNotBlank()) paramsUrl = params
@@ -124,7 +131,9 @@ object CaixaApi {
         var erro: IOException? = null
         for (base in bases) {
             try {
-                return buscarEm(m, base + caminho)
+                val r = buscarEm(m, base + caminho)
+                aoReceberConcurso?.let { runCatching { it(m, r.first, r.second) } }
+                return r
             } catch (e: IOException) {
                 erro = e
             }

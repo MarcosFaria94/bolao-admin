@@ -189,7 +189,9 @@ fun PainelDeJogosTela(estado: Estado, resumo: List<ItemDoResumo>, abrir: (String
     val hoje = LocalDate.now()
     // Desde a 0.30, por modalidade (o concurso especial, como a Mega da Virada, fica dentro da modalidade dele): as
     // modalidades pelo sorteio mais próximo e, no mesmo dia, pelo maior k1; os concursos de cada uma, o mais próximo primeiro.
-    val modalidades = porModalidade(jogosEmAndamento(estado, hoje)) { indicesDoConcurso(itens[it.modalidade], it)?.k1 }
+    val modalidades = porModalidade(jogosEmAndamento(estado, hoje)) {
+        indicesDoConcurso(itens[it.modalidade], it, indices.resultadoDoEspecial(it.modalidade, it.concurso))?.k1
+    }
     val grupos = modalidades.flatMap { it.concursos }
     val todas = grupos.flatMap { it.apostas }
     // O "Compartilhar" manda só as apostas registradas (as que falta registrar ainda não valem).
@@ -583,9 +585,10 @@ const val TITULO_DOS_JOGOS = "MEUS JOGOS"
 
 /**
  * Os índices do concurso do grupo [g]: os guardados nas apostas quando foram registradas (desde a 0.21);
- * sem eles, os de agora, se são do concurso; senão, só as odds (o k1 e o k2 com "—").
+ * sem eles, os de agora, se são do concurso; desde a 0.33, num concurso especial anunciado à parte, os dele
+ * ([especial]: a média dos últimos especiais); senão, só as odds (o k1 e o k2 com "—").
  */
-fun indicesDoConcurso(item: Indices.Item?, g: GrupoEmAndamento): Indices.Item? {
+fun indicesDoConcurso(item: Indices.Item?, g: GrupoEmAndamento, especial: ResultadoK? = null): Indices.Item? {
     val guardados = g.apostas.firstNotNullOfOrNull { it.indices }
     if (guardados != null) {
         val k = ResultadoK(
@@ -595,7 +598,11 @@ fun indicesDoConcurso(item: Indices.Item?, g: GrupoEmAndamento): Indices.Item? {
         return (item ?: Indices.Item(g.modalidade, null, null, null)).copy(k = k, odds = guardados.odds ?: item?.odds)
     }
     if (item == null) return null
-    return if (item.k?.numero == g.concurso) item else item.copy(k = null)
+    return when {
+        item.k?.numero == g.concurso -> item
+        especial != null && especial.numero == g.concurso -> item.copy(k = especial)
+        else -> item.copy(k = null)
+    }
 }
 
 /** Verde do OK e âmbar do Pendente. */

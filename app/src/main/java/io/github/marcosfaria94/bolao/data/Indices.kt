@@ -9,6 +9,7 @@ import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Especiais
 import io.github.marcosfaria94.bolao.domain.ConcursoEspecial
 import io.github.marcosfaria94.bolao.domain.indices.AuditoriaRegras
+import io.github.marcosfaria94.bolao.domain.indices.IndiceEspecial
 import io.github.marcosfaria94.bolao.domain.indices.IndiceK
 import io.github.marcosfaria94.bolao.domain.indices.ParametrosK
 import io.github.marcosfaria94.bolao.domain.indices.ResultadoK
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -32,6 +34,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -59,6 +62,10 @@ import kotlin.math.roundToLong
  * Desde a 0.7: o cálculo usa o preço de Ajustes (não o do arquivo), avisa quando os dois são
  * diferentes e, a cada concurso novo, confere o rateio pago pela Caixa com as regras do arquivo
  * (AuditoriaRegras): 3 concursos seguidos fora das regras viram um aviso no resumo do Painel de Jogos.
+ *
+ * Desde a 0.33: o concurso anterior (do k1) vem do histórico ([Historico]) antes de ir à Caixa, e os concursos
+ * especiais (o próximo concurso, quando é um, e os anunciados à parte nos Jogos) têm o k1 e o k2 da média ponderada
+ * dos últimos especiais já sorteados ([IndiceEspecial], [especiais]).
  */
 class Indices(private val context: Context) {
 
@@ -157,6 +164,13 @@ class Indices(private val context: Context) {
     /** Preço diferente do dos parâmetros e regras que mudaram (3 concursos seguidos fora delas). */
     val avisos: StateFlow<List<Aviso>> = _avisos.asStateFlow()
 
+    private val _especiais = MutableStateFlow<Map<Modalidade, IndiceEspecial.Estimativa>>(emptyMap())
+
+    /** O k1 e o k2 estimados para o próximo concurso especial de cada modalidade que tem um (desde a 0.33). */
+    val especiais: StateFlow<Map<Modalidade, IndiceEspecial.Estimativa>> = _especiais.asStateFlow()
+
+    private val historico: Historico get() = context.bolao.historico
+
     /** Último (u) e anterior (a) de cada modalidade, para refazer o cálculo quando o preço muda. */
     private val concursos = ConcurrentHashMap<Modalidade, Pair<Concurso, Concurso?>>()
 
@@ -171,10 +185,19 @@ class Indices(private val context: Context) {
         parametros?.let { CaixaApi.configurar(it.paramsUrl, it.basesReserva) }
         // O último concurso consultado em outras telas (o volante, o registro) também entra aqui.
         CaixaApi.aoReceberUltimo = { m, c, texto -> escopo.launch { carregamento.join(); receber(m, c, texto, null) } }
+        // Todo concurso completo que chega da Caixa entra no histórico do celular (desde a 0.33).
+        CaixaApi.aoReceberConcurso = { m, c, texto -> escopo.launch { historico.acrescentar(m, c, texto) } }
         carregamento = escopo.launch {
             carregarAuditoria()
             carregarConsultas()
             carregarGuardados()
+        }
+        // O k1 e o k2 dos concursos especiais (desde a 0.33): dos especiais já sorteados, no histórico; um especial novo
+        // no histórico refaz a conta.
+        escopo.launch {
+            carregamento.join()
+            estimarEspeciais()
+            historico.novosEspeciais.drop(1).collect { estimarEspeciais() }
         }
         // O preço de Ajustes entra no cálculo: mudou lá, os índices são refeitos na hora.
         escopo.launch {
@@ -224,12 +247,57 @@ class Indices(private val context: Context) {
         val ru = u?.registro
         val ra = a?.registro
         val precoAjustes = precoDeAjustes(m)
-        val k = if (p != null && c != null && ru != null && ra != null && ra.numero == ru.numero - 1) {
+        val calculado = if (p != null && c != null && ru != null && ra != null && ra.numero == ru.numero - 1) {
             runCatching { IndiceK.calcular(p, c, ru, ra, preco = precoAjustes?.let { it / 100.0 }) }.getOrNull()
         } else {
             null
         }
+        // O próximo concurso é um especial (pela conta dos acumulados ou pela lista dos anunciados): o k1 e o k2 são
+        // os da média dos últimos especiais (desde a 0.33; antes, nenhum).
+        val k = calculado?.let { k ->
+            if (k.especial || Especiais.doConcurso(m, k.numero) != null) comEstimativaDoEspecial(k.copy(especial = true), m) else k
+        }
         return Item(m, u, k, oddsDe(m), precoAjustes = precoAjustes, precoParametros = precoDosParametros(m))
+    }
+
+    private fun comEstimativaDoEspecial(k: ResultadoK, m: Modalidade): ResultadoK {
+        val e = _especiais.value[m]
+        return k.copy(k1 = e?.k1, k2 = e?.k2, k1PorFaixa = emptyMap())
+    }
+
+    /** As modalidades com concurso especial (as que têm o nome dele). */
+    private val comEspecial: List<Modalidade> get() = Modalidade.ATIVAS.filter { Especiais.nomeDoEspecial(it) != null && chave(it) != null }
+
+    /** Refaz a estimativa do k1 e do k2 dos especiais, a partir dos especiais do histórico. */
+    private suspend fun estimarEspeciais() {
+        val p = parametros ?: return
+        val novas = comEspecial.mapNotNull { m ->
+            val c = chave(m) ?: return@mapNotNull null
+            runCatching { IndiceEspecial.estimar(p, c, historico.especiais(m), epoca = Especiais.epoca(m)) }.getOrNull()?.let { m to it }
+        }.toMap()
+        if (novas == _especiais.value) return
+        // Publica na linha principal (quem lê os índices está nas telas).
+        withContext(Dispatchers.Main) {
+            _especiais.value = novas
+            recalcular()
+        }
+    }
+
+    /**
+     * Os índices de um concurso especial anunciado à parte nos Jogos (desde a 0.33): o k1 e o k2 da média dos
+     * últimos especiais e as odds da modalidade (sem a estimativa, o k1 e o k2 ficam vazios).
+     */
+    fun doEspecial(e: ConcursoEspecial, mapa: Map<Modalidade, Item> = _itens.value): Item {
+        val m = e.modalidade
+        val base = mapa[m] ?: Item(m, null, null, oddsDe(m))
+        return base.copy(k = resultadoDoEspecial(m, e.concurso) ?: ResultadoK(e.concurso, true, 0.0, 0, emptyMap(), 0.0))
+    }
+
+    /** O k1 e o k2 do concurso [numero] quando ele é um especial anunciado (null = não é, ou sem a estimativa). */
+    fun resultadoDoEspecial(m: Modalidade, numero: Int): ResultadoK? {
+        if (Especiais.doConcurso(m, numero) == null) return null
+        val e = _especiais.value[m] ?: return null
+        return ResultadoK(numero, true, 0.0, 0, emptyMap(), 0.0, k1 = e.k1, k2 = e.k2)
     }
 
     /**
@@ -362,11 +430,12 @@ class Indices(private val context: Context) {
         }
     }
 
-    /** O concurso anterior ao [u] (para o k1): do celular ou da Caixa (null = Loteca, Federal ou sem resposta). */
+    /** O concurso anterior ao [u] (para o k1): do celular, do histórico ou da Caixa (null = Loteca, Federal ou sem resposta). */
     private suspend fun anterior(m: Modalidade, u: Concurso, limite: Semaphore?): Concurso? {
         if (chave(m) == null || u.numero <= 1) return null
         val f = arquivoConcurso(m, u.numero - 1)
         ler(m, f)?.let { return it }
+        runCatching { historico.concurso(m, u.numero - 1) }.getOrNull()?.takeIf { it.registro != null }?.let { return it }
         suspend fun buscar() = runCatching { CaixaApi.concursoComTexto(m, u.numero - 1) }.getOrNull()
         val (c, texto) = (if (limite != null) limite.withPermit { buscar() } else buscar()) ?: return null
         guardar(f, texto)

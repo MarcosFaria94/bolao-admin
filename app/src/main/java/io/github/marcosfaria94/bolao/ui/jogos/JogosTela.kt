@@ -93,6 +93,8 @@ fun JogosTela(
     val itens by indices.itens.collectAsStateWithLifecycle()
     val atualizando by indices.atualizando.collectAsStateWithLifecycle()
     val consultas by indices.consultas.collectAsStateWithLifecycle()
+    // O k1 e o k2 dos especiais (desde a 0.33): a média dos últimos especiais já sorteados.
+    val estimativas by indices.especiais.collectAsStateWithLifecycle()
     val avisos by indices.avisos.collectAsStateWithLifecycle()
     // O relógio da agenda: a cada meio minuto a situação é refeita e, se um sorteio passou da hora de
     // consultar, a Caixa é consultada (só para os jogos que precisam).
@@ -156,7 +158,7 @@ fun JogosTela(
             // Os concursos especiais com apostas abertas (desde a 0.27), antes dos outros jogos.
             items(especiais, key = { "especial-${it.modalidade.name}-${it.concurso}" }) { e ->
                 CartaoEspecial(
-                    e, itens[e.modalidade], estado,
+                    e, remember(e, itens, estimativas) { indices.doEspecial(e, itens) }, estado,
                     aoTocar = { abrirEspecial(e, false) },
                     aoSegurar = { abrirEspecial(e, true) },
                     destaque = destaque?.especial == e,

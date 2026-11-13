@@ -3,6 +3,7 @@ package io.github.marcosfaria94.bolao
 import android.app.Application
 import android.content.Context
 import io.github.marcosfaria94.bolao.data.Backup
+import io.github.marcosfaria94.bolao.data.Historico
 import io.github.marcosfaria94.bolao.data.Indices
 import io.github.marcosfaria94.bolao.data.Operacoes
 import io.github.marcosfaria94.bolao.data.Repositorio
@@ -26,6 +27,9 @@ class BolaoApp : Application() {
     val backup: Backup by lazy { Backup(this) }
     /** Índices k1/k2 e odds das modalidades (Jogos e concurso em destaque). */
     val indices: Indices by lazy { Indices(this) }
+
+    /** Todos os concursos já sorteados (desde a 0.33): os embutidos no app e os que chegam da Caixa depois. */
+    val historico: Historico by lazy { Historico(this) }
 
     /** O app está na tela (o aviso "Ação necessária" espera o Administrador sair). */
     @Volatile
@@ -55,7 +59,9 @@ class BolaoApp : Application() {
         // O k1, o k2 e as odds do concurso ficam guardados nas apostas registradas (desde a 0.21).
         escopo.launch {
             combine(indices.itens, sessoes.estado) { itens, e -> itens to e }.collect { (itens, e) ->
-                if (e != null && Operacoes.guardarIndices(e, itens) !== e) runCatching { repo.atualizar { Operacoes.guardarIndices(it, itens) } }
+                if (e != null && Operacoes.guardarIndices(e, itens, indices::resultadoDoEspecial) !== e) {
+                    runCatching { repo.atualizar { Operacoes.guardarIndices(it, itens, indices::resultadoDoEspecial) } }
+                }
             }
         }
         Notificador.criarCanais(this)
