@@ -160,6 +160,7 @@ fun JogosTela(
                     aoTocar = { abrirEspecial(e, false) },
                     aoSegurar = { abrirEspecial(e, true) },
                     destaque = destaque?.especial == e,
+                    aoInformar = abrirIndices,
                 )
             }
             val ordem = indices.ordenados(itens).let { l -> if (especialNoCartao == null) l else l.sortedByDescending { it.modalidade == especialNoCartao.modalidade } }
@@ -171,6 +172,7 @@ fun JogosTela(
                     aoTocar = { abrirModalidade(item.modalidade) },
                     aoSegurar = { abrirDetalhes(item.modalidade) },
                     situacao = situacoes[item.modalidade],
+                    aoInformar = abrirIndices,
                 )
             }
         }

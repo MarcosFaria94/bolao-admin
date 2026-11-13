@@ -56,7 +56,8 @@ class Novidades029Test {
         val mega = regras(Modalidade.MEGA_SENA, e, mais = true).toMap()
         assertEquals("De 01 a 60", mega["Volante"])
         assertEquals("De 6 a 20 números", mega["Aposta"])
-        assertTrue(mega["Preço"]!!.startsWith("De R$ 6,00 a R$ "))
+        // Desde a 0.32 as regras não têm o preço (ele fica no cartão "Preço").
+        assertNull(mega["Preço"])
         // Sem faixa (a aposta simples), sem o "De".
         assertEquals("6 números", regras(Modalidade.MEGA_SENA, e, mais = false).toMap()["Aposta"])
         val time = regras(Modalidade.TIMEMANIA, e, mais = false).toMap()

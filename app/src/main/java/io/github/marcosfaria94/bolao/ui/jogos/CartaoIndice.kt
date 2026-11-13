@@ -1,5 +1,11 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -120,6 +126,7 @@ fun CartaoIndice(
     destaque: Boolean = false,
     aoSegurar: (() -> Unit)? = null,
     situacao: AgendaDaCaixa.Situacao? = null,
+    aoInformar: (() -> Unit)? = null,
 ) {
     val m = item.modalidade
     val hoje = LocalDate.now()
@@ -134,6 +141,7 @@ fun CartaoIndice(
         destaque = destaque,
         aoTocar = aoTocar,
         aoSegurar = aoSegurar,
+        aoInformar = aoInformar,
     ) { IndicesNaLinha(item) }
 }
 
@@ -150,6 +158,7 @@ fun CartaoEspecial(
     aoTocar: () -> Unit,
     aoSegurar: (() -> Unit)? = null,
     destaque: Boolean = false,
+    aoInformar: (() -> Unit)? = null,
 ) {
     val hoje = LocalDate.now()
     CartaoDoJogo(
@@ -163,6 +172,7 @@ fun CartaoEspecial(
         destaque = destaque,
         aoTocar = aoTocar,
         aoSegurar = aoSegurar,
+        aoInformar = aoInformar,
     ) {
         val odds = item?.odds?.let { "    odds  ${IndiceK.exibirOddsInteiras(it)}" }.orEmpty()
         Text(SEM_INDICES_NO_ESPECIAL + odds, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -185,6 +195,7 @@ private fun CartaoDoJogo(
     destaque: Boolean,
     aoTocar: () -> Unit,
     aoSegurar: (() -> Unit)?,
+    aoInformar: (() -> Unit)? = null,
     indices: @Composable () -> Unit,
 ) {
     val cor = MaterialTheme.colorScheme.onSurface
@@ -257,9 +268,36 @@ private fun CartaoDoJogo(
             )
             // "Sorteio:" e a data na mesma cor.
             Text("Sorteio: $sorteio", style = MaterialTheme.typography.bodyLarge, color = cor, maxLines = 1)
-            indices()
+            // Desde a 0.32: o "i" num círculo antes do k1, do k2 e das odds (tocar abre os Indicadores, que explicam).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconeDeInformacao(aoInformar)
+                Spacer(Modifier.width(6.dp))
+                Box(Modifier.weight(1f)) { indices() }
+            }
         }
     }
+    }
+}
+
+/** O que o "i" dos cartões dos Jogos diz (abre os Indicadores). */
+const val SOBRE_OS_INDICES = "O que são o k1, o k2 e as odds"
+
+/**
+ * O "i" num círculo antes dos índices dos cartões dos Jogos (desde a 0.32, pedido do usuário). Tocar nele abre os
+ * Indicadores (a explicação do k1, do k2 e das odds); o toque no resto do cartão continua abrindo o jogo.
+ */
+@Composable
+private fun IconeDeInformacao(aoTocar: (() -> Unit)?) {
+    val suave = MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .then(if (aoTocar != null) Modifier.clickable(onClickLabel = SOBRE_OS_INDICES, onClick = aoTocar) else Modifier)
+            .semantics { contentDescription = SOBRE_OS_INDICES },
+    ) {
+        Icon(Icons.Outlined.Info, contentDescription = null, tint = suave, modifier = Modifier.size(20.dp))
     }
 }
 

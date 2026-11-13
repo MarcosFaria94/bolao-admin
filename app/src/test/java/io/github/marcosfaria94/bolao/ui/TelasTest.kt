@@ -402,9 +402,10 @@ class TelasTest {
         assertEquals(listOf(SecaoAjuste.INTEGRIDADE, SecaoAjuste.AUDITORIA), SecaoAjuste.grupos(false, informal = true).first { it.first == "SEGURANÇA" }.second)
         // O individual: o "Apagar tudo" no fim do "Apostas"; sem o grupo Segurança.
         assertEquals(listOf(SecaoAjuste.MODO, SecaoAjuste.PARAMETROS, SecaoAjuste.EXTINCAO), SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second)
-        assertEquals(listOf("APOSTAS", "CELULAR"), SecaoAjuste.grupos(true).map { it.first })
+        // Desde a 0.32, o grupo Apoio (Doação e Contato) no fim.
+        assertEquals(listOf("APOSTAS", "CELULAR", "APOIO"), SecaoAjuste.grupos(true).map { it.first })
         assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.BIOMETRIA, SecaoAjuste.BACKUP), SecaoAjuste.grupos(true).first { it.first == "CELULAR" }.second)
-        assertEquals(listOf("BOLÃO", "SEGURANÇA", "CELULAR"), SecaoAjuste.grupos(false).map { it.first })
+        assertEquals(listOf("BOLÃO", "SEGURANÇA", "CELULAR", "APOIO"), SecaoAjuste.grupos(false).map { it.first })
         // O endereço antigo do "Aporte e preços" (avisos de antes da 0.23) abre os Parâmetros.
         assertEquals(SecaoAjuste.PARAMETROS, SecaoAjuste.de("valores"))
         assertEquals(SecaoAjuste.PARAMETROS, SecaoAjuste.de("parametros"))

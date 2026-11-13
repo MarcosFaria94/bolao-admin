@@ -1,6 +1,18 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
 import androidx.compose.foundation.background
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.outlined.UnfoldMore
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -144,6 +156,8 @@ private fun planejar(
     colunas: List<String>,
     linhas: List<Pair<String, List<String>>>,
     disponivel: Int,
+    ordenaveis: Set<Int> = emptySet(),
+    extraDoTitulo: Int = 0,
 ): PlanoDaTabela {
     fun larguraDe(t: String, e: TextStyle): Int = medidor.measure(t, e, maxLines = 1, softWrap = false).size.width
     class Medidas(val t: Tentativa, val celula: TextStyle, val cabecalho: TextStyle, val folga: Int, val daPrimeira: Int, val larguras: List<Int>) {
@@ -157,8 +171,10 @@ private fun planejar(
         val f = with(d) { t.folga.roundToPx() } * 2
         fun titulo(x: String): Int = if (t.quebrar) larguraEmDuasLinhas(x) { larguraDe(it, cab) } else larguraDe(x, cab)
         val l0 = maxOf(titulo(primeira), linhas.maxOfOrNull { larguraDe(it.first, negrito) } ?: 0) + f
+        // O título das colunas que se ordenam tem a setinha ao lado ([extraDoTitulo]).
+        fun extra(j: Int): Int = if (j in ordenaveis) extraDoTitulo else 0
         val ls = colunas.mapIndexed { j, c ->
-            maxOf(titulo(c), linhas.maxOfOrNull { larguraDe(it.second.getOrElse(j) { "" }, cel) } ?: 0) + f
+            maxOf(titulo(c) + extra(j), linhas.maxOfOrNull { larguraDe(it.second.getOrElse(j) { "" }, cel) } ?: 0) + f
         }.toMutableList()
         var inicio = 0
         grupos.forEach { (g, quantas) ->
@@ -182,7 +198,10 @@ private fun planejar(
     val margem = with(d) { 14.dp.roundToPx() }
     fun alturaDe(t: String, largura: Int): Int =
         medidor.measure(t, m.cabecalho, maxLines = 2, constraints = Constraints(maxWidth = maxOf(1, largura - m.folga))).size.height
-    val alturaCabecalho = maxOf(alturaDe(primeira, todas[0]), colunas.indices.maxOfOrNull { j -> alturaDe(colunas[j], todas[j + 1]) } ?: 0) + margem
+    val alturaCabecalho = maxOf(
+        alturaDe(primeira, todas[0]),
+        colunas.indices.maxOfOrNull { j -> alturaDe(colunas[j], todas[j + 1] - if (j in ordenaveis) extraDoTitulo else 0) } ?: 0,
+    ) + margem
     var alturaGrupos = 0
     if (grupos.any { it.first.isNotBlank() }) {
         var j = 0
@@ -230,6 +249,10 @@ private fun Modifier.prenderArrastoLateral(): Modifier = pointerInput(Unit) {
  * lados, com a primeira coluna parada, a borda direita esmaecida enquanto há colunas escondidas e o arrasto preso
  * nela ([prenderArrastoLateral], [SemPassarAdiante]). A letra cresce com a do celular só até
  * [ESCALA_MAXIMA_DA_TABELA].
+ *
+ * Desde a 0.32, com [ordem] (o valor de cada célula para ordenar; null = "—", sempre no fim), tocar no título de
+ * uma coluna ordena as linhas por ela (do menor para o maior; tocar de novo, ao contrário), com a setinha no
+ * título; tocar no título da primeira coluna volta à ordem de sempre ([OrdemDaTabela]).
  */
 @Composable
 fun TabelaRolavel(
@@ -238,6 +261,7 @@ fun TabelaRolavel(
     colunas: List<String>,
     linhas: List<Pair<String, List<String>>>,
     modifier: Modifier = Modifier,
+    ordem: List<List<Long?>>? = null,
 ) = LetraDaTabela {
     val medidor = rememberTextMeasurer()
     val densidade = LocalDensity.current
@@ -249,10 +273,16 @@ fun TabelaRolavel(
     fun fundoDa(i: Int): Color = if (i % 2 == 1) listra else Color.Transparent
     val linha = MaterialTheme.colorScheme.outlineVariant
 
+    // A ordenação (desde a 0.32): a coluna escolhida (-1 = a ordem de sempre) e o sentido.
+    val ordenaveis = if (ordem != null) colunas.indices.toSet() else emptySet()
+    var ordenacao by rememberSaveable(colunas) { mutableStateOf(OrdemDaTabela()) }
+    val vistas = remember(linhas, ordem, ordenacao) { ordenacao.linhas(linhas.size, ordem) }
+    val extraDoTitulo = with(densidade) { (TAMANHO_DA_SETINHA + 2.dp).roundToPx() }
+
     BoxWithConstraints(modifier) {
         val disponivel = constraints.maxWidth
-        val p = remember(primeira, grupos, colunas, linhas, celulaBase, cabecalhoBase, densidade, disponivel) {
-            planejar(medidor, densidade, celulaBase, cabecalhoBase, primeira, grupos, colunas, linhas, disponivel)
+        val p = remember(primeira, grupos, colunas, linhas, celulaBase, cabecalhoBase, densidade, disponivel, ordenaveis) {
+            planejar(medidor, densidade, celulaBase, cabecalhoBase, primeira, grupos, colunas, linhas, disponivel, ordenaveis, extraDoTitulo)
         }
         fun Int.emDp(): Dp = with(densidade) { this@emDp.toDp() }
         val larguraPrimeira = p.primeira.emDp()
@@ -266,11 +296,25 @@ fun TabelaRolavel(
             // A primeira coluna, parada.
             Column(Modifier.width(larguraPrimeira)) {
                 if (comGrupos) Box(Modifier.width(larguraPrimeira).height(alturaGrupos).background(fundoCabecalho))
-                Box(Modifier.width(larguraPrimeira).height(alturaCabecalho).background(fundoCabecalho), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .width(larguraPrimeira)
+                        .height(alturaCabecalho)
+                        .background(fundoCabecalho)
+                        .then(
+                            if (ordem != null) {
+                                Modifier.clickable(onClickLabel = ORDEM_DE_SEMPRE) { ordenacao = OrdemDaTabela() }
+                            } else {
+                                Modifier
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(primeira, style = p.cabecalho, maxLines = 2, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = folga))
                 }
                 HorizontalDivider(color = linha)
-                linhas.forEachIndexed { i, (rotulo, _) ->
+                vistas.forEachIndexed { i, original ->
+                    val rotulo = linhas[original].first
                     Box(Modifier.width(larguraPrimeira).height(alturaLinha).background(fundoDa(i)), contentAlignment = Alignment.Center) {
                         Text(rotulo, style = p.celula, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                     }
@@ -323,13 +367,44 @@ fun TabelaRolavel(
                     }
                     Row {
                         colunas.forEachIndexed { j, c ->
-                            Box(Modifier.width(larguras[j]).height(alturaCabecalho).background(fundoCabecalho), contentAlignment = Alignment.Center) {
-                                Text(c, style = p.cabecalho, maxLines = 2, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = folga))
+                            Box(
+                                Modifier
+                                    .width(larguras[j])
+                                    .height(alturaCabecalho)
+                                    .background(fundoCabecalho)
+                                    .then(
+                                        if (j in ordenaveis) {
+                                            Modifier.clickable(onClickLabel = ordenarPor(c)) { ordenacao = ordenacao.tocar(j) }
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (j in ordenaveis) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = folga)) {
+                                        Text(c, style = p.cabecalho, maxLines = 2, textAlign = TextAlign.Center, modifier = Modifier.weight(1f, fill = false))
+                                        Spacer(Modifier.width(2.dp))
+                                        Icon(
+                                            when {
+                                                ordenacao.coluna != j -> Icons.Outlined.UnfoldMore
+                                                ordenacao.crescente -> Icons.Outlined.ArrowUpward
+                                                else -> Icons.Outlined.ArrowDownward
+                                            },
+                                            contentDescription = null,
+                                            tint = if (ordenacao.coluna == j) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(TAMANHO_DA_SETINHA),
+                                        )
+                                    }
+                                } else {
+                                    Text(c, style = p.cabecalho, maxLines = 2, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = folga))
+                                }
                             }
                         }
                     }
                     HorizontalDivider(Modifier.width(larguras.fold(0.dp) { s, x -> s + x }), color = linha)
-                    linhas.forEachIndexed { i, (_, valores) ->
+                    vistas.forEachIndexed { i, original ->
+                        val valores = linhas[original].second
                         Row(Modifier.background(fundoDa(i))) {
                             colunas.indices.forEach { j ->
                                 Box(Modifier.width(larguras[j]).height(alturaLinha), contentAlignment = Alignment.Center) {
@@ -341,5 +416,36 @@ fun TabelaRolavel(
                 }
             }
         }
+    }
+}
+
+/** O tamanho da setinha da ordenação no título da coluna (desde a 0.32). */
+private val TAMANHO_DA_SETINHA = 14.dp
+
+/** O que tocar no título da primeira coluna faz (com a tabela ordenada por outra coluna). */
+const val ORDEM_DE_SEMPRE = "Voltar à ordem de sempre"
+
+/** "Ordenar por Preço": o que tocar no título de uma coluna faz. */
+fun ordenarPor(coluna: String): String = "Ordenar por $coluna"
+
+/**
+ * A ordem das linhas de uma tabela que se ordena (desde a 0.32): a [coluna] escolhida (-1 = a ordem de sempre) e se
+ * é do menor para o maior ([crescente]).
+ */
+data class OrdemDaTabela(val coluna: Int = -1, val crescente: Boolean = true) : java.io.Serializable {
+    /** Tocar no título da coluna [j]: ordena por ela (do menor para o maior); de novo, inverte. */
+    fun tocar(j: Int): OrdemDaTabela = if (coluna == j) copy(crescente = !crescente) else OrdemDaTabela(j, true)
+
+    /**
+     * Os índices das [quantas] linhas na ordem da tabela: a de sempre ou pelos valores da coluna em [ordem] (os
+     * empates ficam na ordem de sempre; o "—", null, sempre no fim).
+     */
+    fun linhas(quantas: Int, ordem: List<List<Long?>>?): List<Int> {
+        val todas = (0 until quantas).toList()
+        if (coluna < 0 || ordem == null) return todas
+        val com = todas.filter { ordem.getOrNull(it)?.getOrNull(coluna) != null }
+        val sem = todas - com.toSet()
+        val porValor = compareBy<Int> { ordem[it][coluna]!! }
+        return com.sortedWith(if (crescente) porValor else porValor.reversed()) + sem
     }
 }

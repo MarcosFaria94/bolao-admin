@@ -216,7 +216,8 @@ fun EtiquetaDePreco(preco: String, modifier: Modifier = Modifier) {
  * Um cartão que abre e fecha tocando no título (drill-down; desde a 0.27, nos Detalhes do jogo: Regras,
  * Probabilidades e Quantidade de prêmios). Começa fechado ([inicial]); a seta diz se abre ou fecha. Desde a
  * 0.29, aberto, tocar em qualquer lugar dele (as tabelas também) fecha; os botões de dentro continuam com o
- * toque deles, e arrastar uma tabela para os lados não fecha.
+ * toque deles, e arrastar uma tabela para os lados não fecha. Desde a 0.32, ao abrir, a tela rola para mostrar o
+ * máximo possível dele a partir do título ([trazerAoAbrir]).
  */
 @Composable
 fun CartaoQueAbre(
@@ -226,7 +227,11 @@ fun CartaoQueAbre(
     conteudo: @Composable () -> Unit,
 ) {
     var aberto by rememberSaveable(titulo) { mutableStateOf(inicial) }
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), modifier = modifier.fillMaxWidth()) {
+    // Ao abrir, a tela rola para mostrar o máximo do cartão a partir do título (desde a 0.32).
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = modifier.fillMaxWidth().trazerAoAbrir(aberto),
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier

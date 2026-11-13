@@ -127,9 +127,17 @@ object Notificador {
     /**
      * "Aposta premiada!", sem o valor. Tocar abre a aposta, onde o prêmio aparece. [comToque]: o
      * prêmio principal está tocando (o aviso traz o "Parar o toque"; arrastar o aviso também para).
+     * [quieto] (desde a 0.32): o aviso não toca o som dele (o som próprio do prêmio secundário toca no lugar).
      */
     @SuppressLint("MissingPermission")
-    fun apostaPremiada(context: Context, p: Premiada, prefixo: String = "", comToque: Boolean = false, sessao: String? = null) {
+    fun apostaPremiada(
+        context: Context,
+        p: Premiada,
+        prefixo: String = "",
+        comToque: Boolean = false,
+        sessao: String? = null,
+        quieto: Boolean = false,
+    ) {
         if (!permitido(context)) return
         val id = (sessao.orEmpty() + p.chave).hashCode()
         val b = NotificationCompat.Builder(context, CANAL_PREMIOS)
@@ -141,6 +149,7 @@ object Notificador {
             .setContentIntent(abrir(context, p.destino, id, sessao))
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setSilent(quieto)
         if (comToque) {
             val parar = PendingIntent.getBroadcast(
                 context, ID_PARAR_TOQUE, Intent(context, PararToque::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,

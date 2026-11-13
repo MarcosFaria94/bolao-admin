@@ -12,6 +12,7 @@ import io.github.marcosfaria94.bolao.domain.indices.AuditoriaRegras
 import io.github.marcosfaria94.bolao.domain.indices.IndiceK
 import io.github.marcosfaria94.bolao.domain.indices.ParametrosK
 import io.github.marcosfaria94.bolao.domain.indices.ResultadoK
+import io.github.marcosfaria94.bolao.domain.PremiosTipicos
 import io.github.marcosfaria94.bolao.net.CaixaApi
 import io.github.marcosfaria94.bolao.net.CaixaParser
 import kotlinx.coroutines.CoroutineScope
@@ -229,6 +230,20 @@ class Indices(private val context: Context) {
             null
         }
         return Item(m, u, k, oddsDe(m), precoAjustes = precoAjustes, precoParametros = precoDosParametros(m))
+    }
+
+    /**
+     * Os prêmios típicos do próximo concurso da modalidade (desde a 0.32, nos Detalhes): a estimativa de cada faixa,
+     * em centavos e antes do IR ([PremiosTipicos.estimar], o mesmo cálculo do k1, com o preço de Ajustes). null sem
+     * os dados dos dois últimos concursos, sem os parâmetros (Loteca) ou num concurso especial.
+     */
+    fun premiosTipicos(m: Modalidade): Map<Int, Long>? {
+        val p = parametros ?: return null
+        val c = chave(m) ?: return null
+        val (u, a) = concursos[m] ?: return null
+        val ru = u.registro ?: return null
+        val ra = a?.registro?.takeIf { it.numero == ru.numero - 1 } ?: return null
+        return PremiosTipicos.estimar(p, c, ru, ra, precoDeAjustes(m)?.let { it / 100.0 })
     }
 
     private fun carregarGuardados() {

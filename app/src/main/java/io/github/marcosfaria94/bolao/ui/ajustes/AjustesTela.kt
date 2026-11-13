@@ -17,6 +17,7 @@ import androidx.compose.material3.CardDefaults
 import io.github.marcosfaria94.bolao.notificacoes.Toque
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import io.github.marcosfaria94.bolao.ui.comum.trazerAoAbrir
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -32,6 +33,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.VolunteerActivism
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Backup
@@ -155,6 +158,10 @@ enum class SecaoAjuste(val id: String) {
     ATUALIZACAO("atualizacao"),
     TESTE("teste"),
     EXTINCAO("extincao"),
+    /** O "Apoie" (desde a 0.32, no grupo Apoio; até a 0.31 ficava no rodapé dos Ajustes). */
+    DOACAO("doacao"),
+    /** A mensagem para quem faz o app, por e-mail (desde a 0.32, no grupo Apoio). */
+    CONTATO("contato"),
     ;
 
     /** Abre uma tela própria (a Atualização e o Modo de teste agem ali mesmo, na lista). */
@@ -174,6 +181,8 @@ enum class SecaoAjuste(val id: String) {
         ATUALIZACAO -> "Atualização"
         TESTE -> "Modo de teste"
         EXTINCAO -> if (individual) "Apagar tudo" else "Extinção do Bolão"
+        DOACAO -> "Doação"
+        CONTATO -> "Contato"
     }
 
     /** Para onde a linha leva. */
@@ -207,9 +216,14 @@ enum class SecaoAjuste(val id: String) {
             // Sem a Atualização desde a 0.26 (pedido do usuário): o app confere sozinho ao abrir e mostra a janela da versão nova.
             // A Biometria desde a 0.30 (pedido do usuário; antes o app sempre pedia, sem ajuste).
             "CELULAR" to listOf(NOTIFICACOES, BIOMETRIA, BACKUP),
+            // Desde a 0.32 (pedido do usuário): a Doação (o "Apoie", que saiu do rodapé) e o Contato.
+            GRUPO_APOIO to listOf(DOACAO, CONTATO),
         )
     }
 }
+
+/** O grupo da Doação e do Contato (desde a 0.32). */
+const val GRUPO_APOIO = "APOIO"
 
 private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
     SecaoAjuste.MODO -> Icons.Outlined.Person
@@ -224,6 +238,8 @@ private fun iconeDoItem(s: SecaoAjuste): ImageVector = when (s) {
     SecaoAjuste.ATUALIZACAO -> Icons.Outlined.SystemUpdate
     SecaoAjuste.TESTE -> Icons.Outlined.Science
     SecaoAjuste.EXTINCAO -> Icons.Outlined.DeleteForever
+    SecaoAjuste.DOACAO -> Icons.Outlined.VolunteerActivism
+    SecaoAjuste.CONTATO -> Icons.Outlined.MailOutline
 }
 
 /** Tom da situação, à direita do nome. */
@@ -284,6 +300,8 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         }
         SecaoAjuste.TESTE -> (if (preparandoTeste) "Preparando..." else "") to TomItem.NORMAL
         SecaoAjuste.EXTINCAO -> "" to TomItem.NORMAL
+        SecaoAjuste.DOACAO -> "Um café" to TomItem.NORMAL
+        SecaoAjuste.CONTATO -> "E-mail" to TomItem.NORMAL
     }
 
     // Os integrantes abrem e fecham ali mesmo, na lista (desde a 0.23); começam abertos.
@@ -325,6 +343,8 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
                 ) {
                     secoes.forEachIndexed { i, s ->
                         if (i > 0) HorizontalDivider(Modifier.padding(start = RECUO_DA_LISTA), color = MaterialTheme.colorScheme.outlineVariant)
+                        // Os integrantes abertos: a lista rola para mostrar o máximo deles a partir da linha (desde a 0.32).
+                        Column(if (s == SecaoAjuste.INTEGRANTES) Modifier.trazerAoAbrir(integrantesAbertos) else Modifier) {
                         val (texto, tom) = situacao(s)
                         LinhaDaLista(
                             titulo = s.titulo(individual),
@@ -380,6 +400,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
                                     vermelho = true,
                                 ) { tocar(SecaoAjuste.EXTINCAO) }
                             }
+                        }
                         }
                     }
                 }
@@ -521,11 +542,15 @@ fun AjustesSecaoTela(estado: Estado, secao: SecaoAjuste, atualizacao: Atualizaca
                     SecaoAjuste.NOTIFICACOES -> {
                         Secao("Apuração automática") { ApuracaoComOAppFechado() }
                         Secao("Toque do prêmio") { ToqueDoPremio() }
+                        // Desde a 0.32: um som próprio para as outras faixas (o prêmio secundário).
+                        Secao(TITULO_DO_SOM_SECUNDARIO) { SomDoPremioSecundario() }
                     }
                     SecaoAjuste.BIOMETRIA -> BiometriaDoCelular()
                     // Ficam direto na lista (não têm tela).
                     SecaoAjuste.ATUALIZACAO, SecaoAjuste.TESTE -> Unit
                     SecaoAjuste.EXTINCAO -> Extincao(estado)
+                    SecaoAjuste.DOACAO -> Apoie()
+                    SecaoAjuste.CONTATO -> ContatoDoApp()
                 }
             }
         }

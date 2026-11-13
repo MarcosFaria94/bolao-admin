@@ -66,11 +66,11 @@ object Probabilidades {
             val total = totalNumeros.multiply(totalTrevos)
             listOf(
                 Faixa("6 números + 2 trevos", umEm(casos(6, listOf(2)), total)),
-                Faixa("6 números + 1 ou nenhum trevo", umEm(casos(6, listOf(1, 0)), total)),
+                Faixa("6 números + 1 trevo ou nenhum", umEm(casos(6, listOf(1, 0)), total)),
                 Faixa("5 números + 2 trevos", umEm(casos(5, listOf(2)), total)),
-                Faixa("5 números + 1 ou nenhum trevo", umEm(casos(5, listOf(1, 0)), total)),
+                Faixa("5 números + 1 trevo ou nenhum", umEm(casos(5, listOf(1, 0)), total)),
                 Faixa("4 números + 2 trevos", umEm(casos(4, listOf(2)), total)),
-                Faixa("4 números + 1 ou nenhum trevo", umEm(casos(4, listOf(1, 0)), total)),
+                Faixa("4 números + 1 trevo ou nenhum", umEm(casos(4, listOf(1, 0)), total)),
                 Faixa("3 números + 2 trevos", umEm(casos(3, listOf(2)), total)),
                 Faixa("3 números + 1 trevo", umEm(casos(3, listOf(1)), total)),
                 Faixa("2 números + 2 trevos", umEm(casos(2, listOf(2)), total)),
@@ -110,7 +110,8 @@ object Probabilidades {
         Modalidade.DUPLA_SENA -> listOf("Sena", "Quina", "Quadra", "Terno")
         Modalidade.DIA_DE_SORTE -> (7 downTo 4).map { "$it acertos" } + "Mês de Sorte"
         Modalidade.SUPER_SETE -> (7 downTo 3).map { "$it colunas" }
-        Modalidade.MAIS_MILIONARIA -> listOf("6 + 2", "6 + 1 ou 0", "5 + 2", "5 + 1 ou 0", "4 + 2", "4 + 1 ou 0", "3 + 2", "3 + 1", "2 + 2", "2 + 1")
+        // Desde a 0.32, "6 + 0/1" (até a 0.31, "6 + 1 ou 0"): números acertados + trevos acertados.
+        Modalidade.MAIS_MILIONARIA -> FAIXAS_DA_MAIS_MILIONARIA
         Modalidade.LOTECA -> listOf("14 acertos", "13 acertos")
         Modalidade.FEDERAL -> listOf("1º prêmio", "Qualquer prêmio")
     }
@@ -168,9 +169,35 @@ object Probabilidades {
         return LinhaDaTabela(a, b, Volante.apostasSimples(Modalidade.MAIS_MILIONARIA, a, b), faixas.map { (n, ts) -> umEmOuNada(casos(n, ts), total) })
     }
 
-    /** As observações da tabela de probabilidades (embaixo dela). */
+    /**
+     * Os nomes das faixas da +Milionária (desde a 0.32, pedido do usuário): os números acertados + os trevos
+     * acertados, com "0/1" para "1 trevo ou nenhum" ("6 + 2", "6 + 0/1", "4 + 2"...). Na ordem das faixas da Caixa.
+     */
+    val FAIXAS_DA_MAIS_MILIONARIA: List<String> =
+        listOf("6 + 2", "6 + 0/1", "5 + 2", "5 + 0/1", "4 + 2", "4 + 0/1", "3 + 2", "3 + 1", "2 + 2", "2 + 1")
+
+    /** A legenda da nomenclatura da +Milionária (no fim da premiação e das tabelas, desde a 0.32). */
+    const val LEGENDA_DA_MAIS_MILIONARIA =
+        "6 + 2 = 6 números e 2 trevos acertados; 6 + 0/1 = 6 números e 1 trevo ou nenhum; 3 + 1 = 3 números e 1 trevo."
+
+    /**
+     * A legenda do traço das tabelas de probabilidades (desde a 0.32): a aposta não fica naquela faixa. Na
+     * +Milionária, com os 6 trevos marcados os 2 trevos sorteados estão sempre na aposta.
+     */
+    fun legendaDoTraco(m: Modalidade): String =
+        if (m == Modalidade.MAIS_MILIONARIA) {
+            "— = essa aposta não fica nessa faixa: com os 6 trevos marcados, os 2 trevos sorteados estão sempre entre os dela " +
+                "(ela acerta os 2 trevos), então as faixas com 1 trevo ou nenhum não acontecem."
+        } else {
+            "— = essa aposta não fica nessa faixa (não dá para acertar só esse tanto de números com ela)."
+        }
+
+    /** As observações da tabela de probabilidades (embaixo dela). Desde a 0.32 a legenda da +Milionária é a nova. */
     fun observacoesDaTabela(m: Modalidade): List<String> = faixas(m).mapNotNull { it.observacao }.distinct() +
-        if (m == Modalidade.MAIS_MILIONARIA) listOf("6 + 2 = 6 números e 2 trevos; \"1 ou 0\" = 1 trevo ou nenhum") else emptyList()
+        if (m == Modalidade.MAIS_MILIONARIA) listOf(LEGENDA_DA_MAIS_MILIONARIA) else emptyList()
+
+    /** A tabela tem algum traço (alguma faixa que a aposta não alcança): a legenda do traço vai embaixo. */
+    fun temTraco(linhas: List<LinhaDaTabela>): Boolean = linhas.any { l -> l.umEm.any { it == null } }
 
     /**
      * Um grupo da tabela de quantidade de prêmios: acertando [acertando] dos números sorteados, quantos prêmios

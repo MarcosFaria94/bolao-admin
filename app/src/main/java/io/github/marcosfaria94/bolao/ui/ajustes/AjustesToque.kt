@@ -163,3 +163,126 @@ internal fun ToqueDoPremio() {
         )
     }
 }
+
+/** O título da seção do som do prêmio secundário (Ajustes > Notificações, desde a 0.32). */
+const val TITULO_DO_SOM_SECUNDARIO = "Som do prêmio secundário"
+
+/** A chave do som próprio do prêmio secundário. */
+const val SOM_PROPRIO_NO_SECUNDARIO = "Som próprio no prêmio secundário"
+
+/**
+ * O som do prêmio secundário (desde a 0.32, pedido do usuário): as outras faixas, que não são o prêmio principal.
+ * Desligado, o aviso "Aposta premiada" toca o som de notificação de sempre; ligado, o aviso fica quieto e o app toca
+ * o som escolhido (uma música, um som do celular ou o de notificação), uma vez, no volume das notificações (no
+ * silencioso, não toca). Testar toca do jeito que vai tocar.
+ */
+@Composable
+internal fun SomDoPremioSecundario() {
+    val ctx = LocalContext.current
+    val avisos = LocalAvisos.current
+    val escopo = rememberCoroutineScope()
+    val qual = Toque.Qual.SECUNDARIO
+    var versao by remember { mutableIntStateOf(0) }
+    val c = remember(versao) { Toque.config(ctx, qual) }
+    val tocando by Toque.tocando.collectAsStateWithLifecycle()
+    val testando = tocando == Toque.Origem.TESTE_SECUNDARIO
+    DisposableEffect(Unit) { onDispose { if (Toque.tocando.value == Toque.Origem.TESTE_SECUNDARIO) Toque.parar() } }
+
+    val escolherMusica = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            Toque.escolherArquivo(ctx, uri, qual)
+            versao++
+        }
+    }
+    val escolherSom = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val uri = r.data?.let { IntentCompat.getParcelableExtra(it, RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java) }
+        if (r.resultCode == Activity.RESULT_OK && uri != null) {
+            if (uri == Settings.System.DEFAULT_NOTIFICATION_URI) Toque.escolher(ctx, null, null, qual) else Toque.escolherToqueDoSistema(ctx, uri, qual)
+            versao++
+        }
+    }
+
+    ExplicacaoAjuste(
+        "Nas outras faixas (o prêmio secundário), o aviso \"Aposta premiada\" toca o som de notificação de sempre. " +
+            "Ligue para escolher um som só para ele: toca uma vez, no volume das notificações (no silencioso, não toca).",
+    )
+    QuadroAjuste {
+        LinhaAjuste(
+            emblema = { EmblemaIcone(Icons.Outlined.NotificationsActive, Color(0xFF0E7490), TAMANHO_EMBLEMA) },
+            titulo = SOM_PROPRIO_NO_SECUNDARIO,
+            subtitulo = if (c.ligado) "Ligado" else "Desligado: o som de notificação de sempre",
+            aoTocar = {
+                Toque.ligar(ctx, !c.ligado, qual)
+                versao++
+            },
+            final = {
+                Switch(checked = c.ligado, onCheckedChange = {
+                    Toque.ligar(ctx, it, qual)
+                    versao++
+                })
+            },
+        )
+        if (c.ligado) {
+            Divisoria()
+            LinhaAjuste(
+                emblema = { EmblemaIcone(Icons.Outlined.MusicNote, Color(0xFF7C3AED), TAMANHO_EMBLEMA) },
+                titulo = "Som",
+                subtitulo = Toque.nomeDoToque(c, qual),
+            )
+            Column(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { escolherMusica.launch(arrayOf("audio/*")) }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.LibraryMusic, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Escolher uma música")
+                }
+                OutlinedButton(
+                    onClick = {
+                        val pedido = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                            .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+                            .putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, TITULO_DO_SOM_SECUNDARIO)
+                            .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                            .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                            .putExtra(RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI, Settings.System.DEFAULT_NOTIFICATION_URI)
+                            .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, c.uri ?: Settings.System.DEFAULT_NOTIFICATION_URI)
+                        try {
+                            escolherSom.launch(pedido)
+                        } catch (t: ActivityNotFoundException) {
+                            escopo.launch { avisos.showSnackbar("Este celular não abriu a lista de sons: escolha uma música.") }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.NotificationsActive, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Escolher um som do celular")
+                }
+                if (c.uri != null) {
+                    TextButton(
+                        onClick = {
+                            Toque.escolher(ctx, null, null, qual)
+                            versao++
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Voltar ao som de notificação do celular") }
+                }
+            }
+            Divisoria()
+            LinhaAjuste(
+                emblema = { EmblemaIcone(if (testando) Icons.Outlined.Stop else Icons.Outlined.PlayArrow, Color(0xFF1F8F5F), TAMANHO_EMBLEMA) },
+                titulo = "Testar o som",
+                subtitulo = if (testando) "Tocando como no prêmio..." else "Toca do jeito que vai tocar no prêmio secundário",
+                final = {
+                    if (testando) {
+                        Button(onClick = { Toque.parar() }) { Text("Parar") }
+                    } else {
+                        OutlinedButton(onClick = {
+                            if (!Toque.tocar(ctx, Toque.Origem.TESTE_SECUNDARIO)) {
+                                escopo.launch { avisos.showSnackbar("Não foi possível tocar o som: escolha outro.") }
+                            }
+                        }) { Text("Testar") }
+                    }
+                },
+            )
+        }
+    }
+}

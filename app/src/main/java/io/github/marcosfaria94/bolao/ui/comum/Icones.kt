@@ -6,9 +6,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
+import androidx.compose.ui.graphics.vector.PathNode
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
-import io.github.marcosfaria94.bolao.domain.Tarjas
+import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.sqrt
 
 /**
  * Ícones próprios do app: o trevo do ícone (listas e avisos; até a 0.30, a aba Jogos), as cartas da aba Jogos, o
@@ -84,27 +87,76 @@ object Icones {
         }.build()
     }
 
+    /** O lado do quadrado de cada pétala do trevo das Loterias Caixa (grade de 24; desde a 0.32). */
+    private const val LADO_DA_PETALA = 6.53f
+
+    /** O vão reto entre as pétalas (a cruz do meio, como na marca das Loterias Caixa; desde a 0.32). */
+    private const val VAO_DA_CAIXA = 1.4f
+
+    /** A largura do contorno das pétalas vazias (por dentro da pétala, para o vão continuar aberto). */
+    private const val TRACO_DA_CAIXA = 1.5f
+
     /**
-     * O trevo das Loterias Caixa (o botão da tela da Caixa, desde a 0.31): as quatro folhas em coração das tarjas
-     * ([Tarjas.FOLHAS]), sem o caule, com as duas folhas de uma diagonal cheias (a de cima à esquerda e a de baixo
-     * à direita, como na marca). Não escolhido, as outras duas só no contorno; escolhido, as outras duas claras.
+     * Uma pétala do trevo das Loterias Caixa (desde a 0.32): o coração clássico, um quadrado com dois semicírculos
+     * em dois lados, com a ponta (o canto do quadrado) no centro do trevo e os lados retos ao longo do vão. [quarto]:
+     * 0 = em cima à esquerda, 1 = em cima à direita, 2 = embaixo à direita, 3 = embaixo à esquerda (girando 90° no
+     * sentido do relógio). [recuo]: o desenho encolhido por dentro (para o contorno não fechar o vão).
+     */
+    private fun petalaDaCaixa(quarto: Int, recuo: Float): List<PathNode> {
+        val s = LADO_DA_PETALA
+        val centro = 12f
+        val cx = centro - VAO_DA_CAIXA / 2
+        val cy = centro - VAO_DA_CAIXA / 2
+        val r = s / 2 - recuo
+        // Os centros dos dois semicírculos e o encontro deles (a reentrância do coração).
+        val ax = cx - s / 2
+        val ay = cy - s
+        val bx = cx - s
+        val by = cy - s / 2
+        val meia = hypot(ax - bx, ay - by) / 2
+        val h = sqrt(max(r * r - meia * meia, 0f))
+        val nx = (ax + bx) / 2 - h / sqrt(2f)
+        val ny = (ay + by) / 2 - h / sqrt(2f)
+        fun girar(x: Float, y: Float): Pair<Float, Float> {
+            var dx = x - centro
+            var dy = y - centro
+            repeat(quarto) {
+                val t = dx
+                dx = -dy
+                dy = t
+            }
+            return dx + centro to dy + centro
+        }
+        return PathBuilder().apply {
+            val (x0, y0) = girar(cx - recuo, cy - recuo)
+            moveTo(x0, y0)
+            val (x1, y1) = girar(cx - recuo, cy - s)
+            lineTo(x1, y1)
+            val (x2, y2) = girar(nx, ny)
+            arcTo(r, r, 0f, recuo > 0f, false, x2, y2)
+            val (x3, y3) = girar(cx - s, cy - recuo)
+            arcTo(r, r, 0f, false, false, x3, y3)
+            close()
+        }.nodes
+    }
+
+    /**
+     * O trevo das Loterias Caixa (o botão da Caixa na barra de baixo, desde a 0.31): quatro pétalas em coração com as
+     * pontas no centro e, desde a 0.32, o vão reto entre elas (a cruz da marca; até a 0.31 eram as folhas das
+     * tarjas, quase encostadas). As duas de uma diagonal são cheias (a de cima à esquerda e a de baixo à direita,
+     * como na marca). Não escolhido, as outras duas só no contorno; escolhido, as outras duas claras.
      */
     private fun trevoDaCaixa(nome: String, escolhido: Boolean): ImageVector =
         ImageVector.Builder(nome, 24.dp, 24.dp, 24f, 24f).apply {
-            for ((angulo, cheia) in Tarjas.FOLHAS) {
-                val (inicio, curvas) = Tarjas.folha(angulo, 12f, 12f, 21f)
-                val caminho = PathBuilder().apply {
-                    moveTo(inicio[0], inicio[1])
-                    curvas.forEach { k -> curveTo(k[0], k[1], k[2], k[3], k[4], k[5]) }
-                    close()
-                }.nodes
+            for (quarto in 0 until 4) {
+                val cheia = quarto % 2 == 0
                 when {
-                    cheia -> addPath(pathData = caminho, fill = SolidColor(Color.Black))
-                    escolhido -> addPath(pathData = caminho, fill = SolidColor(Color.Black), fillAlpha = 0.45f)
+                    cheia -> addPath(pathData = petalaDaCaixa(quarto, 0f), fill = SolidColor(Color.Black))
+                    escolhido -> addPath(pathData = petalaDaCaixa(quarto, 0f), fill = SolidColor(Color.Black), fillAlpha = 0.45f)
                     else -> addPath(
-                        pathData = caminho,
+                        pathData = petalaDaCaixa(quarto, TRACO_DA_CAIXA / 2),
                         stroke = SolidColor(Color.Black),
-                        strokeLineWidth = 1.6f,
+                        strokeLineWidth = TRACO_DA_CAIXA,
                         strokeLineJoin = StrokeJoin.Round,
                     )
                 }

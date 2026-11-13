@@ -93,9 +93,8 @@ internal const val APOIE_PIX = "pixfacil@aol.com"
 private const val COPIADO_MS = 2500L
 
 /**
- * Os Créditos, no rodapé da lista dos Ajustes (até a 0.15 eram uma tela). Primeiro o "Apoie" (desde a
- * 0.18): o título, a xícara de café sorrindo, o texto e o botão que copia a chave Pix. Depois, "Criado
- * com" e, embaixo, "Claude", em destaque e no centro (com o ícone do app do Claude, quando ele está
+ * Os Créditos, no rodapé da lista dos Ajustes (até a 0.15 eram uma tela). De 0.18 a 0.31 o "Apoie" vinha primeiro;
+ * desde a 0.32 ele fica na tela da Doação (Ajustes > Apoio). Aqui: "Criado com" e, embaixo, "Claude", em destaque e no centro (com o ícone do app do Claude, quando ele está
  * instalado; tocar abre a página dele na Google Play; desde a 0.23 na cor do fundo e sem o contorno)
  * e, logo embaixo (desde a 0.24, mais perto), o nome do app com a versão instalada e o botão discreto
  * "Tecnologia", que mostra (ou esconde) a tecnologia ali mesmo.
@@ -110,8 +109,7 @@ internal fun CreditosNoRodape() {
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth().padding(top = 30.dp),
     ) {
-        Apoie()
-        Spacer(Modifier.height(22.dp))
+        // Desde a 0.32 o "Apoie" saiu daqui: fica em Ajustes > Apoio > Doação.
         val pilula = RoundedCornerShape(28.dp)
         // Na cor do fundo e sem contorno (desde a 0.23): a pílula só aparece no toque.
         Column(
@@ -206,10 +204,11 @@ fun abrirClaudeNaLoja(ctx: Context) {
  * O "Apoie": o título ("Que tal um café quentinho?", desde a 0.24), a xícara de café sorrindo, o texto
  * (justificado desde a 0.23) e o botão dourado "Apoie", que copia a chave Pix (a partir do Android 13 o
  * sistema confirma a cópia; o botão também mostra "Pix copiado"). O nome e a chave não aparecem (desde
- * a 0.24). Os títulos de antes: na 0.19 "Doação"; na 0.20 "Aceita um café?"; de 0.21 a 0.23, nenhum.
+ * a 0.24). Os títulos de antes: na 0.19 "Doação"; na 0.20 "Aceita um café?"; de 0.21 a 0.23, nenhum. Desde a 0.32
+ * na tela da Doação (Ajustes > Apoio > Doação), e não mais no rodapé dos Ajustes.
  */
 @Composable
-private fun Apoie() {
+internal fun Apoie() {
     val ctx = LocalContext.current
     var copiado by remember { mutableStateOf(false) }
     LaunchedEffect(copiado) {

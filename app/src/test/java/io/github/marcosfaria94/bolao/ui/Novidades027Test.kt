@@ -197,13 +197,13 @@ class Novidades027Test {
             listOf(
                 "Volante" to "De 01 a 60",
                 "Aposta" to "De 6 a 20 números",
-                "Preço" to "De R$ 6,00 a R$ 232.560,00",
+                // Desde a 0.32 sem o preço (fica no cartão "Preço").
                 "Sorteio" to "6 números",
                 "Premiação" to "A partir de 4 números",
             ),
             regras(Modalidade.MEGA_SENA, e, mais = true),
         )
-        assertEquals(listOf("6 números", "R$ 6,00"), regras(Modalidade.MEGA_SENA, e, mais = false).map { it.second }.slice(1..2))
+        assertEquals(listOf("6 números", "6 números"), regras(Modalidade.MEGA_SENA, e, mais = false).map { it.second }.slice(1..2))
         assertEquals("2 sorteios de 6 números", regras(Modalidade.DUPLA_SENA, e, false).first { it.first == "Sorteio" }.second)
         assertEquals("De 6 a 12 números e de 2 a 6 trevos", regras(Modalidade.MAIS_MILIONARIA, e, true).first { it.first == "Aposta" }.second)
         assertEquals("10 números e o Time do Coração", regras(Modalidade.TIMEMANIA, e, true).first { it.first == "Aposta" }.second)

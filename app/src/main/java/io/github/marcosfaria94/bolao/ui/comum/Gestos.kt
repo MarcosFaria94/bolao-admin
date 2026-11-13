@@ -1,6 +1,12 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.gestures.TargetedFlingBehavior
 import androidx.compose.foundation.layout.Box
@@ -136,6 +142,74 @@ fun Modifier.deslizarParaOsLados(aoDeslizar: () -> Unit): Modifier = composed {
                 }
             }
         }
+}
+
+/**
+ * Deslizar o dedo para os lados em cima dos botões de escolha dos Detalhes (e da tabela deles) troca o botão
+ * escolhido (desde a 0.32): para a esquerda, o próximo ([atual] + 1); para a direita, o anterior. Uma troca por
+ * gesto. Nos extremos (o primeiro, deslizando para a direita; o último, para a esquerda) o gesto não fica aqui: vai
+ * para a página, que sai dos Detalhes como em qualquer outro lugar. O arrasto para cima e para baixo continua
+ * rolando a página; uma tabela que rola para os lados, dentro, fica com o arrasto dela.
+ */
+fun Modifier.deslizarEntreBotoes(atual: Int, quantos: Int, aoEscolher: (Int) -> Unit): Modifier = composed {
+    val agora by rememberUpdatedState(atual)
+    val total by rememberUpdatedState(quantos)
+    val escolher by rememberUpdatedState(aoEscolher)
+    pointerInput(Unit) {
+        awaitEachGesture {
+            val inicio = awaitFirstDown(requireUnconsumed = false)
+            var andado = Offset.Zero
+            while (true) {
+                val evento = awaitPointerEvent()
+                val c = evento.changes.firstOrNull { it.id == inicio.id } ?: break
+                // Soltou, ou alguém de dentro (a tabela que rola) ficou com o arrasto.
+                if (!c.pressed || c.isConsumed) break
+                andado += c.positionChange()
+                val limite = viewConfiguration.touchSlop
+                if (abs(andado.x) <= limite && abs(andado.y) <= limite) continue
+                val alvo = trocaPorDeslize(agora, total, andado.x, andado.y) ?: break
+                c.consume()
+                escolher(alvo)
+                // O resto do gesto fica aqui (não rola a página nem passa de página).
+                do {
+                    val e = awaitPointerEvent()
+                    e.changes.forEach { it.consume() }
+                } while (e.changes.any { it.pressed })
+                break
+            }
+        }
+    }
+}
+
+/**
+ * Para onde o deslize de ([dx], [dy]) leva entre [quantos] botões, saindo do [atual]: o próximo (dedo para a
+ * esquerda) ou o anterior (para a direita); null quando o deslize é mais para cima ou para baixo, ou quando já está
+ * no extremo daquele lado (o gesto fica para a página).
+ */
+fun trocaPorDeslize(atual: Int, quantos: Int, dx: Float, dy: Float): Int? {
+    if (abs(dx) <= abs(dy)) return null
+    val alvo = if (dx < 0) atual + 1 else atual - 1
+    return alvo.takeIf { it in 0 until quantos }
+}
+
+/**
+ * Ao abrir um drill-down ([aberto] passa a verdadeiro), a tela rola para mostrar o máximo possível dele a partir do
+ * cabeçalho (desde a 0.32): cabendo, ele aparece inteiro (rolando o mínimo); maior que a tela, o cabeçalho vai para
+ * o alto. Quem já começa aberto não rola.
+ */
+fun Modifier.trazerAoAbrir(aberto: Boolean): Modifier = composed {
+    val pedido = remember { BringIntoViewRequester() }
+    val antes = remember { booleanArrayOf(aberto) }
+    LaunchedEffect(aberto) {
+        val abriu = aberto && !antes[0]
+        antes[0] = aberto
+        if (abriu) {
+            // Espera o conteúdo aberto ser medido e posto na tela.
+            withFrameNanos { }
+            pedido.bringIntoView()
+        }
+    }
+    bringIntoViewRequester(pedido)
 }
 
 /** Puxar a tela mais do que isto da largura fecha (ou um puxão rápido). Até a 0.15, 30%. */

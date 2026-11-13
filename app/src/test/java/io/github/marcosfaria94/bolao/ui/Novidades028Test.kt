@@ -156,7 +156,7 @@ class Novidades028Test {
         assertEquals(e.config.preco(Modalidade.MEGA_SENA) * 7, Favoritos.preco(e, f))
         assertEquals("7 números", Favoritos.descricao(f))
         // Sem o parâmetro, não cabe no volante (nem pode ser apostado).
-        val sem = e.copy(config = e.config.copy(parametros = Parametros()))
+        val sem = e.copy(config = e.config.copy(parametros = Parametros(maisNumeros = false)))
         assertFalse(Favoritos.cabe(sem, f))
         assertTrue(Favoritos.paraOVolante(sem, Modalidade.MEGA_SENA).isEmpty())
         assertEquals("Precisa das apostas com mais números (Ajustes > Parâmetros).", impedimentoDoFavorito(sem, f, 3090, false))

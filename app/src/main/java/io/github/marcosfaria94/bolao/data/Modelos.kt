@@ -53,10 +53,13 @@ data class Config(
 data class Parametros(
     /** Registrar a aposta direto, sem a janela "Deseja registrar aposta?". */
     val semConfirmacao: Boolean = false,
-    /** Deixar marcar mais números que a aposta simples (o preço acompanha as combinações). */
-    val maisNumeros: Boolean = false,
-    /** Mostrar a teimosinha no volante (a mesma aposta em vários concursos seguidos). */
-    val teimosinha: Boolean = false,
+    /**
+     * Deixar marcar mais números que a aposta simples (o preço acompanha as combinações). Desde a 0.32 vem ligado
+     * nas sessões novas (pedido do usuário); as sessões já criadas guardam a escolha delas.
+     */
+    val maisNumeros: Boolean = true,
+    /** Mostrar a teimosinha no volante (a mesma aposta em vários concursos seguidos). Ligado nas sessões novas desde a 0.32. */
+    val teimosinha: Boolean = true,
     /**
      * O calendário de apostas: os dias do mês com aposta. null = os do termo (1, 4, 7... 28);
      * vazio = sem dia definido.

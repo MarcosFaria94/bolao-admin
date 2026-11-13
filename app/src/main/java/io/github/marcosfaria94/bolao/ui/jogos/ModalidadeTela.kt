@@ -29,6 +29,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import io.github.marcosfaria94.bolao.ui.comum.deslizarEntreBotoes
+import io.github.marcosfaria94.bolao.domain.PremiosTipicos
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -554,6 +561,8 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
         if (mais && Probabilidades.gruposDePremios(m) != null) {
             CartaoQueAbre(TITULO_QUANTIDADE) { TabelaDeQuantidade(m) }
         }
+        // Desde a 0.32, em todas as modalidades: quanto cada faixa costuma pagar (a estimativa e o último concurso).
+        if (m != Modalidade.FEDERAL) CartaoQueAbre(TITULO_PREMIOS_TIPICOS) { TabelaDePremiosTipicos(m, u) }
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -562,6 +571,45 @@ const val TITULO_REGRAS = "Regras"
 const val TITULO_PRECO = "Preço"
 const val TITULO_PROBABILIDADES = "Probabilidades"
 const val TITULO_QUANTIDADE = "Quantidade de prêmios"
+const val TITULO_PREMIOS_TIPICOS = "Prêmios típicos"
+
+/** As colunas da tabela dos prêmios típicos (desde a 0.32). */
+const val COLUNA_FAIXA = "Faixa"
+const val COLUNA_ESTIMATIVA = "Estimativa"
+const val COLUNA_ULTIMO_CONCURSO = "Último concurso"
+
+/**
+ * Os prêmios típicos (desde a 0.32, em todas as modalidades, no cartão que começa fechado): uma linha por faixa de
+ * premiação, com a estimativa do que cada aposta ganhadora recebe no próximo concurso ([PremiosTipicos.estimar], o
+ * mesmo cálculo do k1, sem o IR) e o que o último concurso pagou; embaixo, a nota que explica que é só uma estimativa
+ * e como ela é calculada. Sem a estimativa (Loteca, concurso especial), só o último concurso.
+ */
+@Composable
+private fun TabelaDePremiosTipicos(m: Modalidade, u: Concurso?) {
+    val indices = LocalContext.current.bolao.indices
+    val itens by indices.itens.collectAsStateWithLifecycle()
+    val estimativa = remember(itens[m]) { indices.premiosTipicos(m) }
+    if (u == null && estimativa == null) {
+        Text("Sem dados da Caixa agora.", style = MaterialTheme.typography.bodyMedium)
+        return
+    }
+    val linhas = PremiosTipicos.linhas(m, estimativa, u)
+    fun texto(v: Long?): String = v?.let { valorSemQuebra(PremiosTipicos.valor(it)) } ?: "—"
+    TabelaRolavel(
+        primeira = COLUNA_FAIXA,
+        grupos = emptyList(),
+        colunas = if (estimativa != null) listOf(COLUNA_ESTIMATIVA, COLUNA_ULTIMO_CONCURSO) else listOf(COLUNA_ULTIMO_CONCURSO),
+        linhas = linhas.map { l -> l.nome to (if (estimativa != null) listOf(texto(l.estimativa), texto(l.ultimo)) else listOf(texto(l.ultimo))) },
+    )
+    val notas = listOfNotNull(
+        if (estimativa != null) PremiosTipicos.NOTA_DA_ESTIMATIVA else PremiosTipicos.SEM_ESTIMATIVA,
+        u?.let { PremiosTipicos.notaDoUltimo(it.numero) },
+        Probabilidades.LEGENDA_DA_MAIS_MILIONARIA.takeIf { m == Modalidade.MAIS_MILIONARIA },
+    )
+    notas.forEach { n ->
+        Text("* $n", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+    }
+}
 
 /**
  * Uma linha das Regras (desde a 0.29): o rótulo à esquerda, inteiro, e o valor à direita, que quebra a linha
@@ -608,6 +656,8 @@ private fun TabelaDePreco(m: Modalidade, estado: Estado, mais: Boolean) {
         grupos = emptyList(),
         colunas = listOf(COLUNA_QTD_DE_JOGOS, COLUNA_PRECO),
         linhas = linhas.map { l -> rotuloDaLinha(m, l) to listOf(Probabilidades.milhares(l.apostasSimples), valorSemQuebra(Dinheiro.rs(preco * l.apostasSimples))) },
+        // Desde a 0.32, a +Milionária (números e trevos, 35 linhas) se ordena tocando no título da coluna.
+        ordem = if (ordenaAsTabelas(m, linhas)) linhas.map { l -> listOf(l.apostasSimples, preco * l.apostasSimples) } else null,
     )
     if (!mais && Volante.aceitaMais(m)) {
         Text("* $NOTA_DAS_APOSTAS_COM_MAIS", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
@@ -635,6 +685,8 @@ private fun TabelaDeProbabilidades(m: Modalidade, mais: Boolean) {
             colunas = listOf(COLUNA_PROBABILIDADE),
             linhas = linhasInvertidas(m, linhas[0]),
         )
+    } else if (m == Modalidade.MAIS_MILIONARIA) {
+        ProbabilidadesEmPares(m, linhas, colunas)
     } else {
         TabelaRolavel(
             primeira = primeiraColuna(m),
@@ -643,9 +695,43 @@ private fun TabelaDeProbabilidades(m: Modalidade, mais: Boolean) {
             linhas = linhas.map { l -> rotuloDaLinha(m, l) to colunas.indices.map { j -> l.umEm.getOrNull(j)?.let { Probabilidades.milhares(it) } ?: "—" } },
         )
     }
-    val notas = Probabilidades.observacoesDaTabela(m) + if (!mais && Volante.aceitaMais(m)) listOf(NOTA_DAS_APOSTAS_COM_MAIS) else emptyList()
+    // Desde a 0.32, a legenda do traço quando a tabela tem algum (a +Milionária com os 6 trevos).
+    val notas = Probabilidades.observacoesDaTabela(m) +
+        (if (Probabilidades.temTraco(linhas)) listOf(Probabilidades.legendaDoTraco(m)) else emptyList()) +
+        if (!mais && Volante.aceitaMais(m)) listOf(NOTA_DAS_APOSTAS_COM_MAIS) else emptyList()
     notas.forEach { obs ->
         Text("* $obs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+/** As tabelas da modalidade se ordenam tocando no título da coluna (desde a 0.32: a +Milionária, com mais de uma linha). */
+fun ordenaAsTabelas(m: Modalidade, linhas: List<Probabilidades.LinhaDaTabela>): Boolean = m == Modalidade.MAIS_MILIONARIA && linhas.size > 1
+
+/**
+ * As faixas da +Milionária em pares (desde a 0.32, pedido do usuário: a tabela das 10 faixas era grande demais): os
+ * botões "6", "5", "4", "3" e "2" acertos mostram a tabela das duas faixas daquela quantidade de números ("6 + 2" e
+ * "6 + 0/1"), com 3 colunas, que cabe na tela (e deixa o dedo passar a página). Deslizar o dedo para os lados em
+ * cima dos botões ou da tabela troca o botão ([deslizarEntreBotoes]); tocar no título de uma coluna ordena.
+ */
+@Composable
+private fun ProbabilidadesEmPares(m: Modalidade, linhas: List<Probabilidades.LinhaDaTabela>, colunas: List<String>) {
+    val pares = remember(colunas) { colunas.indices.chunked(2) }
+    val acertos = remember(pares) { pares.map { par -> colunas[par[0]].substringBefore(" ").toIntOrNull() ?: 0 } }
+    var par by rememberSaveable(m) { mutableIntStateOf(0) }
+    val g = par.coerceIn(pares.indices)
+    val faixas = pares[g]
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.deslizarEntreBotoes(g, pares.size) { par = it },
+    ) {
+        SeletorDeAcertos(acertos, g) { par = it }
+        TabelaRolavel(
+            primeira = primeiraColuna(m),
+            grupos = listOf(PROBABILIDADE_DE_ACERTO to faixas.size),
+            colunas = faixas.map { colunas[it] },
+            linhas = linhas.map { l -> rotuloDaLinha(m, l) to faixas.map { j -> l.umEm.getOrNull(j)?.let { Probabilidades.milhares(it) } ?: "—" } },
+            ordem = linhas.map { l -> faixas.map { j -> l.umEm.getOrNull(j) } },
+        )
     }
 }
 
@@ -699,7 +785,8 @@ private fun TabelaDeQuantidade(m: Modalidade) {
     var escolhido by rememberSaveable(m) { mutableIntStateOf(0) }
     val g = escolhido.coerceIn(grupos.indices)
     val grupo = grupos[g]
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // Desde a 0.32, deslizar o dedo para os lados troca o botão (nos extremos, a página sai dos Detalhes).
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.deslizarEntreBotoes(g, grupos.size) { escolhido = it }) {
         SeletorDeAcertos(grupos.map { it.acertando }, g) { escolhido = it }
         Text(
             "Quantos prêmios de cada faixa a aposta recebe acertando ${grupo.acertando} números:",
@@ -868,14 +955,14 @@ private fun UltimoResultado(m: Modalidade, u: Concurso?, atualizando: Boolean, o
             val cor = coresDaBola(m)
             if (m == Modalidade.DUPLA_SENA && u.segundoSorteio.isNotEmpty()) {
                 // Desde a 0.27: cada sorteio com os números e a premiação dele (as faixas 1 a 4 são do 1º; 5 a 8, do 2º).
-                SorteioDaDupla("1º sorteio", u.dezenas.map(m::rotulo), u.faixas.filter { it.faixa <= 4 }, cor)
+                SorteioDaDupla(m, "1º sorteio", u.dezenas.map(m::rotulo), u.faixas.filter { it.faixa <= 4 }, cor)
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                SorteioDaDupla("2º sorteio", u.segundoSorteio.map(m::rotulo), u.faixas.filter { it.faixa > 4 }, cor)
+                SorteioDaDupla(m, "2º sorteio", u.segundoSorteio.map(m::rotulo), u.faixas.filter { it.faixa > 4 }, cor)
             } else {
                 Resultado(m, u, cor)
                 if (u.faixas.isNotEmpty()) {
                     HorizontalDivider()
-                    Premiacao(u.faixas)
+                    Premiacao(m, u.faixas)
                 }
             }
         }
@@ -884,55 +971,97 @@ private fun UltimoResultado(m: Modalidade, u: Concurso?, atualizando: Boolean, o
 
 /** Um sorteio da Dupla Sena nos Detalhes: o título, os números e a premiação dele. */
 @Composable
-private fun SorteioDaDupla(titulo: String, numeros: List<String>, faixas: List<FaixaPremio>, cor: CoresDaBola) {
+private fun SorteioDaDupla(m: Modalidade, titulo: String, numeros: List<String>, faixas: List<FaixaPremio>, cor: CoresDaBola) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Bolas(numeros, cor)
-        if (faixas.isNotEmpty()) Premiacao(faixas)
-    }
-}
-
-/** "Premiação" e cada faixa: o nome, o valor e quantas apostas ganharam. */
-@Composable
-private fun Premiacao(faixas: List<FaixaPremio>) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Premiação", style = MaterialTheme.typography.titleMedium)
-        faixas.sortedBy { it.faixa }.forEach { f ->
-            Column {
-                Text(
-                    f.descricao.ifBlank { "${f.faixa}ª faixa" } + if (f.ganhadores > 0 && f.valor > 0) " · ${Dinheiro.rs(f.valor)}" else "",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    when (f.ganhadores) {
-                        0 -> "Não houve ganhadores"
-                        1 -> "1 aposta ganhadora"
-                        else -> "${Dinheiro.formatar(f.ganhadores * 100L).substringBefore(",")} apostas ganhadoras"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+        if (faixas.isNotEmpty()) Premiacao(m, faixas)
     }
 }
 
 /**
- * As regras resumidas (desde a 0.27, no formato pedido pelo usuário): Volante ("De 01 a 60"), Aposta ("De 6 a 20
- * números"), Preço ("De R$ 6,00 a R$ 232.560,00"), Sorteio (quantos números) e Premiação (a partir de quantos
- * acertos). Com as apostas com mais números ([mais]), a aposta e o preço vão até o máximo da modalidade. Desde
- * a 0.29 as faixas começam com "De" (até a 0.28, "01 a 60", "6 a 20 números").
+ * O nome da faixa na premiação: o da Caixa ("5 acertos") e, na +Milionária (desde a 0.32), a nomenclatura curta
+ * ("6 + 2", "6 + 0/1"...), pela posição da faixa.
  */
-fun regras(m: Modalidade, estado: Estado, mais: Boolean): List<Pair<String, String>> {
-    val simples = estado.config.preco(m)
-    val comMais = mais && Volante.aceitaMais(m)
-    val maior = if (comMais) simples * Volante.apostasSimples(m, Volante.maximo(m), Volante.maximoTrevos(m)) else simples
-    val preco = when {
-        m.precoVariavel -> "Variável"
-        maior > simples -> "De ${Dinheiro.rs(simples)} a ${Dinheiro.rs(maior)}"
-        else -> Dinheiro.rs(simples)
+fun nomeNaPremiacao(m: Modalidade, f: FaixaPremio): String =
+    (if (m == Modalidade.MAIS_MILIONARIA) Probabilidades.FAIXAS_DA_MAIS_MILIONARIA.getOrNull(f.faixa - 1) else null)
+        ?: f.descricao.ifBlank { "${f.faixa}ª faixa" }
+
+/** "Não houve ganhadores", "1 aposta ganhadora", "1.234 apostas ganhadoras". */
+fun textoDosGanhadores(ganhadores: Int): String = when (ganhadores) {
+    0 -> "Não houve ganhadores"
+    1 -> "1 aposta ganhadora"
+    else -> "${Dinheiro.formatar(ganhadores * 100L).substringBefore(",")} apostas ganhadoras"
+}
+
+/**
+ * "Premiação" e cada faixa: o nome, o valor e quantas apostas ganharam. Desde a 0.32 cada faixa de premiação é
+ * literalmente uma faixa (pedido do usuário): uma tira na cor da modalidade, mais forte na primeira e mais clara nas
+ * de baixo, com a ponta da esquerda cheia. Na +Milionária, os nomes curtos ("6 + 0/1") e a legenda deles no fim.
+ */
+@Composable
+private fun Premiacao(m: Modalidade, faixas: List<FaixaPremio>) {
+    val cor = Color(Tarjas.destaque(m))
+    val ordenadas = faixas.sortedBy { it.faixa }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Premiação", style = MaterialTheme.typography.titleMedium)
+        ordenadas.forEachIndexed { i, f ->
+            // Da primeira faixa (mais forte) para a última (mais clara).
+            val forca = if (ordenadas.size <= 1) 1f else 1f - i.toFloat() / (ordenadas.size - 1)
+            FaixaDaPremiacao(nomeNaPremiacao(m, f), f, cor, forca)
+        }
+        if (m == Modalidade.MAIS_MILIONARIA) {
+            Text(
+                "* ${Probabilidades.LEGENDA_DA_MAIS_MILIONARIA}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
     }
+}
+
+/** Uma faixa da premiação (desde a 0.32): a tira colorida com o nome, o valor e os ganhadores. [forca] de 0 a 1. */
+@Composable
+private fun FaixaDaPremiacao(nome: String, f: FaixaPremio, cor: Color, forca: Float) {
+    val ponta = with(LocalDensity.current) { PONTA_DA_FAIXA.toPx() }
+    // No tema escuro, a cor clareada (o azul da Quina e da +Milionária quase sumia no fundo escuro).
+    val escuro = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val tom = if (escuro) lerp(cor, Color.White, 0.45f) else cor
+    val fundo = tom.copy(alpha = (if (escuro) 0.12f else 0.10f) + 0.16f * forca)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(fundo)
+            .drawBehind { drawRect(tom, size = Size(ponta, size.height)) }
+            .padding(start = PONTA_DA_FAIXA + 10.dp, end = 12.dp, top = 7.dp, bottom = 7.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                nome + if (f.ganhadores > 0 && f.valor > 0) " · ${valorSemQuebra(Dinheiro.rs(f.valor))}" else "",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(textoDosGanhadores(f.ganhadores), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** A ponta cheia (na cor da modalidade) de cada faixa da premiação. */
+private val PONTA_DA_FAIXA = 6.dp
+
+/**
+ * As regras resumidas (desde a 0.27, no formato pedido pelo usuário): Volante ("De 01 a 60"), Aposta ("De 6 a 20
+ * números"), Sorteio (quantos números) e Premiação (a partir de quantos acertos). Com as apostas com mais números
+ * ([mais]), a aposta vai até o máximo da modalidade. Desde a 0.29 as faixas começam com "De" (até a 0.28, "01 a
+ * 60", "6 a 20 números"). Desde a 0.32 sem o preço (pedido do usuário: ele fica no cartão "Preço"); [estado]
+ * ficou para quem já chamava assim.
+ */
+@Suppress("UNUSED_PARAMETER")
+fun regras(m: Modalidade, estado: Estado, mais: Boolean): List<Pair<String, String>> {
+    val comMais = mais && Volante.aceitaMais(m)
     // Desde a 0.29: "De 6 a 20 números" (até a 0.28, "6 a 20 números").
     fun faixa(de: Int, ate: Int, nome: String) = if (ate > de) "De $de a $ate $nome" else "$de $nome"
     return when (m.formato) {
@@ -946,7 +1075,6 @@ fun regras(m: Modalidade, estado: Estado, mais: Boolean): List<Pair<String, Stri
                     m.extra == Extra.MES_DE_SORTE -> " e o Mês de Sorte"
                     else -> ""
                 },
-                "Preço" to preco,
                 "Sorteio" to (if (m.sorteios > 1) "${m.sorteios} sorteios de ${m.qtdSorteada} números" else "${m.qtdSorteada} números") + when {
                     m.trevos > 0 -> " e ${m.trevos} trevos"
                     m.extra == Extra.TIME_DO_CORACAO -> " e o Time do Coração"
@@ -959,18 +1087,16 @@ fun regras(m: Modalidade, estado: Estado, mais: Boolean): List<Pair<String, Stri
         Formato.COLUNAS -> listOf(
             "Volante" to "7 colunas, de 0 a 9",
             "Aposta" to "7 números (1 por coluna)",
-            "Preço" to preco,
             "Sorteio" to "7 números (1 por coluna)",
             "Premiação" to premiacao(m),
         )
         Formato.LOTECA -> listOf(
             "Volante" to "14 jogos de futebol",
             "Aposta" to "14 palpites (1, X ou 2)",
-            "Preço" to preco,
             "Sorteio" to "Os resultados dos 14 jogos",
             "Premiação" to premiacao(m),
         )
-        Formato.FEDERAL -> listOf("Bilhete" to "5 algarismos, inteiro ou em frações", "Preço" to preco, "Premiação" to premiacao(m))
+        Formato.FEDERAL -> listOf("Bilhete" to "5 algarismos, inteiro ou em frações", "Premiação" to premiacao(m))
     }
 }
 

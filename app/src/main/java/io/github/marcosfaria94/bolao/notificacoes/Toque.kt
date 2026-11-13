@@ -30,13 +30,34 @@ import kotlinx.coroutines.withTimeoutOrNull
  * A música é escolhida em Ajustes: um arquivo de áudio do celular, um dos toques do sistema ou o
  * toque de chamada do celular (o padrão). Fica guardada no próprio celular (não vai no backup:
  * o endereço do arquivo só vale neste aparelho).
+ *
+ * Desde a 0.32, também o som do prêmio secundário ([Qual.SECUNDARIO]; as outras faixas): desligado, o aviso toca o
+ * som de notificação de sempre; ligado, o aviso fica quieto e toca o som escolhido, uma vez (até
+ * [DURACAO_SECUNDARIO_MS]), no volume das notificações (no silencioso, não toca).
  */
 object Toque {
     /** Quanto tempo toca: o de uma chamada que ninguém atende. */
     const val DURACAO_MS = 30_000L
 
-    /** Quem pediu: o "Testar" dos Ajustes ou um prêmio de verdade. */
-    enum class Origem { TESTE, PREMIO }
+    /** O som do prêmio secundário toca uma vez, no máximo por este tempo. */
+    const val DURACAO_SECUNDARIO_MS = 12_000L
+
+    /** Quem pediu: o "Testar" dos Ajustes ou um prêmio de verdade (desde a 0.32, também os do prêmio secundário). */
+    enum class Origem(val qual: Qual) {
+        TESTE(Qual.PRINCIPAL),
+        PREMIO(Qual.PRINCIPAL),
+        TESTE_SECUNDARIO(Qual.SECUNDARIO),
+        SECUNDARIO(Qual.SECUNDARIO),
+    }
+
+    /**
+     * Qual dos sons (desde a 0.32): o do prêmio principal (como uma chamada) ou o do prêmio secundário. As escolhas
+     * ficam com nomes próprios nas preferências ([prefixo]; o principal com os de sempre).
+     */
+    enum class Qual(val prefixo: String, val ligadoPadrao: Boolean) {
+        PRINCIPAL("", true),
+        SECUNDARIO("sec_", false),
+    }
 
     /** O que está tocando agora (null = nada). */
     private val _tocando = MutableStateFlow<Origem?>(null)
@@ -58,52 +79,60 @@ object Toque {
     private val mao by lazy { Handler(Looper.getMainLooper()) }
     private val pararNoFim = Runnable { parar() }
 
-    fun config(context: Context): Config {
+    fun config(context: Context, qual: Qual = Qual.PRINCIPAL): Config {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         return Config(
-            ligado = p.getBoolean(LIGADO, true),
-            uri = p.getString(URI, null)?.let(Uri::parse),
-            nome = p.getString(NOME, null),
+            ligado = p.getBoolean(qual.prefixo + LIGADO, qual.ligadoPadrao),
+            uri = p.getString(qual.prefixo + URI, null)?.let(Uri::parse),
+            nome = p.getString(qual.prefixo + NOME, null),
         )
     }
 
-    fun ligar(context: Context, ligado: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(LIGADO, ligado).apply()
+    fun ligar(context: Context, ligado: Boolean, qual: Qual = Qual.PRINCIPAL) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(qual.prefixo + LIGADO, ligado).apply()
     }
 
-    /** Guarda a música escolhida ([uri] null = volta ao toque de chamada do celular). */
-    fun escolher(context: Context, uri: Uri?, nome: String?) {
+    /** Guarda a música escolhida ([uri] null = volta ao toque de chamada do celular; no secundário, ao som de notificação). */
+    fun escolher(context: Context, uri: Uri?, nome: String?, qual: Qual = Qual.PRINCIPAL) {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        // O arquivo escolhido antes não precisa mais da permissão de leitura.
-        p.getString(URI, null)?.let(Uri::parse)?.takeIf { it != uri }?.let { antigo ->
+        // O arquivo escolhido antes não precisa mais da permissão de leitura (se o outro som não usa o mesmo).
+        val outro = Qual.entries.filter { it != qual }.mapNotNull { p.getString(it.prefixo + URI, null)?.let(Uri::parse) }
+        p.getString(qual.prefixo + URI, null)?.let(Uri::parse)?.takeIf { it != uri && it !in outro }?.let { antigo ->
             runCatching { context.contentResolver.releasePersistableUriPermission(antigo, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         }
         p.edit().apply {
-            if (uri == null) remove(URI) else putString(URI, uri.toString())
-            if (nome == null) remove(NOME) else putString(NOME, nome)
+            if (uri == null) remove(qual.prefixo + URI) else putString(qual.prefixo + URI, uri.toString())
+            if (nome == null) remove(qual.prefixo + NOME) else putString(qual.prefixo + NOME, nome)
         }.apply()
     }
 
     /** Uma música escolhida no seletor de arquivos: guarda a permissão de ler o arquivo depois (mesmo com o app fechado). */
-    fun escolherArquivo(context: Context, uri: Uri) {
+    fun escolherArquivo(context: Context, uri: Uri, qual: Qual = Qual.PRINCIPAL) {
         runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         val nome = runCatching {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
                 if (c.moveToFirst()) c.getString(0) else null
             }
         }.getOrNull()?.substringBeforeLast('.')
-        escolher(context, uri, nome ?: "Música escolhida")
+        escolher(context, uri, nome ?: "Música escolhida", qual)
     }
 
     /** Um toque do sistema escolhido na lista do Android. */
-    fun escolherToqueDoSistema(context: Context, uri: Uri?) {
+    fun escolherToqueDoSistema(context: Context, uri: Uri?, qual: Qual = Qual.PRINCIPAL) {
         if (uri == null) return
         val nome = runCatching { RingtoneManager.getRingtone(context, uri)?.getTitle(context) }.getOrNull()
-        escolher(context, uri, nome ?: "Toque do celular")
+        escolher(context, uri, nome ?: "Toque do celular", qual)
     }
 
+    /** Nome do som padrão do prêmio secundário (o de notificação do celular). */
+    const val SOM_DE_NOTIFICACAO = "Som de notificação do celular"
+
     /** Nome para mostrar nos Ajustes. */
-    fun nomeDoToque(c: Config): String = if (c.uri == null) TOQUE_DO_CELULAR else c.nome ?: "Música escolhida"
+    fun nomeDoToque(c: Config, qual: Qual = Qual.PRINCIPAL): String = when {
+        c.uri != null -> c.nome ?: "Música escolhida"
+        qual == Qual.SECUNDARIO -> SOM_DE_NOTIFICACAO
+        else -> TOQUE_DO_CELULAR
+    }
 
     /**
      * Começa a tocar (o que estiver tocando para antes). Tenta a música escolhida e, se ela não abrir
@@ -114,22 +143,32 @@ object Toque {
     fun tocar(context: Context, origem: Origem): Boolean {
         parar()
         val ctx = context.applicationContext
-        val opcoes = listOfNotNull(
-            config(ctx).uri,
-            Settings.System.DEFAULT_RINGTONE_URI,
-            Settings.System.DEFAULT_ALARM_ALERT_URI,
-            Settings.System.DEFAULT_NOTIFICATION_URI,
-        )
+        val secundario = origem.qual == Qual.SECUNDARIO
+        // O principal tenta a música escolhida e, se ela não abrir, os toques do celular; o secundário, o som de
+        // notificação.
+        val opcoes = if (secundario) {
+            listOfNotNull(config(ctx, Qual.SECUNDARIO).uri, Settings.System.DEFAULT_NOTIFICATION_URI)
+        } else {
+            listOfNotNull(
+                config(ctx).uri,
+                Settings.System.DEFAULT_RINGTONE_URI,
+                Settings.System.DEFAULT_ALARM_ALERT_URI,
+                Settings.System.DEFAULT_NOTIFICATION_URI,
+            )
+        }
+        // O principal no volume do alarme (toca no silencioso); o secundário no das notificações.
         val atributos = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ALARM)
-            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .setUsage(if (secundario) AudioAttributes.USAGE_NOTIFICATION else AudioAttributes.USAGE_ALARM)
+            .setContentType(if (secundario) AudioAttributes.CONTENT_TYPE_SONIFICATION else AudioAttributes.CONTENT_TYPE_MUSIC)
             .build()
         for (u in opcoes) {
             val mp = MediaPlayer()
             try {
                 mp.setAudioAttributes(atributos)
                 mp.setDataSource(ctx, u)
-                mp.isLooping = true
+                mp.isLooping = !secundario
+                // O secundário toca uma vez: parou sozinho, acabou.
+                if (secundario) mp.setOnCompletionListener { mao.post { if (tocador === it) parar() } }
                 mp.prepare()
                 mp.start()
                 tocador = mp
@@ -139,9 +178,9 @@ object Toque {
             }
         }
         if (tocador == null) return false
-        vibrar(ctx, atributos)
+        if (!secundario) vibrar(ctx, atributos)
         _tocando.value = origem
-        mao.postDelayed(pararNoFim, DURACAO_MS)
+        mao.postDelayed(pararNoFim, if (secundario) DURACAO_SECUNDARIO_MS else DURACAO_MS)
         return true
     }
 
@@ -165,7 +204,8 @@ object Toque {
      */
     suspend fun tocarEEsperar(context: Context, origem: Origem) {
         if (!tocar(context, origem)) return
-        withTimeoutOrNull(DURACAO_MS + 2_000L) { tocando.first { it == null } }
+        val tempo = if (origem.qual == Qual.SECUNDARIO) DURACAO_SECUNDARIO_MS else DURACAO_MS
+        withTimeoutOrNull(tempo + 2_000L) { tocando.first { it == null } }
     }
 
     @Suppress("DEPRECATION")

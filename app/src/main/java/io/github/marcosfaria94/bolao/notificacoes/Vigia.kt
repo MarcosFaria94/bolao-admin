@@ -51,12 +51,15 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
     override suspend fun doWork(): Result {
         val tocar = trava.withLock { rodar(applicationContext) }
         // Já marcado como avisado (não toca de novo); o trabalho segue até o fim do toque.
-        if (tocar) Toque.tocarEEsperar(applicationContext, Toque.Origem.PREMIO)
+        if (tocar != null) Toque.tocarEEsperar(applicationContext, tocar)
         return Result.success()
     }
 
-    /** Os passos 0 a 4 em todas as sessões. Devolve se o toque do prêmio principal deve tocar. */
-    private suspend fun rodar(ctx: Context): Boolean {
+    /**
+     * Os passos 0 a 4 em todas as sessões. Devolve o que deve tocar: o toque do prêmio principal, o som do prêmio
+     * secundário (desde a 0.32, quando ligado nos Ajustes) ou nada.
+     */
+    private suspend fun rodar(ctx: Context): Toque.Origem? {
         ultimaRodada = System.currentTimeMillis()
         val app = ctx.bolao
         val agora = LocalDateTime.now()
@@ -105,24 +108,40 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
 
         // 4. O próximo despertar (resultado que ainda não saiu, apuração, dados dos Jogos), de todas as sessões.
         Despertador.agendar(ctx, estados)
-        if (!permitido) return false
+        if (!permitido) return null
 
         // Prêmio principal (fora do modo de teste): o toque dos Ajustes, como uma chamada.
         val tocar = premiadasPorSessao.any { (id, p) -> id != Sessoes.TESTE && p.any { it.principal } } && Toque.config(ctx).ligado
+        // Prêmio secundário (desde a 0.32): com o som próprio ligado, o aviso fica quieto e toca o som escolhido (uma
+        // vez). Junto com um prêmio principal tocando, vale o toque do principal.
+        val somSecundario = Toque.config(ctx, Toque.Qual.SECUNDARIO).ligado
+        val tocarSecundario = !tocar && somSecundario &&
+            premiadasPorSessao.any { (id, p) -> id != Sessoes.TESTE && p.any { !it.principal } }
         for ((id, premiadas) in premiadasPorSessao) {
             val prefixo = when {
                 id == Sessoes.TESTE -> "Teste · "
                 varias -> "${app.sessoes.nome(id)} · "
                 else -> ""
             }
-            premiadas.forEach { Notificador.apostaPremiada(ctx, it, prefixo, comToque = tocar && id != Sessoes.TESTE && it.principal, sessao = id) }
+            premiadas.forEach {
+                Notificador.apostaPremiada(
+                    ctx, it, prefixo,
+                    comToque = tocar && id != Sessoes.TESTE && it.principal,
+                    sessao = id,
+                    quieto = somSecundario && id != Sessoes.TESTE && !it.principal,
+                )
+            }
         }
         if (!algumaPendencia) Notificador.limparAcoes(ctx)
         if (novasChaves.isNotEmpty()) {
             val todas = (avisados + novasChaves).takeLast(MAX_CHAVES)
             prefs.edit().putString(CHAVES, todas.joinToString("\n")).apply()
         }
-        return tocar
+        return when {
+            tocar -> Toque.Origem.PREMIO
+            tocarSecundario -> Toque.Origem.SECUNDARIO
+            else -> null
+        }
     }
 
     /** Os passos 1 e 2 numa sessão: a conferência na Caixa e a apuração automática. Devolve o estado depois deles. */

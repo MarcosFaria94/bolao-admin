@@ -10,6 +10,10 @@ import android.net.Uri
 import android.os.Environment
 import android.util.Base64
 import android.view.ViewGroup
+import kotlin.math.abs
+import android.view.ViewConfiguration
+import android.view.VelocityTracker
+import android.view.MotionEvent
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.URLUtil
@@ -80,7 +84,11 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import kotlin.coroutines.resume
 
-/** A tela da Caixa (desde a 0.31): o Loterias Online da Caixa dentro do app, pelo botão do trevo na barra de baixo. */
+/**
+ * A tela da Caixa (desde a 0.31): o Loterias Online da Caixa dentro do app, pelo botão do trevo na barra de baixo.
+ * Desde a 0.32 é a terceira aba (Home, Jogos, Caixa, Ajustes), que também se troca deslizando o dedo; "caixa" é o
+ * endereço dela (abrir("caixa") vai para a aba).
+ */
 const val ROTA_CAIXA = "caixa"
 
 /** O título da tela da Caixa. */
@@ -127,6 +135,15 @@ class NavegadorDaCaixa(private val contexto: Context) {
     /** As apostas que já foram para o carrinho do site (pelos ids). */
     val transcritas = mutableStateListOf<String>()
 
+    /**
+     * Deslizar o dedo para os lados na página troca de aba (desde a 0.32, como nas outras abas): a página avisa o
+     * começo da troca, quanto o dedo andou (px, positivo = para a direita) e a velocidade ao soltar (px/s), e a raiz
+     * do app leva as abas junto ([PaginaDaCaixa], [GestoDaCaixa]).
+     */
+    var aoComecarTroca: (() -> Unit)? = null
+    var aoArrastar: ((Float) -> Unit)? = null
+    var aoSoltar: ((Float) -> Unit)? = null
+
     private var web: WebView? = null
 
     /** O script do "Transcrever" (assets/caixa/transcrever.js). */
@@ -168,7 +185,7 @@ class NavegadorDaCaixa(private val contexto: Context) {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun criar(tela: Context): WebView = WebView(tela).apply {
+    private fun criar(tela: Context): WebView = PaginaDaCaixa(tela, this).apply {
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -322,6 +339,139 @@ class NavegadorDaCaixa(private val contexto: Context) {
         } finally {
             transcrevendo = false
         }
+    }
+}
+
+/**
+ * Quem fica com o dedo na página da Caixa (desde a 0.32): a página do site (rolar, tocar, ampliar) ou as abas
+ * (deslizar para os lados troca de aba). Decide no começo do arrasto, passado o [limite] (px): para os lados (bem
+ * mais do que para cima ou para baixo) e com a página sem ter para onde rolar daquele lado, as abas; senão, a página.
+ * Com dois dedos (ampliar), sempre a página. Só números: as contas ficam testáveis sem o Android.
+ */
+class GestoDaCaixa(private val limite: Float) {
+    enum class Modo { INDEFINIDO, PAGINA, TROCA }
+
+    var modo: Modo = Modo.INDEFINIDO
+        private set
+
+    private var x0 = 0f
+    private var y0 = 0f
+    private var ultimoX = 0f
+
+    /** O dedo encostou em ([x], [y]) (na tela). */
+    fun inicio(x: Float, y: Float) {
+        modo = Modo.INDEFINIDO
+        x0 = x
+        y0 = y
+        ultimoX = x
+    }
+
+    /** Um segundo dedo (ampliar a página): o gesto é da página. */
+    fun outroDedo() {
+        if (modo == Modo.INDEFINIDO) modo = Modo.PAGINA
+    }
+
+    /**
+     * O dedo andou até ([x], [y]). [podeRolar] diz se a página ainda rola para aquele lado (1 = mostrar mais à
+     * direita, quando o dedo vai para a esquerda; -1 = à esquerda). Devolve quanto as abas andam (px; 0 fora da troca).
+     */
+    fun mover(x: Float, y: Float, podeRolar: (Int) -> Boolean): Float {
+        if (modo == Modo.INDEFINIDO) {
+            val dx = x - x0
+            val dy = y - y0
+            if (abs(dx) <= limite && abs(dy) <= limite) return 0f
+            val paraOsLados = abs(dx) > abs(dy) * DOMINIO_DO_LADO
+            modo = if (paraOsLados && !podeRolar(if (dx < 0) 1 else -1)) Modo.TROCA else Modo.PAGINA
+            ultimoX = x
+            return 0f
+        }
+        if (modo != Modo.TROCA) return 0f
+        val d = x - ultimoX
+        ultimoX = x
+        return d
+    }
+
+    /** O dedo saiu (ou o gesto foi cancelado). */
+    fun fim() {
+        modo = Modo.INDEFINIDO
+    }
+
+    private companion object {
+        /** Para os lados quer dizer bem mais para os lados do que para cima ou para baixo. */
+        const val DOMINIO_DO_LADO = 1.5f
+    }
+}
+
+/**
+ * A página do site (desde a 0.32): o WebView que divide o dedo com as abas ([GestoDaCaixa]). As abas não pegam o
+ * gesto sozinhas (a página pede isso a cada toque): quando é uma troca de aba, a página cancela o gesto dela e passa o
+ * arrasto e a velocidade para o [navegador].
+ */
+@SuppressLint("ViewConstructor", "ClickableViewAccessibility")
+private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorDaCaixa) : WebView(contexto) {
+    private val gesto = GestoDaCaixa(ViewConfiguration.get(contexto).scaledTouchSlop.toFloat())
+    private var rastreador: VelocityTracker? = null
+
+    private fun soltarRastreador() {
+        rastreador?.recycle()
+        rastreador = null
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        val acao = e.actionMasked
+        if (acao == MotionEvent.ACTION_DOWN) {
+            gesto.inicio(e.rawX, e.rawY)
+            // As abas não ficam com o arrasto por conta própria: quem decide é o gesto, aqui.
+            parent?.requestDisallowInterceptTouchEvent(true)
+            soltarRastreador()
+            rastreador = VelocityTracker.obtain()
+        } else if (acao == MotionEvent.ACTION_POINTER_DOWN) {
+            gesto.outroDedo()
+        }
+        // A velocidade pela posição na tela (a página anda junto com as abas durante a troca).
+        rastreador?.let { r ->
+            val c = MotionEvent.obtain(e)
+            c.setLocation(e.rawX, e.rawY)
+            r.addMovement(c)
+            c.recycle()
+        }
+        val antes = gesto.modo
+        if (acao == MotionEvent.ACTION_MOVE && e.pointerCount == 1) {
+            val d = gesto.mover(e.rawX, e.rawY) { lado -> canScrollHorizontally(lado) }
+            if (gesto.modo == GestoDaCaixa.Modo.TROCA) {
+                if (antes != GestoDaCaixa.Modo.TROCA) {
+                    // A página esquece o gesto (não rola nem toca nada).
+                    val cancelar = MotionEvent.obtain(e)
+                    cancelar.action = MotionEvent.ACTION_CANCEL
+                    super.onTouchEvent(cancelar)
+                    cancelar.recycle()
+                    navegador.aoComecarTroca?.invoke()
+                }
+                if (d != 0f) navegador.aoArrastar?.invoke(d)
+                return true
+            }
+        }
+        if (gesto.modo == GestoDaCaixa.Modo.TROCA) {
+            if (acao == MotionEvent.ACTION_UP || acao == MotionEvent.ACTION_CANCEL) {
+                val v = if (acao == MotionEvent.ACTION_UP) {
+                    rastreador?.let {
+                        it.computeCurrentVelocity(1000)
+                        it.xVelocity
+                    } ?: 0f
+                } else {
+                    0f
+                }
+                navegador.aoSoltar?.invoke(v)
+                gesto.fim()
+                soltarRastreador()
+            }
+            return true
+        }
+        if (acao == MotionEvent.ACTION_UP || acao == MotionEvent.ACTION_CANCEL) {
+            gesto.fim()
+            soltarRastreador()
+        }
+        return super.onTouchEvent(e)
     }
 }
 

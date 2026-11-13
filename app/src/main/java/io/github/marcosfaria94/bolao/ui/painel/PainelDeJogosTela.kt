@@ -4,6 +4,7 @@ import io.github.marcosfaria94.bolao.ui.tema.corDestaque
 import androidx.compose.material.icons.outlined.AutoAwesome
 import io.github.marcosfaria94.bolao.ui.comum.TarjaModalidade
 import androidx.compose.foundation.background
+import io.github.marcosfaria94.bolao.ui.comum.trazerAoAbrir
 import io.github.marcosfaria94.bolao.ui.aposta.coresDaBola
 import io.github.marcosfaria94.bolao.ui.aposta.CoresDaBola
 import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
@@ -758,6 +759,8 @@ private fun BlocoDoConcurso(
     Column(
         Modifier
             .fillMaxWidth()
+            // Ao abrir, a lista rola para mostrar o máximo do concurso a partir do alto dele (desde a 0.32).
+            .trazerAoAbrir(aberto)
             .drawBehind { drawRect(cor, size = Size(FILETE.toPx(), size.height)) }
             .padding(start = FILETE),
     ) {
