@@ -50,15 +50,6 @@ import androidx.core.graphics.drawable.toBitmap
 import io.github.marcosfaria94.bolao.data.NOME_DO_APP
 import io.github.marcosfaria94.bolao.net.Atualizador
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaIcone
-import io.github.marcosfaria94.bolao.ui.tema.Dourado
-import io.github.marcosfaria94.bolao.ui.tema.AzulMarinho
-import io.github.marcosfaria94.bolao.ui.comum.copiar
-import io.github.marcosfaria94.bolao.ui.comum.Desenhos
-import androidx.compose.material.icons.outlined.VolunteerActivism
-import androidx.compose.material.icons.outlined.Check
-import kotlinx.coroutines.delay
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.material3.Button
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.runtime.CompositionLocalProvider
 
@@ -74,23 +65,10 @@ private val TECNOLOGIA = listOf(
     "Jetpack Compose · Material 3" to "As telas, os gestos e as animações",
     "Android 10 ou mais novo" to "Feito para o Android, direto no celular",
     "ML Kit" to "A leitura dos comprovantes da Caixa e dos Pix",
+    "ZXing" to "O QR Code do Pix no Apoie",
     "WorkManager" to "A apuração e os avisos com o app fechado",
     "Loterias Caixa" to "Os resultados e os prêmios oficiais",
 )
-
-/**
- * O "Apoie" do rodapé dos Ajustes (desde a 0.18): o título, a xícara, o texto e o botão que copia a
- * chave Pix do Administrador. Desde a 0.24 o título volta ("Que tal um café quentinho?"), o texto é
- * outro e o nome e a chave não aparecem mais (o botão continua copiando a chave). Na 0.23 o nome e a
- * chave ficavam dentro do botão; até a 0.22, soltos acima dele.
- */
-internal const val APOIE_TITULO = "Que tal um café quentinho?"
-internal const val APOIE_TEXTO =
-    "Gratuito e sem anúncios, esse é o nosso lema! Se você gosta do nosso trabalho, considere apoiá-lo."
-internal const val APOIE_PIX = "pixfacil@aol.com"
-
-/** Quanto tempo o botão "Apoie" mostra "Pix copiado" depois do toque. */
-private const val COPIADO_MS = 2500L
 
 /**
  * Os Créditos, no rodapé da lista dos Ajustes (até a 0.15 eram uma tela). De 0.18 a 0.31 o "Apoie" vinha primeiro;
@@ -199,67 +177,3 @@ fun abrirClaudeNaLoja(ctx: Context) {
         }
     }
 }
-
-/**
- * O "Apoie": o título ("Que tal um café quentinho?", desde a 0.24), a xícara de café sorrindo, o texto
- * (justificado desde a 0.23) e o botão dourado "Apoie", que copia a chave Pix (a partir do Android 13 o
- * sistema confirma a cópia; o botão também mostra "Pix copiado"). O nome e a chave não aparecem (desde
- * a 0.24). Os títulos de antes: na 0.19 "Doação"; na 0.20 "Aceita um café?"; de 0.21 a 0.23, nenhum. Desde a 0.32
- * na tela da Doação (Ajustes > Apoio > Doação), e não mais no rodapé dos Ajustes.
- */
-@Composable
-internal fun Apoie() {
-    val ctx = LocalContext.current
-    var copiado by remember { mutableStateOf(false) }
-    LaunchedEffect(copiado) {
-        if (copiado) {
-            delay(COPIADO_MS)
-            copiado = false
-        }
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        shape = RoundedCornerShape(20.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
-        ) {
-            Text(
-                APOIE_TITULO,
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 26.sp),
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(10.dp))
-            Image(Desenhos.Xicara, contentDescription = "Xícara de café sorrindo", modifier = Modifier.size(84.dp))
-            Spacer(Modifier.height(8.dp))
-            Text(
-                APOIE_TEXTO,
-                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 21.sp),
-                textAlign = TextAlign.Justify,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    copiar(ctx, "Chave Pix", APOIE_PIX)
-                    copiado = true
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Dourado, contentColor = AzulMarinho),
-                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
-                modifier = Modifier.height(52.dp),
-            ) {
-                Icon(
-                    if (copiado) Icons.Outlined.Check else Icons.Outlined.VolunteerActivism,
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(if (copiado) "Pix copiado" else "Apoie", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-

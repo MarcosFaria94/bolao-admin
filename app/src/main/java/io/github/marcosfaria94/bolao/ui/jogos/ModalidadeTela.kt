@@ -30,7 +30,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import io.github.marcosfaria94.bolao.ui.comum.deslizarEntreBotoes
-import io.github.marcosfaria94.bolao.domain.PremiosTipicos
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
@@ -57,7 +56,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
-import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -68,19 +66,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import io.github.marcosfaria94.bolao.net.CaixaApi
 import io.github.marcosfaria94.bolao.ui.aposta.TENTAR_DE_NOVO
 import androidx.compose.runtime.remember
@@ -126,6 +115,11 @@ import io.github.marcosfaria94.bolao.domain.ConcursoEspecial
 import io.github.marcosfaria94.bolao.domain.Especiais
 import io.github.marcosfaria94.bolao.domain.FaixaPremio
 import io.github.marcosfaria94.bolao.domain.Volante
+import io.github.marcosfaria94.bolao.domain.Trilha
+import io.github.marcosfaria94.bolao.domain.timeDoCoracao
+import io.github.marcosfaria94.bolao.ui.aposta.Brasao
+import io.github.marcosfaria94.bolao.ui.aposta.nomeDoTimeSorteado
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.layout.onSizeChanged
@@ -290,7 +284,7 @@ fun ModalidadeTela(
     Box(Modifier.fillMaxSize().nestedScroll(puxao)) {
     HorizontalPager(state = paginas, beyondViewportPageCount = 1, flingBehavior = soltarDasPaginas(paginas), modifier = Modifier.fillMaxSize().acompanharPuxao(puxao)) { pagina ->
         if (pagina == 1) {
-            DetalhesDaModalidade(estado, m, u, atualizando, visivel = paginas.currentPage == 1)
+            DetalhesDaModalidade(estado, m, u, atualizando, visivel = paginas.currentPage == 1, especial = especialDaAposta, abrir = abrir)
             return@HorizontalPager
         }
         Column(
@@ -504,26 +498,41 @@ private fun QuadroPremio(
  * probabilidades tem uma linha para cada quantidade de números e aparece a da quantidade de prêmios; sem
  * ele, só a linha da aposta simples. Voltar leva à página do jogo como ela estava (o volante não muda).
  *
- * Desde a 0.28, logo acima do resultado, os botões para ir e voltar nos concursos anteriores e o campo para
- * digitar um concurso ([NavegacaoDoConcurso]). Desde a 0.33 o resultado vem do histórico do app ([Historico]: todos
- * os concursos já sorteados vêm embutidos e os novos se acrescentam a cada consulta); só o que não está nele vai à
- * Caixa. Saindo dos Detalhes ([visivel] falso), volta para o último concurso.
+ * Desde a 0.33 o resultado vem do histórico do app ([Historico]: todos os concursos já sorteados vêm embutidos e os
+ * novos se acrescentam a cada consulta); só o que não está nele vai à Caixa. Saindo dos Detalhes ([visivel] falso),
+ * volta para o último concurso.
+ *
+ * Desde a 0.37 (pedidos do usuário): a navegação dos concursos é o botão flutuante no rodapé ([NavegacaoFlutuante]; de
+ * 0.28 a 0.36, os botões e o campo no alto); a página de um concurso especial ([especial]) percorre só os especiais da
+ * época dele (a Mega da Virada, só as Mega da Virada) e a da modalidade, só os regulares ([rememberConcursosDaPagina]);
+ * os Prêmios típicos saíram daqui para a tela das Estatísticas, que abre pelo botão no fim ([BotaoDasEstatisticas]).
  */
 @Composable
-private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, atualizando: Boolean, visivel: Boolean = true) {
+private fun DetalhesDaModalidade(
+    estado: Estado,
+    m: Modalidade,
+    u: Concurso?,
+    atualizando: Boolean,
+    visivel: Boolean = true,
+    especial: ConcursoEspecial? = null,
+    abrir: (String) -> Unit = {},
+) {
     val mais = estado.parametros.maisNumeros && Volante.aceitaMais(m)
-    // O concurso escolhido nos botões ou no campo (null = o último, o que os Jogos guardam).
-    var escolhido by remember(m) { mutableStateOf<Int?>(null) }
-    var outro by remember(m) { mutableStateOf<Concurso?>(null) }
-    var buscando by remember(m) { mutableStateOf(false) }
-    var erro by remember(m) { mutableStateOf<String?>(null) }
+    // O concurso escolhido na navegação (null = o último da página).
+    var escolhido by remember(m, especial) { mutableStateOf<Int?>(null) }
+    var outro by remember(m, especial) { mutableStateOf<Concurso?>(null) }
+    var buscando by remember(m, especial) { mutableStateOf(false) }
+    var erro by remember(m, especial) { mutableStateOf<String?>(null) }
     var tentativa by remember(m) { mutableIntStateOf(0) }
+    var navegacaoAberta by rememberSaveable(m) { mutableStateOf(false) }
     val historico = LocalContext.current.bolao.historico
     LaunchedEffect(visivel) { if (!visivel) escolhido = null }
-    // O histórico da modalidade já fica lido na memória ao abrir os Detalhes (os botões e o campo respondem na hora).
-    LaunchedEffect(m) { runCatching { historico.quantos(m) } }
-    val ultimo = u?.numero
-    val pedido = escolhido?.takeIf { it != ultimo }
+    // Desde a 0.37: os concursos da página (no especial, só os especiais dele; na modalidade, só os regulares).
+    val pagina = rememberConcursosDaPagina(m, u, especial != null)
+    val trilha = pagina.trilha ?: u?.numero?.let { Trilha.regulares(it, emptySet()) }.takeIf { especial == null }
+    val ultimo = trilha?.ultimo
+    val alvo = escolhido ?: ultimo
+    val pedido = alvo?.takeIf { it != u?.numero }
     LaunchedEffect(m, pedido, tentativa) {
         erro = null
         if (pedido == null) {
@@ -541,10 +550,10 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
         }
         buscando = false
     }
-    // O concurso que está na tela: o escolhido nos botões ou no campo (do histórico); sem escolher, o último.
+    // O concurso que está na tela: o escolhido na navegação (do histórico); sem escolher, o último da página.
     val naTela = if (pedido == null) u else outro?.takeIf { it.numero == pedido }
     // Desde a 0.35: o concurso anterior ao da tela, que traz o prêmio estimado dele (do histórico, da memória ou,
-    // se faltar, da Caixa), para o prêmio no alto do resultado ([PremioDoConcurso]).
+    // se faltar, da Caixa), para o prêmio do resultado ([PremioDoConcurso]).
     val numeroNaTela = naTela?.numero
     val anterior by produceState<Concurso?>(null, m, numeroNaTela) {
         val n = numeroNaTela?.minus(1)?.takeIf { it >= 1 } ?: return@produceState
@@ -553,39 +562,58 @@ private fun DetalhesDaModalidade(estado: Estado, m: Modalidade, u: Concurso?, at
             ?: runCatching { CaixaApi.concurso(m, n) }.getOrNull()
     }
     val premio = naTela?.let { PremioDoConcurso.de(it, anterior) }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        if (ultimo != null) {
-            NavegacaoDoConcurso(numero = pedido ?: ultimo, ultimo = ultimo) { n -> escolhido = n.coerceIn(1, ultimo) }
-        }
-        when {
-            pedido == null -> UltimoResultado(m, u, atualizando, premio = premio)
-            buscando -> CartaoConsultando()
-            erro != null -> CartaoErroDoConcurso(erro!!) { tentativa++ }
-            else -> UltimoResultado(m, naTela, atualizando = true, oUltimo = false, premio = premio)
-        }
-        CartaoQueAbre(TITULO_REGRAS) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                regras(m, estado, mais).forEach { (r, v) -> LinhaDaRegra(r, v) }
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            when {
+                // O especial espera o histórico (senão mostraria, por um instante, o último concurso regular); sem os dados
+                // da Caixa, o último concurso vem do histórico.
+                (especial != null || u == null) && pagina.lendo -> CartaoConsultando(LENDO_O_HISTORICO)
+                especial != null && trilha == null -> Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), modifier = Modifier.fillMaxWidth()) {
+                    Text(SEM_ESPECIAIS_NO_HISTORICO, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(16.dp))
+                }
+                pedido == null -> UltimoResultado(m, u, atualizando, premio = premio)
+                buscando -> CartaoConsultando()
+                erro != null -> CartaoErroDoConcurso(erro!!) { tentativa++ }
+                else -> UltimoResultado(m, naTela, atualizando = true, oUltimo = alvo == ultimo, premio = premio)
             }
+            CartaoQueAbre(TITULO_REGRAS) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    regras(m, estado, mais).forEach { (r, v) -> LinhaDaRegra(r, v) }
+                }
+            }
+            // Desde a 0.29: o preço de cada aposta num cartão só dele (era a primeira tabela das Probabilidades).
+            CartaoQueAbre(TITULO_PRECO) { TabelaDePreco(m, estado, mais) }
+            CartaoQueAbre(TITULO_PROBABILIDADES) { TabelaDeProbabilidades(m, mais) }
+            if (mais && Probabilidades.gruposDePremios(m) != null) {
+                CartaoQueAbre(TITULO_QUANTIDADE) { TabelaDeQuantidade(m) }
+            }
+            // Desde a 0.37: as Estatísticas (os Concursos notáveis e os Prêmios típicos, que de 0.32 a 0.36 ficavam aqui).
+            if (temEstatisticas(m)) {
+                BotaoDasEstatisticas { abrir(rotaDasEstatisticas(m, especial?.concurso, naTela?.numero)) }
+            }
+            // O espaço do botão flutuante, para ele não cobrir o fim da página.
+            Spacer(Modifier.height(if (navegacaoAberta) ESPACO_DA_NAVEGACAO_ABERTA else ESPACO_DA_NAVEGACAO_FECHADA))
         }
-        // Desde a 0.29: o preço de cada aposta num cartão só dele (era a primeira tabela das Probabilidades).
-        CartaoQueAbre(TITULO_PRECO) { TabelaDePreco(m, estado, mais) }
-        CartaoQueAbre(TITULO_PROBABILIDADES) { TabelaDeProbabilidades(m, mais) }
-        if (mais && Probabilidades.gruposDePremios(m) != null) {
-            CartaoQueAbre(TITULO_QUANTIDADE) { TabelaDeQuantidade(m) }
+        if (trilha != null && alvo != null) {
+            NavegacaoFlutuante(
+                numero = alvo,
+                trilha = trilha,
+                aberta = navegacaoAberta,
+                aoAbrir = { navegacaoAberta = it },
+                aoIr = { n -> escolhido = n },
+            )
         }
-        // Desde a 0.32, em todas as modalidades: quanto cada faixa costuma pagar (a estimativa e o último concurso);
-        // desde a 0.34, a coluna do concurso que está na tela (o escolhido nos botões ou no campo, do histórico).
-        if (m != Modalidade.FEDERAL) CartaoQueAbre(TITULO_PREMIOS_TIPICOS) { TabelaDePremiosTipicos(m, u, naTela) }
-        Spacer(Modifier.height(8.dp))
     }
 }
+
+/** O especial sem nenhum concurso dele no histórico (desde a 0.37). */
+const val SEM_ESPECIAIS_NO_HISTORICO = "Nenhum concurso especial desta época no histórico do app."
 
 const val TITULO_REGRAS = "Regras"
 const val TITULO_PRECO = "Preço"
@@ -600,42 +628,6 @@ const val COLUNA_ULTIMO_CONCURSO = "Último concurso"
 
 /** A coluna do concurso escolhido nos Detalhes (desde a 0.34): "Concurso 7000" (o último continua "Último concurso"). */
 fun colunaDoConcurso(numero: Int, ultimo: Int?): String = if (numero == ultimo) COLUNA_ULTIMO_CONCURSO else "Concurso $numero"
-
-/**
- * Os prêmios típicos (desde a 0.32, em todas as modalidades, no cartão que começa fechado): uma linha por faixa de
- * premiação, com a estimativa do que cada aposta ganhadora recebe no próximo concurso ([PremiosTipicos.estimar], o
- * mesmo cálculo do k1, sem o IR) e o que o concurso pagou; embaixo, a nota que explica que é só uma estimativa
- * e como ela é calculada. Sem a estimativa (Loteca, concurso especial), só o concurso. Desde a 0.34 a coluna é a do
- * concurso que está na tela ([naTela]: o escolhido nos botões ou no campo; sem escolher, o último, [u]).
- */
-@Composable
-private fun TabelaDePremiosTipicos(m: Modalidade, u: Concurso?, naTela: Concurso? = u) {
-    val indices = LocalContext.current.bolao.indices
-    val itens by indices.itens.collectAsStateWithLifecycle()
-    val estimativa = remember(itens[m]) { indices.premiosTipicos(m) }
-    val concurso = naTela ?: u
-    if (concurso == null && estimativa == null) {
-        Text("Sem dados da Caixa agora.", style = MaterialTheme.typography.bodyMedium)
-        return
-    }
-    val linhas = PremiosTipicos.linhas(m, estimativa, concurso)
-    val coluna = concurso?.let { colunaDoConcurso(it.numero, u?.numero) } ?: COLUNA_ULTIMO_CONCURSO
-    fun texto(v: Long?): String = v?.let { valorSemQuebra(PremiosTipicos.valor(it)) } ?: "—"
-    TabelaRolavel(
-        primeira = COLUNA_FAIXA,
-        grupos = emptyList(),
-        colunas = if (estimativa != null) listOf(COLUNA_ESTIMATIVA, coluna) else listOf(coluna),
-        linhas = linhas.map { l -> l.nome to (if (estimativa != null) listOf(texto(l.estimativa), texto(l.ultimo)) else listOf(texto(l.ultimo))) },
-    )
-    val notas = listOfNotNull(
-        if (estimativa != null) PremiosTipicos.NOTA_DA_ESTIMATIVA else PremiosTipicos.SEM_ESTIMATIVA,
-        concurso?.let { PremiosTipicos.notaDoConcurso(it.numero, ultimo = it.numero == u?.numero) },
-        Probabilidades.LEGENDA_DA_MAIS_MILIONARIA.takeIf { m == Modalidade.MAIS_MILIONARIA },
-    )
-    notas.forEach { n ->
-        Text("* $n", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
-    }
-}
 
 /**
  * Uma linha das Regras (desde a 0.29): o rótulo à esquerda, inteiro, e o valor à direita, que quebra a linha
@@ -886,67 +878,16 @@ private fun SeletorDeAcertos(acertos: List<Int>, escolhido: Int, aoEscolher: (In
 /** "Não foi possível consultar o concurso 2949 na Caixa." */
 fun erroDoConcurso(numero: Int): String = "Não foi possível consultar o concurso $numero na Caixa."
 
-/**
- * Os botões para ir e voltar nos concursos (desde a 0.28, logo acima do resultado nos Detalhes): "‹" (o
- * anterior), o campo com o número e "›" (o seguinte, até o último). Desde a 0.33, o campo se chama só "Concurso"
- * (era "Concurso (o último)" no último) e o botão "Ir" fica embaixo (o Ir do teclado continua valendo); ele só
- * acende com um número diferente do que está na tela.
- */
+/** "Lendo o histórico...": o quadro do resultado enquanto o histórico da modalidade é lido (desde a 0.37). */
+const val LENDO_O_HISTORICO = "Lendo o histórico..."
+
+/** O quadro do resultado enquanto a Caixa responde (um concurso escolhido nos Detalhes) ou o histórico é lido ([texto]). */
 @Composable
-private fun NavegacaoDoConcurso(numero: Int, ultimo: Int, aoIr: (Int) -> Unit) {
-    var texto by remember(numero) { mutableStateOf(numero.toString()) }
-    val foco = LocalFocusManager.current
-    val digitado = texto.toIntOrNull()?.takeIf { it > 0 }
-    fun ir() {
-        digitado?.let(aoIr) ?: run { texto = numero.toString() }
-        foco.clearFocus()
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        FilledTonalIconButton(onClick = { aoIr(numero - 1) }, enabled = numero > 1, modifier = Modifier.size(48.dp)) {
-            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, contentDescription = CONCURSO_ANTERIOR)
-        }
-        OutlinedTextField(
-            value = texto,
-            onValueChange = { novo -> texto = novo.filter(Char::isDigit).take(6) },
-            singleLine = true,
-            label = { Text(ROTULO_DO_CONCURSO) },
-            textStyle = MaterialTheme.typography.titleMedium.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = { ir() }, onDone = { ir() }),
-            modifier = Modifier.weight(1f).semantics { contentDescription = CAMPO_DO_CONCURSO },
-        )
-        FilledTonalIconButton(onClick = { aoIr(numero + 1) }, enabled = numero < ultimo, modifier = Modifier.size(48.dp)) {
-            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = PROXIMO_CONCURSO)
-        }
-    }
-    Button(
-        onClick = { ir() },
-        enabled = digitado != null && digitado.coerceAtMost(ultimo) != numero,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
-    ) {
-        Text(IR_AO_CONCURSO, fontWeight = FontWeight.Bold)
-    }
-    }
-}
-
-/** O nome do campo do concurso nos Detalhes (desde a 0.33, sem o "(o último)"). */
-const val ROTULO_DO_CONCURSO = "Concurso"
-
-/** O botão embaixo do campo do concurso (desde a 0.33). */
-const val IR_AO_CONCURSO = "Ir"
-
-const val CONCURSO_ANTERIOR = "Concurso anterior"
-const val PROXIMO_CONCURSO = "Próximo concurso"
-const val CAMPO_DO_CONCURSO = "Número do concurso"
-
-/** O quadro do resultado enquanto a Caixa responde (um concurso escolhido nos Detalhes). */
-@Composable
-private fun CartaoConsultando() {
+private fun CartaoConsultando(texto: String = "Consultando a Caixa...") {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(16.dp)) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            Text("  Consultando a Caixa...", style = MaterialTheme.typography.bodyLarge)
+            Text("  $texto", style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
@@ -967,9 +908,10 @@ private fun CartaoErroDoConcurso(texto: String, aoTentar: () -> Unit) {
 }
 
 /**
- * O resultado de um concurso (o último, ou o escolhido nos Detalhes, desde a 0.28, com [oUltimo] falso): desde a
- * 0.35, no alto, o prêmio do concurso ([premio], [PremioDoConcurso]: o estimado, o pago ou o 1º prêmio da Federal);
- * depois, se acumulou (ou se saiu o prêmio principal), os números sorteados e a premiação.
+ * O resultado de um concurso (o último, ou o escolhido nos Detalhes, desde a 0.28, com [oUltimo] falso): desde a 0.37,
+ * no alto, o concurso e a data; depois, o prêmio do concurso ([premio], [PremioDoConcurso]: o estimado, o pago ou o 1º
+ * prêmio da Federal; de 0.35 a 0.36 ele vinha antes do concurso); depois, se acumulou (ou se saiu o prêmio principal),
+ * os números sorteados e a premiação.
  */
 @Composable
 private fun UltimoResultado(
@@ -992,6 +934,12 @@ private fun UltimoResultado(
                 }
                 return@Column
             }
+            // Desde a 0.37 (pedido do usuário): o concurso e a data primeiro, o prêmio depois (e o "Acumulou!" embaixo dele).
+            Text(
+                "Concurso ${u.numero}" + (u.data?.let { " · ${Datas.relativa(it, hoje)}" } ?: ""),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
             if (premio != null) PremioNoAlto(premio)
             val principal = u.faixas.minByOrNull { it.faixa }
             when {
@@ -999,11 +947,7 @@ private fun UltimoResultado(
                 principal != null && principal.ganhadores > 0 -> Text("Saiu o prêmio principal!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 else -> Text(if (oUltimo) "Último resultado" else "Resultado", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
-            Text(
-                "Concurso ${u.numero}" + (u.data?.let { " · ${Datas.relativa(it, hoje)}" } ?: ""),
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            // As cores oficiais das bolas (desde a 0.29: a Timemania amarela com o número verde).
+            // As cores oficiais das bolas (desde a 0.29: a Timemania amarela com o número verde; sem o contorno desde a 0.37).
             val cor = coresDaBola(m)
             if (m == Modalidade.DUPLA_SENA && u.segundoSorteio.isNotEmpty()) {
                 // Desde a 0.27: cada sorteio com os números e a premiação dele (as faixas 1 a 4 são do 1º; 5 a 8, do 2º).
@@ -1038,6 +982,40 @@ private fun PremioNoAlto(premio: PremioDoConcurso.Premio) {
         )
     }
 }
+
+/**
+ * O Time do Coração sorteado (desde a 0.37, nos Detalhes da Timemania): o brasão (o da lista dos times; um time de fora
+ * dela, de outro biênio, fica com o escudo genérico) e, ao lado, "Time do Coração" e o nome ([nomeDoTimeSorteado]).
+ */
+@Composable
+private fun TimeSorteado(caixa: String) {
+    val time = timeDoCoracao(caixa)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(top = 2.dp).semantics(mergeDescendants = true) {},
+    ) {
+        if (time != null) {
+            Brasao(time, TAMANHO_DO_BRASAO)
+        } else {
+            Box(Modifier.size(TAMANHO_DO_BRASAO), contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Outlined.Shield,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                    modifier = Modifier.size(TAMANHO_DO_BRASAO * 0.8f),
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(TIME_DO_CORACAO, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(nomeDoTimeSorteado(caixa), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+private val TAMANHO_DO_BRASAO = 44.dp
+const val TIME_DO_CORACAO = "Time do Coração"
 
 /** Um sorteio da Dupla Sena nos Detalhes: o título, os números e a premiação dele. */
 @Composable
@@ -1225,7 +1203,12 @@ private fun Resultado(m: Modalidade, c: Concurso, cor: CoresDaBola) {
                 Bolas(c.trevos.map { it.toString() }, coresDaBola(Tarjas.trevo(m)))
             }
             c.timeOuMes?.let {
-                Text((if (m.extra == Extra.MES_DE_SORTE) "Mês de Sorte: " else "Time do Coração: ") + it, style = MaterialTheme.typography.bodyMedium)
+                // Desde a 0.37, a Timemania com o brasão e o nome do time (até a 0.36, só "Time do Coração: NOME/UF").
+                if (m.extra == Extra.TIME_DO_CORACAO) {
+                    TimeSorteado(it)
+                } else {
+                    Text("Mês de Sorte: $it", style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
         Formato.COLUNAS -> Bolas(c.dezenas.map { it.toString() }, cor)

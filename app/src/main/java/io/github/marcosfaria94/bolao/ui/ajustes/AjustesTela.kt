@@ -157,7 +157,10 @@ enum class SecaoAjuste(val id: String) {
     ATUALIZACAO("atualizacao"),
     TESTE("teste"),
     EXTINCAO("extincao"),
-    /** O "Apoie" (desde a 0.32, no grupo Feedback; até a 0.31 ficava no rodapé dos Ajustes). */
+    /**
+     * O "Apoie" (desde a 0.32, no grupo Feedback; até a 0.31 ficava no rodapé dos Ajustes). Desde a 0.37 a linha abre a
+     * janela do Apoie ([JanelaDoApoie]) por cima da lista; o endereço "ajustes/doacao" continua (o Apoie num cartão).
+     */
     DOACAO("doacao"),
     /** A mensagem para quem faz o app, por e-mail (desde a 0.32, no grupo Feedback). */
     CONTATO("contato"),
@@ -308,6 +311,9 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
 
     // Os integrantes abrem e fecham ali mesmo, na lista (desde a 0.23); começam abertos.
     var integrantesAbertos by rememberSaveable { mutableStateOf(true) }
+    // A Doação abre a janela do Apoie por cima da lista (desde a 0.37; até a 0.36 era uma tela).
+    var apoieAberto by rememberSaveable { mutableStateOf(false) }
+    if (apoieAberto) JanelaDoApoie(aoFechar = { apoieAberto = false })
 
     /**
      * O que tocar na linha faz: abre a tela; os Integrantes abrem e fecham na lista; a Atualização
@@ -316,6 +322,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
     fun tocar(s: SecaoAjuste) {
         when (s) {
             SecaoAjuste.INTEGRANTES -> integrantesAbertos = !integrantesAbertos
+            SecaoAjuste.DOACAO -> apoieAberto = true
             SecaoAjuste.ATUALIZACAO -> atualizacao.verificar(manual = true)
             SecaoAjuste.TESTE -> if (!preparandoTeste) {
                 if (teste) ModoTeste.sair(ctx) else ModoTeste.entrar(ctx)

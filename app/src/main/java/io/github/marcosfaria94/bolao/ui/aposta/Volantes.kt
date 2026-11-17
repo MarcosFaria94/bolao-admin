@@ -48,14 +48,15 @@ enum class SituacaoNumero { LIVRE, MARCADO, ACERTO, ERRO, SORTEADO }
 
 /**
  * As cores das bolas marcadas da modalidade (desde a 0.29, as oficiais: [Tarjas.bola]): o fundo, o número e o
- * contorno (na Timemania, amarela com o número e o contorno verdes; nas outras, o contorno é a própria cor).
+ * contorno (na Timemania, amarela com o número verde e, desde a 0.37, sem o contorno na bola: o verde fica nos traços
+ * dos números sorteados e errados; nas outras, o contorno é a própria cor).
  */
 class CoresDaBola(val fundo: Color, val numero: Color, val contorno: Color, val comContorno: Boolean)
 
 /** As [CoresDaBola] de uma bola de [Tarjas]. */
 fun coresDaBola(b: Tarjas.Bola): CoresDaBola {
     val fundo = corModalidade(b.fundo)
-    return CoresDaBola(fundo, corModalidade(b.numero), if (b.contorno != 0L) corModalidade(b.contorno) else fundo, b.contorno != 0L)
+    return CoresDaBola(fundo, corModalidade(b.numero), if (b.contorno != 0L) corModalidade(b.contorno) else fundo, b.contornoNaBola)
 }
 
 /** As cores das bolas (números) da modalidade [m]. */

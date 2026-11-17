@@ -14,13 +14,13 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.data.Aposta
 import io.github.marcosfaria94.bolao.data.Apuracao
+import io.github.marcosfaria94.bolao.domain.Tarjas
 import io.github.marcosfaria94.bolao.imagem.ImagemConferencia
 import io.github.marcosfaria94.bolao.ui.tema.corModalidade
 import kotlinx.coroutines.Dispatchers
@@ -41,9 +41,10 @@ fun ImagemDaAposta(a: Aposta, ap: Apuracao?, modifier: Modifier = Modifier) {
     val bmp = imagem
     if (bmp == null) {
         Box(
-            modifier.fillMaxWidth().height(180.dp).clip(forma).background(corModalidade(a.modalidade.cor)),
+            // Enquanto a imagem é feita, as cores dela (desde a 0.37 a Timemania é amarela com o verde).
+            modifier.fillMaxWidth().height(180.dp).clip(forma).background(corModalidade(Tarjas.fundoDaImagem(a.modalidade))),
             contentAlignment = Alignment.Center,
-        ) { CircularProgressIndicator(color = Color.White) }
+        ) { CircularProgressIndicator(color = corModalidade(Tarjas.frenteDaImagem(a.modalidade))) }
     } else {
         Image(
             bitmap = bmp.asImageBitmap(),

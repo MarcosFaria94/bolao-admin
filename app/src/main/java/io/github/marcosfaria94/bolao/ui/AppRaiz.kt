@@ -35,6 +35,9 @@ import io.github.marcosfaria94.bolao.ui.tema.coresDoPainel
 import androidx.compose.foundation.isSystemInDarkTheme
 import io.github.marcosfaria94.bolao.ui.jogos.IndicesTela
 import io.github.marcosfaria94.bolao.ui.jogos.ROTA_INDICES
+import io.github.marcosfaria94.bolao.ui.jogos.ROTA_ESTATISTICAS
+import io.github.marcosfaria94.bolao.ui.jogos.TITULO_ESTATISTICAS
+import io.github.marcosfaria94.bolao.ui.jogos.EstatisticasTela
 import io.github.marcosfaria94.bolao.ui.painel.IconeDoPainel
 import io.github.marcosfaria94.bolao.ui.painel.quantasPendencias
 import io.github.marcosfaria94.bolao.ui.painel.resumoDasPendencias
@@ -202,7 +205,7 @@ private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_PAINEL,
 /** Telas sem a seta de voltar na barra de cima (fecham deslizando o dedo, puxando para baixo ou pelo voltar do celular). */
 private val SEM_SETA = setOf(
     "aporte", "rateio", "extrato", "extrato/{mes}", ROTA_FILTRO, "saldo", ROTA_COMPROVANTES, ROTA_PAINEL, ROTA_SECAO_AJUSTES, "integridade",
-    ROTA_INDICES, ROTA_SESSOES, ROTA_FAVORITOS,
+    ROTA_INDICES, ROTA_SESSOES, ROTA_FAVORITOS, ROTA_ESTATISTICAS,
 )
 
 /** A página do jogo (o volante, a aposta aberta ou os Detalhes): nos Detalhes, o título "← Aposta" também volta. */
@@ -442,6 +445,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         "saldo" -> "Saldo"
         "integridade" -> "Verificar integridade"
         ROTA_INDICES -> "Indicadores"
+        ROTA_ESTATISTICAS -> TITULO_ESTATISTICAS
         else -> ""
     }
 
@@ -696,6 +700,21 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
             // Como é o cálculo do k1 e do k2 (tocar na Legenda dos Jogos).
             composable(ROTA_INDICES) { e ->
                 TelaDeCima(nav, e) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { IndicesTela() } }
+            }
+            // As Estatísticas do jogo (desde a 0.37, pelo botão dos Detalhes): os Concursos notáveis e os Prêmios típicos.
+            composable(
+                ROTA_ESTATISTICAS,
+                arguments = listOf(
+                    navArgument("especial") { type = NavType.IntType; defaultValue = 0 },
+                    navArgument("concurso") { type = NavType.IntType; defaultValue = 0 },
+                ),
+            ) { e ->
+                val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
+                TelaDeCima(nav, e) {
+                    Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) {
+                        if (m != null) EstatisticasTela(m, e.arguments?.getInt("especial"), e.arguments?.getInt("concurso"))
+                    }
+                }
             }
             composable("integridade") { e ->
                 TelaDeCima(nav, e) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { IntegridadeTela(estado) } }

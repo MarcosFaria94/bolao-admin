@@ -12,6 +12,7 @@ import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Extra
 import io.github.marcosfaria94.bolao.domain.Formato
 import io.github.marcosfaria94.bolao.domain.Modalidade
+import io.github.marcosfaria94.bolao.domain.Tarjas
 import java.io.File
 import kotlin.math.ceil
 import kotlin.math.min
@@ -20,29 +21,32 @@ import kotlin.math.min
  * Imagem dos acertos no estilo da conferência do site da Caixa: fundo na cor da modalidade,
  * "Números sorteados", o divisor com o trevo e "Meus números" em círculos (cheio = acerto).
  * Vai anexada ao comprovante da APURAÇÃO. Sem apuração, mostra só os números apostados
- * (tela da aposta feita).
+ * (tela da aposta feita). Desde a 0.37 as cores vêm de [Tarjas.fundoDaImagem] e [Tarjas.frenteDaImagem]: a Timemania
+ * é amarela com o verde por cima (até a 0.36, verde com o branco, como as outras).
  */
 object ImagemConferencia {
     private const val LARGURA = 1080
     private const val MARGEM = 72f
     private const val ALTURA_MAXIMA = 4200
 
-    private fun clara(cor: Int, f: Float): Int = Color.rgb(
-        (Color.red(cor) + (255 - Color.red(cor)) * f).toInt(),
-        (Color.green(cor) + (255 - Color.green(cor)) * f).toInt(),
-        (Color.blue(cor) + (255 - Color.blue(cor)) * f).toInt(),
+    /** A cor [cor] levada [f] (de 0 a 1) na direção da cor [para] (até a 0.36, sempre para o branco). */
+    private fun mistura(cor: Int, para: Int, f: Float): Int = Color.rgb(
+        (Color.red(cor) + (Color.red(para) - Color.red(cor)) * f).toInt(),
+        (Color.green(cor) + (Color.green(para) - Color.green(cor)) * f).toInt(),
+        (Color.blue(cor) + (Color.blue(para) - Color.blue(cor)) * f).toInt(),
     )
 
-    private class Pinceis(context: Context, val cor: Int) {
-        val titulo = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, false); textSize = 60f; color = Color.WHITE }
-        val sorteado = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, true); textSize = 60f; color = Color.WHITE }
+    /** [cor] = o fundo; [frente] = o que vai por cima (o branco; na Timemania, o verde). */
+    private class Pinceis(context: Context, val cor: Int, val frente: Int) {
+        val titulo = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, false); textSize = 60f; color = frente }
+        val sorteado = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, true); textSize = 60f; color = frente }
         val bola = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, true); textSize = 54f }
-        val pequeno = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, false); textSize = 32f; color = clara(cor, 0.6f) }
-        val texto = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, false); textSize = 40f; color = Color.WHITE }
-        val textoNegrito = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, true); textSize = 40f; color = Color.WHITE }
-        val branco = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
-        val contorno = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.STROKE; strokeWidth = 3.5f }
-        val linha = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; strokeWidth = 3f }
+        val pequeno = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, false); textSize = 32f; color = mistura(cor, frente, 0.6f) }
+        val texto = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, false); textSize = 40f; color = frente }
+        val textoNegrito = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Fontes.jost(context, true); textSize = 40f; color = frente }
+        val branco = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = frente; style = Paint.Style.FILL }
+        val contorno = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = frente; style = Paint.Style.STROKE; strokeWidth = 3.5f }
+        val linha = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = frente; strokeWidth = 3f }
     }
 
     /** Colunas da grade: até 7 numa linha só; mais que isso, linhas de 5 (ou 8 quando são muitos). */
@@ -54,8 +58,9 @@ object ImagemConferencia {
 
     fun gerar(context: Context, a: Aposta, ap: Apuracao?): Bitmap {
         val m = a.modalidade
-        val cor = (m.cor and 0xFFFFFFFF).toInt()
-        val p = Pinceis(context, cor)
+        val cor = (Tarjas.fundoDaImagem(m) and 0xFFFFFFFF).toInt()
+        val frente = (Tarjas.frenteDaImagem(m) and 0xFFFFFFFF).toInt()
+        val p = Pinceis(context, cor, frente)
         val bmp = Bitmap.createBitmap(LARGURA, ALTURA_MAXIMA, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         c.drawColor(cor)
@@ -106,7 +111,7 @@ object ImagemConferencia {
                 val cy = y + (i / cols) * cel + raio + 4f
                 val ok = acerto(i)
                 if (ok) c.drawCircle(cx, cy, raio, p.branco) else c.drawCircle(cx, cy, raio - 1.5f, p.contorno)
-                p.bola.color = if (ok) cor else Color.WHITE
+                p.bola.color = if (ok) cor else frente
                 val fm = p.bola.fontMetrics
                 c.drawText(t, cx - p.bola.measureText(t) / 2, cy - (fm.ascent + fm.descent) / 2, p.bola)
             }
@@ -118,7 +123,7 @@ object ImagemConferencia {
             c.drawLine(LARGURA * 0.22f, cy, LARGURA * 0.78f, cy, p.linha)
             c.drawCircle(LARGURA / 2f, cy, 34f, p.branco)
             val escura = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cor }
-            val clarinha = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = clara(cor, 0.45f) }
+            val clarinha = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = mistura(cor, frente, 0.45f) }
             Fontes.ANGULOS_FOLHAS.forEachIndexed { k, g ->
                 c.drawPath(Fontes.folha(LARGURA / 2f, cy, 0.32f, g), if (k % 2 == 0) escura else clarinha)
             }
@@ -133,7 +138,7 @@ object ImagemConferencia {
                 c.drawRoundRect(RectF(x - 14f, y - 2f, x + w + 14f, y + 58f), 30f, 30f, p.branco)
                 p.textoNegrito.color = cor
                 c.drawText(valor, x, y + 42f, p.textoNegrito)
-                p.textoNegrito.color = Color.WHITE
+                p.textoNegrito.color = frente
             } else {
                 c.drawText(valor, x, y + 42f, p.textoNegrito)
             }
@@ -238,9 +243,9 @@ object ImagemConferencia {
                         c.drawText("${j + 1}. ${rotulo.take(30)}", MARGEM, y + 40f, p.texto)
                         val cx = LARGURA - MARGEM - 170f
                         if (ok) c.drawCircle(cx, y + 28f, 30f, p.branco) else c.drawCircle(cx, y + 28f, 28f, p.contorno)
-                        p.textoNegrito.color = if (ok) cor else Color.WHITE
+                        p.textoNegrito.color = if (ok) cor else frente
                         c.drawText(palpite, cx - p.textoNegrito.measureText(palpite) / 2, y + 42f, p.textoNegrito)
-                        p.textoNegrito.color = Color.WHITE
+                        p.textoNegrito.color = frente
                         val r = res.ifEmpty { "?" }
                         c.drawText(r, LARGURA - MARGEM - 40f - p.textoNegrito.measureText(r) / 2, y + 42f, p.textoNegrito)
                         y += 78f

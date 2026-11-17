@@ -3,6 +3,7 @@ package io.github.marcosfaria94.bolao.data
 import android.content.Context
 import io.github.marcosfaria94.bolao.domain.Concurso
 import io.github.marcosfaria94.bolao.domain.Modalidade
+import io.github.marcosfaria94.bolao.domain.ResumoDoConcurso
 import io.github.marcosfaria94.bolao.domain.indices.RegistroK
 import io.github.marcosfaria94.bolao.net.CaixaParser
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +57,14 @@ class Historico(private val context: Context) {
 
     /** Muda quando um concurso especial novo entra no histórico (o k1 dos especiais é refeito). */
     val novosEspeciais: StateFlow<Int> = _novosEspeciais.asStateFlow()
+
+    /** Os resumos de cada modalidade (desde a 0.37: os especiais dos Detalhes e os Concursos notáveis), lidos uma vez. */
+    private val resumosLidos = ConcurrentHashMap<Modalidade, List<ResumoDoConcurso>>()
+
+    private val _acrescimos = MutableStateFlow(0)
+
+    /** Muda a cada concurso que entra no histórico do celular (desde a 0.37: os Detalhes refazem a trilha). */
+    val acrescimos: StateFlow<Int> = _acrescimos.asStateFlow()
 
     /** O resumo do que vem embutido: o último concurso de cada modalidade e os que faltam (a Caixa não tinha). */
     private val embutido: Map<String, Pair<Int, Set<Int>>> by lazy {
@@ -131,10 +140,25 @@ class Historico(private val context: Context) {
             runCatching { acrescimos(m).appendText(linha + "\n", Charsets.UTF_8) }.onFailure { return }
             ja[c.numero] = linha
             linhas[m]?.put(c.numero, linha)
+            resumosLidos.remove(m)
+            _acrescimos.value += 1
             if (linha.contains(MARCA_DO_ESPECIAL)) {
                 especiaisLidos.remove(m)
                 _novosEspeciais.value += 1
             }
+        }
+    }
+
+    /**
+     * O resumo de cada concurso da modalidade [m] (desde a 0.37), do mais velho ao mais novo: o dia, a arrecadação, se a
+     * Caixa marcou como especial e a faixa principal. Para os Detalhes separarem os especiais ([EspeciaisDoHistorico]) e
+     * para os Concursos notáveis. Lido uma vez (cada linha é um JSON) e guardado na memória.
+     */
+    suspend fun resumos(m: Modalidade): List<ResumoDoConcurso> {
+        resumosLidos[m]?.let { return it }
+        val mapa = withContext(Dispatchers.IO) { carregar(m) }
+        return withContext(Dispatchers.Default) {
+            mapa.entries.sortedBy { it.key }.mapNotNull { (_, l) -> ResumoDoConcurso.daLinha(l) }.also { resumosLidos[m] = it }
         }
     }
 

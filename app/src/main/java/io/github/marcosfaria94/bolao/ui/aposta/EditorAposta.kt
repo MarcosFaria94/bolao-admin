@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Casino
@@ -125,6 +126,8 @@ import io.github.marcosfaria94.bolao.ui.tema.Dourado
  * ([favorito]: cheia quando o jogo do volante é um favorito; null = a modalidade não tem favoritos); o texto
  * embaixo ocupa a largura toda (não quebra mais ao lado do preço) e, abaixo dele, o aviso de que a aposta é
  * descartada ao sair com o volante incompleto ([aviso]; até a 0.28 era uma caixa embaixo do volante).
+ *
+ * Desde a 0.37, tocar no preço ([aoTocarNoPreco]) abre a janela do preço da aposta simples ([JanelaDoPreco]).
  */
 @Composable
 private fun TituloDoVolante(
@@ -136,6 +139,7 @@ private fun TituloDoVolante(
     favorito: Boolean?,
     aoFavoritar: () -> Unit,
     aviso: String?,
+    aoTocarNoPreco: (() -> Unit)? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -160,7 +164,12 @@ private fun TituloDoVolante(
             if (carregando) {
                 CircularProgressIndicator(Modifier.padding(start = 8.dp).size(18.dp), strokeWidth = 2.dp)
             }
-            EtiquetaDePreco(valorSemQuebra(preco), Modifier.padding(start = 8.dp))
+            EtiquetaDePreco(
+                valorSemQuebra(preco),
+                Modifier
+                    .padding(start = 8.dp)
+                    .let { e -> if (aoTocarNoPreco != null) e.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = MUDAR_O_PRECO, onClick = aoTocarNoPreco) else e },
+            )
         }
         // Desde a 0.30, com mais contraste: o que falta marcar na cor do texto, com a quantidade em destaque (dourado),
         // e a aposta pronta em verde com o certo (até a 0.29, tudo cinza como o aviso de baixo).
@@ -368,6 +377,23 @@ fun SecaoVolante(
     }
 
     var consulta by remember { mutableStateOf<Consulta>(Consulta.Nada) }
+    // A janela do preço da aposta simples (desde a 0.37, tocando no preço do volante).
+    var editandoPreco by remember { mutableStateOf(false) }
+    if (editandoPreco) {
+        JanelaDoPreco(
+            m,
+            inicial = precoSimples,
+            aoSalvar = { novo ->
+                editandoPreco = false
+                mudarAtual(atual.copy(valor = precoComOSimples(atual, novo)))
+                escopo.launch {
+                    repo.atualizar { it.copy(config = it.config.copy(precos = it.config.precos + (m.name to novo))) }
+                    avisos.showSnackbar(avisoDoPreco(m, novo))
+                }
+            },
+            aoFechar = { editandoPreco = false },
+        )
+    }
     var confirmar by remember { mutableStateOf<String?>(null) }
     var conferindo by remember { mutableStateOf(false) }
     var registrando by remember { mutableStateOf(false) }
@@ -534,6 +560,8 @@ fun SecaoVolante(
                 aoFavoritar = ::alternarFavorito,
                 // Logo abaixo do que falta marcar (desde a 0.29): o que acontece ao sair com o volante incompleto.
                 aviso = if (!ficaEmAndamento(r)) avisoAoSair(federal) else null,
+                // Desde a 0.37: tocar no preço muda o preço da aposta simples (atalho dos Parâmetros).
+                aoTocarNoPreco = if (mudaOPrecoNoVolante(m)) ({ editandoPreco = true }) else null,
             )
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 VolanteEditavel(m, r, mais, ja, { mudarAtual(it) }, ::mudarPalpite)

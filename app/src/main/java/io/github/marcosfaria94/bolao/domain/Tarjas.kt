@@ -44,18 +44,32 @@ object Tarjas {
     private const val DOURADO_MILIONARIA = 0xFFE2B33C
     private const val AZUL_MILIONARIA = 0xFF1F2264
 
-    /** A cor de uma bola de número: o fundo, o número e o contorno (0 = sem contorno). */
-    data class Bola(val fundo: Long, val numero: Long, val contorno: Long = 0)
+    /**
+     * A cor de uma bola de número: o fundo, o número e o contorno (0 = a própria cor). [contornoNaBola]: a bola marcada
+     * leva o contorno (desde a 0.37 a Timemania não leva: o verde dela fica só nos traços do volante e da apuração).
+     */
+    data class Bola(val fundo: Long, val numero: Long, val contorno: Long = 0, val contornoNaBola: Boolean = contorno != 0L)
 
     /**
      * As bolas dos números de cada modalidade (desde a 0.29, revisadas com as cores oficiais): no volante, no
-     * Painel de Jogos, nos Detalhes e no PDF. A Timemania é amarela com o número e o contorno verdes (até a 0.28
-     * as bolas dela eram verdes, e a marca é amarela e verde); as outras, a cor da modalidade com o número branco.
+     * Painel de Jogos, nos Detalhes e no PDF. A Timemania é só amarela, com o número verde (desde a 0.37, pedido do
+     * usuário, sem o contorno verde; de 0.29 a 0.36 tinha o contorno; até a 0.28 as bolas dela eram verdes); as outras,
+     * a cor da modalidade com o número branco.
      */
     fun bola(m: Modalidade): Bola = when (m) {
-        Modalidade.TIMEMANIA -> Bola(AMARELO_TIMEMANIA, VERDE_TIMEMANIA, VERDE_TIMEMANIA)
+        Modalidade.TIMEMANIA -> Bola(AMARELO_TIMEMANIA, VERDE_TIMEMANIA, VERDE_TIMEMANIA, contornoNaBola = false)
         else -> Bola(m.cor, BRANCO)
     }
+
+    /**
+     * As cores da imagem dos números (a da página da aposta e a anexada à apuração, [ImagemConferencia]): o fundo e o
+     * que vai por cima dele (os textos, os círculos e o divisor). Desde a 0.37 a Timemania é amarela com o verde por
+     * cima (até a 0.36, verde com o branco); as outras, a cor da modalidade com o branco.
+     */
+    fun fundoDaImagem(m: Modalidade): Long = if (m == Modalidade.TIMEMANIA) AMARELO_TIMEMANIA else m.cor
+
+    /** O que vai por cima do [fundoDaImagem]: o verde na Timemania (desde a 0.37), o branco nas outras. */
+    fun frenteDaImagem(m: Modalidade): Long = if (m == Modalidade.TIMEMANIA) VERDE_TIMEMANIA else BRANCO
 
     /** Os trevos: na +Milionária, dourados com o número azul-marinho (como a marca dela); nas outras, como as bolas. */
     fun trevo(m: Modalidade): Bola = if (m == Modalidade.MAIS_MILIONARIA) Bola(DOURADO_MILIONARIA, AZUL_MILIONARIA) else bola(m)

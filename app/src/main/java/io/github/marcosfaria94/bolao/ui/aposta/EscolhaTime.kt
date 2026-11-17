@@ -66,6 +66,7 @@ import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.TIMES
 import io.github.marcosfaria94.bolao.domain.TimeDoCoracao
 import io.github.marcosfaria94.bolao.domain.timeDoCoracao
+import io.github.marcosfaria94.bolao.domain.partesDoTime
 import io.github.marcosfaria94.bolao.net.Brasoes
 import io.github.marcosfaria94.bolao.ui.comum.IndicadorDoPuxao
 import io.github.marcosfaria94.bolao.ui.comum.acompanharPuxao
@@ -81,6 +82,18 @@ fun nomeDoTime(caixa: String?): String? {
     if (caixa.isNullOrBlank()) return null
     val t = timeDoCoracao(caixa) ?: return caixa
     return "${t.nome} / ${t.uf}"
+}
+
+/**
+ * O nome do Time do Coração sorteado, como vem da Caixa (desde a 0.37, nos Detalhes da Timemania): o da lista ("Vasco da
+ * Gama / RJ") ou, de fora dela (os times de outros biênios), o texto da Caixa limpo (ela manda espaços sobrando antes da
+ * barra e, em alguns concursos antigos, caracteres vazios): "SÃO RAIMUNDO / AM".
+ */
+fun nomeDoTimeSorteado(caixa: String): String {
+    timeDoCoracao(caixa)?.let { return "${it.nome} / ${it.uf}" }
+    val limpo = caixa.filter { !it.isISOControl() }.replace(Regex("\\s+"), " ").trim()
+    val (nome, uf) = partesDoTime(limpo)
+    return if (uf.isBlank()) nome else "$nome / $uf"
 }
 
 /** Botão do Time do Coração (Timemania): o brasão e o nome do time; abre a lista dos times. */

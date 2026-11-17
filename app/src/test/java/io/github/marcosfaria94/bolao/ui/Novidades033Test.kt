@@ -214,8 +214,8 @@ class Novidades033Test {
 
     @Test
     fun telasDa033() {
-        // Os Detalhes: o campo é só "Concurso" e o botão "Ir" fica embaixo.
-        assertEquals("Concurso", ROTULO_DO_CONCURSO)
+        // Os Detalhes: o campo era só "Concurso" (de 0.33 a 0.36); desde a 0.37 é "Nº Concurso", na navegação flutuante.
+        assertEquals("Nº Concurso", ROTULO_DO_CONCURSO)
         assertEquals("Ir", IR_AO_CONCURSO)
         // O último grupo dos Ajustes se chama FEEDBACK (era APOIO).
         assertEquals("FEEDBACK", GRUPO_FEEDBACK)

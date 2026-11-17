@@ -93,6 +93,7 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.mlkit.texto)
+    implementation(libs.zxing.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)

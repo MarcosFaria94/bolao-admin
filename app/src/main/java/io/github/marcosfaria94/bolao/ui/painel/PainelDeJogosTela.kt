@@ -1003,7 +1003,7 @@ private fun Dp.emSp(): TextUnit = with(LocalDensity.current) { this@emSp.toSp() 
 
 /**
  * Uma dezena como no volante: a bola na cor da modalidade com o número em branco (desde a 0.29, as cores
- * oficiais, [coresDaBola]: na Timemania, amarela com o número e o contorno verdes).
+ * oficiais, [coresDaBola]: na Timemania, amarela com o número verde, sem contorno desde a 0.37).
  */
 @Composable
 private fun Bolinha(texto: String, cor: CoresDaBola, tamanho: Dp, forma: Shape = CircleShape) {
