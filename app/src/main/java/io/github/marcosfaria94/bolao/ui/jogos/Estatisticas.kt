@@ -320,7 +320,7 @@ fun textoDosConcursos(g: NumerosNotaveis.Grupo, loteca: Boolean): String = when 
 /**
  * Os prêmios típicos (desde a 0.32; desde a 0.37 na tela das Estatísticas, antes nos Detalhes): uma linha por faixa de
  * premiação, com a estimativa do que cada aposta ganhadora recebe no próximo concurso ([PremiosTipicos.estimar], o
- * mesmo cálculo do k1, sem o IR) e o que o concurso pagou; embaixo, a nota que explica que é só uma estimativa e como
+ * mesmo cálculo do k1, já sem o IR, desde a 0.41) e o que o concurso pagou; embaixo, a nota que explica que é só uma estimativa e como
  * ela é calculada. Sem a estimativa (Loteca, concurso especial: [semEstimativa]), só o concurso. A coluna é a do
  * concurso [naTela] (o que estava nos Detalhes; "Último concurso" quando é o [ultimoDaPagina]).
  */

@@ -13,8 +13,6 @@ import io.github.marcosfaria94.bolao.domain.timeDoCoracao
 import io.github.marcosfaria94.bolao.ui.aposta.nomeDoTimeSorteado
 import io.github.marcosfaria94.bolao.ui.jogos.ALFA_DA_LUPA
 import io.github.marcosfaria94.bolao.ui.jogos.LEGENDA_QUALQUER
-import io.github.marcosfaria94.bolao.ui.jogos.maisUma
-import io.github.marcosfaria94.bolao.ui.jogos.menosUma
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -92,8 +90,7 @@ class Novidades040Test {
             assertTrue(s.nome, Calculadora.comMaisNumeros(s).isEmpty())
         }
         // Os nomes dos botões do ajuste fino e o "Qualquer prêmio" à parte.
-        assertEquals("Menos uma: 8 números", menosUma("8 números"))
-        assertEquals("Mais uma: 8 números", maisUma("8 números"))
+        // Desde a 0.41 a calculadora não tem mais os controles deslizantes nem o − e o + (é um teclado).
         assertTrue(LEGENDA_QUALQUER.startsWith("Todas as faixas juntas"))
         // A lupa quase opaca (era 60%).
         assertTrue(ALFA_DA_LUPA > 0.6f)

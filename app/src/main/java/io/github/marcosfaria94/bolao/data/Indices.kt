@@ -358,7 +358,7 @@ class Indices(private val context: Context) {
 
     /**
      * Os prêmios típicos do próximo concurso da modalidade (desde a 0.32, nos Detalhes): a estimativa de cada faixa,
-     * em centavos e antes do IR ([PremiosTipicos.estimar], o mesmo cálculo do k1, com o preço de Ajustes). null sem
+     * em centavos e já sem o IR ([PremiosTipicos.estimar], o mesmo cálculo do k1, com o preço de Ajustes). null sem
      * os dados dos dois últimos concursos, sem os parâmetros (Loteca) ou num concurso especial.
      */
     fun premiosTipicos(m: Modalidade): Map<Int, Long>? {

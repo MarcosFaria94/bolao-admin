@@ -4,7 +4,8 @@
 // roots" abertas e as molduras de outros sites): pequenos, quase quadrados, no canto de baixo; os que têm nome de
 // cookie/consentimento contam mais. Achado no canto de baixo à esquerda, o script tenta passá-lo para a direita (com a
 // mesma margem); se não der (o site o prende de outro jeito), o app espelha o cadeado do outro lado.
-// window.__bolaoCookie = JSON {x, topo, largura, altura, direita, cor, opacidade} (frações da tela; cor "rgba(...)"), ou null.
+// window.__bolaoCookie = JSON {x, topo, largura, altura, direita, cor, opacidade, cadeado} (frações da tela; cor "rgba(...)";
+// cadeado = o cadeado foi posto na própria página, desde a 0.41), ou null.
 (function () {
   if (window.__bolaoCookies) { window.__bolaoCookies(); return 'ok'; }
   var NOMES = /cookie|lgpd|consent|privac|onetrust|ot-sdk|ot-floating|cookiebot|usercentrics|didomi|termly|iubenda|klaro|cmplz|cky-|cc-revoke|cc-btn|adopt/i;
@@ -45,7 +46,7 @@
     var melhor = null, nota = -1, els = todos(document, []);
     for (var i = 0; i < els.length; i++) {
       var el = els[i], cs = estilo(el);
-      if (!cs || cs.position !== 'fixed' || !visivel(el, cs)) continue;
+      if (el.id === CADEADO || !cs || cs.position !== 'fixed' || !visivel(el, cs)) continue;
       var r = el.getBoundingClientRect();
       if (r.width < 20 || r.height < 20 || r.width > 120 || r.height > 120) continue;
       var razao = r.width / r.height;
@@ -63,31 +64,137 @@
     }
     return melhor;
   }
-  // A cor de fundo que aparece (a do próprio botão ou a do círculo de dentro) e a opacidade dele (com a dos de fora).
-  function cor(el) {
-    var fila = [el], vistos = 0;
-    while (fila.length && vistos < 12) {
+  // O disco que aparece (desde a 0.41): o próprio botão ou o primeiro de dentro com cor de fundo (ou imagem) e quase do
+  // tamanho dele. O tamanho, a cor, a sombra e a transparência do cadeado saem dele.
+  function temFundo(cs) {
+    if (!cs) return false;
+    var c = cs.backgroundColor;
+    var cor = c && c !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(c);
+    return cor || (cs.backgroundImage && cs.backgroundImage !== 'none');
+  }
+  function disco(el) {
+    var r0 = el.getBoundingClientRect(), fila = [el], vistos = 0;
+    while (fila.length && vistos < 16) {
       var x = fila.shift(); vistos++;
       var cs = estilo(x);
-      if (cs) {
-        var c = cs.backgroundColor;
-        if (c && c !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(c)) return c;
+      if (cs && temFundo(cs)) {
+        var r = x.getBoundingClientRect();
+        if (r.width >= r0.width * 0.5 && r.height >= r0.height * 0.5) return x;
       }
       var filhos = x.children || [];
       for (var i = 0; i < filhos.length; i++) fila.push(filhos[i]);
       if (x.shadowRoot) for (var j = 0; j < x.shadowRoot.children.length; j++) fila.push(x.shadowRoot.children[j]);
     }
-    return null;
+    return el;
   }
+  // A opacidade do disco com a de todos os de fora (o que a tela mostra de verdade).
   function opacidade(el) {
     var o = 1;
-    for (var x = el, i = 0; x && x.nodeType === 1 && i < 12; i++) {
+    for (var x = el, i = 0; x && x.nodeType === 1 && i < 20; i++) {
       var cs = estilo(x);
-      if (cs) o *= parseFloat(cs.opacity) || 1;
+      if (cs) { var v = parseFloat(cs.opacity); if (!isNaN(v)) o *= v; }
       x = x.parentElement || (x.getRootNode && x.getRootNode().host) || null;
     }
     return o;
   }
+  // A primeira sombra que aparece, do disco para fora (até o botão fixo).
+  function sombra(d, el) {
+    for (var x = d, i = 0; x && i < 8; i++) {
+      var cs = estilo(x);
+      if (cs && cs.boxShadow && cs.boxShadow !== 'none') return cs.boxShadow;
+      if (x === el) break;
+      x = x.parentElement || (x.getRootNode && x.getRootNode().host) || null;
+    }
+    return 'none';
+  }
+  function rgba(c) {
+    var m = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/.exec(c || '');
+    return m ? [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : +m[4]] : null;
+  }
+
+  // ---------- o cadeado dentro da página (desde a 0.41) ----------
+  // Na 0.39 o app desenhava o cadeado por cima da página, com o tamanho e a cor lidos aqui; com a página ampliada ou
+  // reduzida (o site cabe na tela pelo zoom) e com o botão ainda aparecendo (a animação de entrada), ele saía maior e mais
+  // claro que o dos cookies. Agora o cadeado é um elemento da própria página: o navegador o desenha com o mesmo zoom, e
+  // ele copia do disco dos cookies o tamanho, os cantos, a cor, a sombra e a transparência, de novo a cada segundo.
+  // Tocar nele chama o app (window.BolaoCadeado.alternar()); o app avisa o estado com window.__bolaoCadeadoEstado(aberto).
+  var CADEADO = 'bolao-cadeado', VAO = 8;
+  var ABERTO = '<path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-5a4 4 0 0 1 8 0"/>';
+  var FECHADO = '<path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/>';
+  function aberto() {
+    if (typeof window.__bolaoCadeadoAberto === 'boolean') return window.__bolaoCadeadoAberto;
+    try { return !!window.BolaoCadeado.aberto(); } catch (e) { return true; }
+  }
+  function icone(c) {
+    var a = aberto();
+    c.setAttribute('aria-label', a ? 'Cadeado aberto' : 'Cadeado fechado');
+    var tam = Math.round(Math.min(c.offsetWidth, c.offsetHeight) * 0.5) || 22;
+    c.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="' + tam + '" height="' + tam + '" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="' + (c.getAttribute('data-tinta') || '#fff') + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' +
+      'style="pointer-events:none;display:block">' + (a ? ABERTO : FECHADO) + '</svg>';
+  }
+  function cadeado() {
+    var c = document.getElementById(CADEADO);
+    if (c) return c;
+    c = document.createElement('div');
+    c.id = CADEADO;
+    c.setAttribute('role', 'button');
+    c.setAttribute('data-bolao', 'cadeado');
+    var tocar = function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      if (ev.type !== 'click') return;
+      var a = aberto();
+      try { a = !!window.BolaoCadeado.alternar(); } catch (e) { a = !a; }
+      window.__bolaoCadeadoAberto = a;
+      icone(c);
+    };
+    c.addEventListener('click', tocar, true);
+    c.addEventListener('mousedown', tocar, true);
+    c.addEventListener('touchstart', function (ev) { ev.stopPropagation(); }, { capture: true, passive: true });
+    (document.body || document.documentElement).appendChild(c);
+    return c;
+  }
+  // Copia do disco dos cookies [d] (dentro do botão fixo [el]) tudo o que aparece e põe o cadeado logo acima dele (com o
+  // botão à direita) ou espelhado, do outro lado, na mesma altura (com o botão preso à esquerda).
+  function desenhar(el) {
+    var d = disco(el), r = d.getBoundingClientRect(), cs = estilo(d);
+    if (!cs || r.width <= 0 || r.height <= 0) return null;
+    var W = document.documentElement.clientWidth || window.innerWidth;
+    var c = cadeado(), s = c.style;
+    var direita = r.left + r.width / 2 >= W / 2;
+    var esquerda = direita ? r.left : W - r.left - r.width;
+    var topo = direita ? r.top - r.height - VAO : r.top;
+    if (topo < 4) topo = r.top + r.height + VAO;
+    var o = opacidade(d);
+    var fundo = rgba(cs.backgroundColor);
+    // O ícone branco, como o dos cookies; num disco claro (sobre o branco da página), azul-noite.
+    var tinta = '#fff';
+    if (fundo) {
+      var a = fundo[3] * o, l = [0, 1, 2].map(function (i) { var v = (fundo[i] * a + 255 * (1 - a)) / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+      if (0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2] > 0.75) tinta = '#13294B';
+    }
+    var props = {
+      position: 'fixed', left: esquerda + 'px', top: topo + 'px', right: 'auto', bottom: 'auto',
+      width: r.width + 'px', height: r.height + 'px', margin: '0', padding: '0', 'box-sizing': 'border-box',
+      'border-top-left-radius': cs.borderTopLeftRadius, 'border-top-right-radius': cs.borderTopRightRadius,
+      'border-bottom-left-radius': cs.borderBottomLeftRadius, 'border-bottom-right-radius': cs.borderBottomRightRadius,
+      'background-color': cs.backgroundColor, 'background-image': cs.backgroundImage,
+      border: cs.borderTopWidth + ' ' + cs.borderTopStyle + ' ' + cs.borderTopColor,
+      'box-shadow': sombra(d, el), opacity: String(o), display: 'flex', 'align-items': 'center', 'justify-content': 'center',
+      cursor: 'pointer', 'z-index': '2147483647', transform: 'none', 'touch-action': 'manipulation',
+      '-webkit-tap-highlight-color': 'transparent', visibility: 'visible', 'pointer-events': 'auto'
+    };
+    for (var k in props) s.setProperty(k, props[k], 'important');
+    if (c.getAttribute('data-tinta') !== tinta || !c.firstChild) { c.setAttribute('data-tinta', tinta); icone(c); }
+    return { cadeado: true, direita: direita };
+  }
+  window.__bolaoCadeadoEstado = function (a) {
+    window.__bolaoCadeadoAberto = !!a;
+    var c = document.getElementById(CADEADO);
+    if (c) icone(c);
+    return 'ok';
+  };
+
   function passarParaADireita(el, W) {
     var r = el.getBoundingClientRect();
     var margem = Math.max(8, r.left);
@@ -108,11 +215,18 @@
     if (!achado || !achado.isConnected || !visivel(achado, estilo(achado))) {
       // Sem o botão, a busca (que olha a página toda) roda no máximo a cada 3 s.
       var agora = Date.now();
-      if (window.__bolaoBusca && agora - window.__bolaoBusca < 3000) { achado = null; window.__bolaoCookie = null; return; }
+      if (window.__bolaoBusca && agora - window.__bolaoBusca < 3000) {
+        achado = null;
+        window.__bolaoCookie = document.getElementById(CADEADO) ? JSON.stringify({ x: 1, topo: 1, largura: 0, cadeado: true }) : null;
+        return;
+      }
       window.__bolaoBusca = agora;
       achado = procurar(W, H);
     }
-    if (!achado) { window.__bolaoCookie = null; return; }
+    if (!achado) {
+      window.__bolaoCookie = document.getElementById(CADEADO) ? JSON.stringify({ x: 1, topo: 1, largura: 0, cadeado: true }) : null;
+      return;
+    }
     var r = achado.getBoundingClientRect();
     if (achado.getAttribute('data-bolao') !== '1' && achado.getAttribute('data-bolao') !== '2' && r.left + r.width / 2 < W / 2) {
       passarParaADireita(achado, W);
@@ -123,13 +237,25 @@
       passarParaADireita(achado, W);
       r = achado.getBoundingClientRect();
     }
+    var d = disco(achado), rd = d.getBoundingClientRect(), csd = estilo(d);
+    var feito = null;
+    try { feito = desenhar(achado); } catch (e) { feito = null; }
     window.__bolaoCookie = JSON.stringify({
-      x: (r.left + r.width / 2) / W, topo: r.top / H, largura: r.width / W, altura: r.height / H,
-      direita: r.left + r.width / 2 >= W / 2, cor: cor(achado), opacidade: opacidade(achado)
+      x: (rd.left + rd.width / 2) / W, topo: rd.top / H, largura: rd.width / W, altura: rd.height / H,
+      direita: rd.left + rd.width / 2 >= W / 2, cor: csd ? csd.backgroundColor : null, opacidade: opacidade(d),
+      cadeado: !!(feito && feito.cadeado)
     });
   }
   window.__bolaoCookies = mover;
   mover();
+  // A cada segundo o cadeado acompanha o disco dos cookies (a animação de entrada, o toque, o zoom).
+  try {
+    setInterval(function () {
+      if (achado && achado.isConnected && visivel(achado, estilo(achado))) {
+        try { desenhar(achado); } catch (e) {}
+      }
+    }, 1000);
+  } catch (e) {}
   try {
     new MutationObserver(function () {
       clearTimeout(window.__bolaoEspera);

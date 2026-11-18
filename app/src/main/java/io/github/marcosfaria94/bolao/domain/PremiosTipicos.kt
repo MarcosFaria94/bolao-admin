@@ -9,11 +9,16 @@ import kotlin.math.roundToLong
  * Os prêmios típicos de cada faixa (desde a 0.32, o cartão "Prêmios típicos" dos Detalhes, em todas as
  * modalidades): quanto cada aposta ganhadora deve receber no próximo concurso e quanto o último concurso pagou.
  *
- * A estimativa é a do mesmo cálculo do k1 ([IndiceK]), sem o Imposto de Renda: a venda prevista de apostas (pelo
- * prêmio estimado da Caixa, o dia da semana e as vendas do concurso anterior), a parte da arrecadação que vai
- * para cada faixa, o acumulado (na faixa principal) e a chance de dividir com outros ganhadores; dela sai o valor
- * médio que uma aposta ganhadora recebe em cada faixa. As faixas de valor fixo pagam o valor da Caixa. A Loteca
- * não tem os parâmetros do k1: só o último concurso.
+ * A estimativa é a do mesmo cálculo do k1 ([IndiceK]), já sem o Imposto de Renda, como a Caixa divulga: a venda
+ * prevista de apostas (pelo prêmio estimado da Caixa, o dia da semana e as vendas do concurso anterior), a parte da
+ * arrecadação que vai para cada faixa, o acumulado (na faixa principal) e a chance de dividir com outros ganhadores;
+ * dela sai o valor médio que uma aposta ganhadora recebe em cada faixa. As faixas de valor fixo pagam o valor da Caixa.
+ * A Loteca não tem os parâmetros do k1: só o último concurso.
+ *
+ * Correção da 0.41 (revisão das contas pedida pelo usuário): até a 0.40 a estimativa era feita sem o IR, mas tudo o que
+ * a Caixa divulga já vem sem ele (o prêmio de cada ganhador acima de R$ 2.428,80, o acumulado e o prêmio estimado:
+ * conferido no histórico, as faixas só batem com as frações da Caixa contando o IR). Assim a coluna da estimativa saía
+ * até 43% acima da do último concurso nas faixas grandes (e o acumulado entrava sem ser levado ao bruto).
  */
 object PremiosTipicos {
 
@@ -24,14 +29,14 @@ object PremiosTipicos {
     data class Linha(val faixa: Int, val nome: String, val estimativa: Long?, val ultimo: Long?)
 
     /**
-     * A estimativa de cada faixa (pelo número da Caixa), em centavos, antes do IR: o valor médio que uma aposta
-     * ganhadora recebe, E[prêmio | ganhou] = (parte do k1 da faixa) × preço ÷ chance da faixa. null quando o k1 não
-     * sai (concurso especial, dados incompletos, modalidade sem parâmetros).
+     * A estimativa de cada faixa (pelo número da Caixa), em centavos, já sem o IR (desde a 0.41; como a Caixa divulga):
+     * o valor médio que uma aposta ganhadora recebe, E[prêmio | ganhou] = (parte do k1 da faixa) × preço ÷ chance da
+     * faixa. null quando o k1 não sai (concurso especial, dados incompletos, modalidade sem parâmetros).
      */
     fun estimar(p: ParametrosK, chave: String, u: RegistroK, a: RegistroK, preco: Double? = null): Map<Int, Long>? {
         val m = p.modalidades[chave] ?: return null
-        // O mesmo cálculo do k1, sem o Imposto de Renda (o prêmio como a Caixa divulga).
-        val r = runCatching { IndiceK.calcular(p.copy(irAliquota = 0.0), chave, u, a, preco) }.getOrNull() ?: return null
+        // O mesmo cálculo do k1, com o Imposto de Renda (o prêmio como a Caixa divulga, desde a 0.41).
+        val r = runCatching { IndiceK.calcular(p, chave, u, a, preco) }.getOrNull() ?: return null
         if (r.k1 == null) return null
         val usado = preco?.takeIf { it > 0 } ?: m.preco
         return m.faixas.filter { it.p > 0 }.associate { f ->
@@ -59,8 +64,8 @@ object PremiosTipicos {
 
     /** A nota da estimativa (embaixo da tabela). */
     const val NOTA_DA_ESTIMATIVA =
-        "Estimativa: é só uma previsão do valor médio que cada aposta ganhadora recebe no próximo concurso, antes do " +
-            "Imposto de Renda. O cálculo é o mesmo do k1: a venda de apostas prevista (pelo prêmio estimado da Caixa, " +
+        "Estimativa: é só uma previsão do valor médio que cada aposta ganhadora recebe no próximo concurso, já sem o " +
+            "Imposto de Renda, como a Caixa divulga. O cálculo é o mesmo do k1: a venda de apostas prevista (pelo prêmio estimado da Caixa, " +
             "o dia da semana e as vendas do concurso anterior), a parte da arrecadação que vai para cada faixa, o " +
             "acumulado na faixa principal e a chance de dividir o prêmio com outros ganhadores. As faixas de valor " +
             "fixo pagam o valor da Caixa. O prêmio de verdade depende de quantas apostas forem feitas e de quantas acertarem."

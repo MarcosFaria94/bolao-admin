@@ -57,7 +57,8 @@ class Novidades032Test {
             val u = RegistroK.deJson(c["ultimo"]!!.jsonObject)
             val a = RegistroK.deJson(c["anterior"]!!.jsonObject)
             val est = PremiosTipicos.estimar(parametros, chave, u, a)
-            val semIr = IndiceK.calcular(parametros.copy(irAliquota = 0.0), chave, u, a)
+            // Desde a 0.41 a estimativa é já sem o IR (como a Caixa divulga): o mesmo cálculo do k1.
+            val semIr = IndiceK.calcular(parametros, chave, u, a)
             if (semIr.k1 == null) {
                 // O concurso especial não tem o k1: nem a estimativa.
                 assertNull(id, est)
@@ -72,7 +73,7 @@ class Novidades032Test {
                 // As faixas de valor fixo pagam o valor da Caixa.
                 if (f.fixo) assertEquals("$id ${f.nome}", Math.round(f.valor * 100), v)
             }
-            // A conta volta ao k1 (sem o IR): a soma de chance × prêmio ÷ preço (com os centavos arredondados).
+            // A conta volta ao k1 (com o IR, desde a 0.41): a soma de chance × prêmio ÷ preço (com os centavos arredondados).
             val k1 = m.faixas.sumOf { f -> f.p * est.getValue(f.faixa) / 100.0 } / m.preco
             assertTrue("$id: $k1 x ${semIr.k1}", abs(k1 - semIr.k1!!) < 2e-4)
             // A faixa principal vale mais que as outras.

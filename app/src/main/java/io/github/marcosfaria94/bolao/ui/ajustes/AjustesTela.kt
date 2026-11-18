@@ -277,9 +277,14 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
         onPauseOrDispose {}
     }
     val liberada = remember(conferido) { Notificador.permitido(ctx) && SegundoPlano.bateriaLivre(ctx) }
-    // Desde a 0.34: quantos dos três avisos estão ligados (o prêmio principal, o secundário e os concursos especiais).
+    // Desde a 0.34: quantos avisos estão ligados (o prêmio principal, o secundário e os concursos especiais; desde a 0.41
+    // também os avisos dos jogos da sessão: acumulou, k1 e prêmio).
     val avisosLigados = remember(conferido, estado) {
-        listOf(Toque.config(ctx).ligado, Toque.config(ctx, Toque.Qual.SECUNDARIO).ligado, AvisoDeEspeciais.ligado(ctx)).count { it }
+        val p = estado.parametros
+        listOf(
+            Toque.config(ctx).ligado, Toque.config(ctx, Toque.Qual.SECUNDARIO).ligado, AvisoDeEspeciais.ligado(ctx),
+            p.avisarAcumulado, p.avisarK1, p.avisarPremio,
+        ).count { it }
     }
     val bloqueio = remember(conferido) { Biometria.bloqueio(ctx) }
     val celularComBloqueio = remember(conferido) { Biometria.disponivel(ctx) }
@@ -288,7 +293,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
     fun situacao(s: SecaoAjuste): Pair<String, TomItem> = when (s) {
         SecaoAjuste.MODO -> "Individual" to TomItem.NORMAL
         SecaoAjuste.INTEGRANTES -> resumoDosIntegrantes(estado.pessoas.size) to TomItem.NORMAL
-        SecaoAjuste.PARAMETROS -> resumoDosParametros(estado.parametros) to TomItem.NORMAL
+        SecaoAjuste.PARAMETROS -> RESUMO_DOS_PARAMETROS to TomItem.NORMAL
         SecaoAjuste.TERMO ->
             if (estado.termo != null && estado.termoSemAssinatura != null) "Anexado" to TomItem.NORMAL else "Falta anexar" to TomItem.ALERTA
         SecaoAjuste.INTEGRIDADE -> "Verificar" to TomItem.NORMAL
@@ -544,7 +549,7 @@ fun AjustesSecaoTela(estado: Estado, secao: SecaoAjuste, atualizacao: Atualizaca
                     SecaoAjuste.AUDITORIA -> QuadroAjuste { Auditoria(estado) }
                     SecaoAjuste.BACKUP -> Backup()
                     // Refeita na 0.34 (AjustesNotificacoes.kt): o quadro das liberações, "O que avisar" e "Sons".
-                    SecaoAjuste.NOTIFICACOES -> NotificacoesDoApp()
+                    SecaoAjuste.NOTIFICACOES -> NotificacoesDoApp(estado)
                     SecaoAjuste.BIOMETRIA -> BiometriaDoCelular()
                     // Ficam direto na lista (não têm tela).
                     SecaoAjuste.ATUALIZACAO, SecaoAjuste.TESTE -> Unit

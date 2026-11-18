@@ -9,6 +9,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,7 +30,12 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.outlined.Payments
+import androidx.compose.material.icons.outlined.Savings
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -71,6 +77,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.marcosfaria94.bolao.bolao
+import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.data.Parametros
+import io.github.marcosfaria94.bolao.domain.indices.IndiceK
 import io.github.marcosfaria94.bolao.notificacoes.AvisoDeEspeciais
 import io.github.marcosfaria94.bolao.notificacoes.Notificador
 import io.github.marcosfaria94.bolao.notificacoes.SegundoPlano
@@ -88,6 +98,9 @@ import kotlinx.coroutines.launch
  *    especiais, ligado por padrão);
  * 3. "SONS": o toque de cada prêmio, com o "Testar" no fim da linha; tocar na linha abre a janela de escolha
  *    (uma música, um toque do celular ou o de sempre).
+ * Desde a 0.41 (pedido do usuário: "colocar Avisos em Notificações") o grupo "AVISOS DOS JOGOS", que até a 0.40 ficava
+ * em Ajustes > Parâmetros > Avisos: o calendário de apostas, o concurso que acumulou, o k1 acima de x e o prêmio acima
+ * de n. Eles continuam sendo da sessão em uso (com mais de uma, a tela diz qual).
  */
 
 /** Os nomes das linhas da tela (também usados nos testes). */
@@ -100,6 +113,7 @@ const val SOM_DO_PRINCIPAL = "Toque do prêmio principal"
 const val TESTAR_O_TOQUE = "Testar o toque"
 const val TESTAR_O_SOM = "Testar o som"
 const val TUDO_PRONTO = "Avisos prontos"
+const val GRUPO_AVISOS_DOS_JOGOS = "AVISOS DOS JOGOS"
 const val FALTA_LIBERAR = "Falta liberar"
 
 private val RosaToque = Color(0xFFDB2777)
@@ -109,16 +123,20 @@ private val OuroEscuro = Color(0xFFB7791F)
 private val Verde = Color(0xFF22C55E)
 private val Ambar = Color(0xFFF59E0B)
 private val DouradoSino = Color(0xFFF2B630)
+private val Azulado = Color(0xFF2563EB)
+private val VerdeEscuro = Color(0xFF15803D)
 
 /** A tela inteira das Notificações. */
 @Composable
-internal fun NotificacoesDoApp() {
+internal fun NotificacoesDoApp(estado: Estado) {
     // Uma mudança numa chave (ligar o prêmio secundário) relê os sons também.
     var versao by remember { mutableIntStateOf(0) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         QuadroDosAvisos()
         TituloDoGrupo(GRUPO_O_QUE_AVISAR)
         OQueAvisar(versao) { versao++ }
+        TituloDoGrupo(GRUPO_AVISOS_DOS_JOGOS)
+        AvisosDosJogosDaSessao(estado)
         TituloDoGrupo(GRUPO_SONS)
         Sons(versao) { versao++ }
         Text(
@@ -323,6 +341,123 @@ private fun OQueAvisar(versao: Int, mudou: () -> Unit) {
         ) {
             AvisoDeEspeciais.ligar(ctx, it)
             mudou()
+        }
+    }
+}
+
+/**
+ * Os avisos dos jogos (desde a 0.41 aqui; de 0.38 a 0.40 em Parâmetros > Avisos): o calendário de apostas, o concurso que
+ * acumulou, o k1 acima de x e o prêmio acima de n (os três desligados por padrão; tocar no valor muda). São da sessão.
+ */
+@Composable
+internal fun AvisosDosJogosDaSessao(estado: Estado) {
+    val ctx = LocalContext.current
+    val app = ctx.bolao
+    val escopo = rememberCoroutineScope()
+    val p = estado.parametros
+    fun mudar(f: (Parametros) -> Parametros) {
+        escopo.launch { runCatching { app.repo.atualizar { it.copy(config = it.config.copy(parametros = f(it.config.parametros))) } } }
+    }
+    var editandoCalendario by remember { mutableStateOf(false) }
+    var editandoK1 by remember { mutableStateOf(false) }
+    var editandoPremio by remember { mutableStateOf(false) }
+    Quadro {
+        LinhaComValor(
+            Icons.Outlined.CalendarMonth, Azulado, PARAMETRO_CALENDARIO,
+            if (p.semDiaDefinido) "Sem dia definido: sem o lembrete" else "O lembrete e o \"Apostar\" nesses dias",
+            valor = resumoCurtoDoCalendario(p), ligado = null, aoTocarNoValor = { editandoCalendario = true },
+        ) { editandoCalendario = true }
+        Linha()
+        LinhaComChave(
+            Icons.Outlined.Savings, VerdeEscuro, PARAMETRO_ACUMULOU,
+            if (p.avisarAcumulado) "Quando ninguém acerta o prêmio principal" else "Desligado",
+            p.avisarAcumulado,
+        ) { v -> mudar { it.copy(avisarAcumulado = v) } }
+        Linha()
+        LinhaComValor(
+            Icons.Outlined.Speed, Roxo, PARAMETRO_K1,
+            if (p.avisarK1) "Quando o retorno de um jogo passa disso" else "Desligado",
+            valor = IndiceK.exibir(p.k1Minimo, 2), ligado = p.avisarK1, aoTocarNoValor = { editandoK1 = true },
+        ) { mudar { it.copy(avisarK1 = !p.avisarK1) } }
+        Linha()
+        LinhaComValor(
+            Icons.Outlined.Payments, OuroEscuro, PARAMETRO_PREMIO,
+            if (p.avisarPremio) "Quando o prêmio estimado passa disso" else "Desligado",
+            valor = valorCurto(p.premioMinimo), ligado = p.avisarPremio, aoTocarNoValor = { editandoPremio = true },
+        ) { mudar { it.copy(avisarPremio = !p.avisarPremio) } }
+    }
+    if (app.sessoes.varias) {
+        Text(
+            "Os avisos dos jogos são da sessão em uso (${app.sessoes.nome(app.repo.sessao)}): cada sessão tem os seus.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+    }
+    if (editandoCalendario) {
+        JanelaDoCalendario(estado, p, mudar = ::mudar, aoFechar = { editandoCalendario = false })
+    }
+    if (editandoK1) {
+        JanelaDoK1(p.k1Minimo, aoSalvar = { x -> editandoK1 = false; mudar { it.copy(k1Minimo = x, avisarK1 = true) } }, aoFechar = { editandoK1 = false })
+    }
+    if (editandoPremio) {
+        JanelaDoPremio(p.premioMinimo, aoSalvar = { n -> editandoPremio = false; mudar { it.copy(premioMinimo = n, avisarPremio = true) } }, aoFechar = { editandoPremio = false })
+    }
+}
+
+/**
+ * Uma linha com um valor que se muda (desde a 0.41): o emblema, o título com o valor num botão pequeno ao lado (tocar
+ * muda o valor) e o subtítulo; no fim, a chave ([ligado]; null = sem chave, a linha toda abre o valor, com a seta).
+ */
+@Composable
+private fun LinhaComValor(
+    icone: ImageVector,
+    cor: Color,
+    titulo: String,
+    subtitulo: String,
+    valor: String,
+    ligado: Boolean?,
+    aoTocarNoValor: () -> Unit,
+    aoTocar: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (ligado != null) Modifier.toggleable(value = ligado, role = Role.Switch, onValueChange = { aoTocar() })
+                else Modifier.clickable(onClick = aoTocar),
+            )
+            .padding(vertical = 12.dp),
+    ) {
+        EmblemaIcone(icone, cor, 40.dp)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(titulo, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                if (ligado != null) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        valor,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
+                            .clickable(onClickLabel = "Mudar o valor", onClick = aoTocarNoValor)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+            }
+            Text(subtitulo, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(8.dp))
+        if (ligado != null) {
+            Switch(checked = ligado, onCheckedChange = null)
+        } else {
+            Text(valor, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

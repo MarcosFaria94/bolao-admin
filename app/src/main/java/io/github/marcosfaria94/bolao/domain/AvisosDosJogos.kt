@@ -31,13 +31,28 @@ object AvisosDosJogos {
         val destino: String,
     )
 
-    data class Aviso(val chaves: List<String>, val titulo: String, val texto: String, val destino: String)
+    /**
+     * Um aviso: as [chaves] que ele marca, o [titulo], o [texto] (o aviso fechado), a tela que abre, as [linhas] (o aviso
+     * aberto, uma por modalidade, quando são várias; desde a 0.41) e a [modalidade] (quando é uma só: o desenho do aviso).
+     */
+    data class Aviso(
+        val chaves: List<String>,
+        val titulo: String,
+        val texto: String,
+        val destino: String,
+        val linhas: List<String> = emptyList(),
+        val modalidade: Modalidade? = null,
+    )
 
     fun chaveDoAcumulou(a: Alvo): String = "acumulou:${a.modalidade.name}:${a.ultimo}"
     fun chaveDoK1(a: Alvo): String = "k1:${a.modalidade.name}:${a.proximo}"
     fun chaveDoPremio(a: Alvo): String = "premio:${a.modalidade.name}:${a.proximo}"
 
-    /** Os avisos que faltam dar agora com os parâmetros [p] ([avisados] = as chaves já avisadas nesta sessão). */
+    /**
+     * Os avisos que faltam dar agora com os parâmetros [p] ([avisados] = as chaves já avisadas nesta sessão). Desde a 0.41
+     * (pedido do usuário: "reformular os pushs") o título já diz o principal ("Mega-Sena acumulou", "Quina: k1 0,850",
+     * "Mega-Sena: R$ 120 Milhões") e, com várias modalidades, o aviso aberto traz uma linha para cada uma.
+     */
     fun devidos(p: Parametros, alvos: List<Alvo>, hoje: LocalDate, avisados: Set<String>): List<Aviso> = buildList {
         if (p.avisarAcumulado) {
             val novos = alvos.filter { a ->
@@ -45,15 +60,22 @@ object AvisosDosJogos {
                     ChronoUnit.DAYS.between(a.diaDoUltimo, hoje) in 0..DIAS_DO_ACUMULOU && chaveDoAcumulou(a) !in avisados
             }.distinctBy { it.modalidade to it.ultimo }
             if (novos.isNotEmpty()) {
+                val um = novos.singleOrNull()
                 add(
                     Aviso(
                         chaves = novos.map(::chaveDoAcumulou),
-                        titulo = (if (novos.size == 1) "Acumulou: " else "Acumularam: ") + nomes(novos),
-                        texto = novos.joinToString(" ") { a ->
-                            "${a.nome}: o concurso ${a.ultimo} não teve ganhador" +
-                                (a.premio?.takeIf { it > 0 }?.let { v -> "; o ${a.proximo ?: "próximo"} tem prêmio estimado de ${Dinheiro.porExtenso(v)}" } ?: "") + "."
+                        titulo = if (um != null) "${um.nome} acumulou" else "Acumularam: " + nomes(novos),
+                        texto = if (um != null) {
+                            "Ninguém acertou o concurso ${um.ultimo}." +
+                                (um.premio?.takeIf { it > 0 }?.let { v -> " O ${um.proximo ?: "próximo"} vale ${Dinheiro.porExtenso(v)}." } ?: "")
+                        } else {
+                            novos.joinToString(" · ") { a -> a.nome + (a.premio?.takeIf { it > 0 }?.let { ": " + Dinheiro.porExtenso(it) } ?: "") }
                         },
                         destino = destino(novos),
+                        linhas = if (um != null) emptyList() else novos.map { a ->
+                            listOfNotNull(a.nome, a.proximo?.let { "concurso $it" }, a.premio?.takeIf { it > 0 }?.let { Dinheiro.porExtenso(it) }).joinToString(" · ")
+                        },
+                        modalidade = um?.modalidade,
                     ),
                 )
             }
@@ -62,12 +84,20 @@ object AvisosDosJogos {
             val novos = alvos.filter { a -> a.proximo != null && (a.k1 ?: 0.0) > p.k1Minimo && chaveDoK1(a) !in avisados }
                 .distinctBy { it.modalidade to it.proximo }
             if (novos.isNotEmpty()) {
+                val um = novos.singleOrNull()
+                val minimo = IndiceK.exibir(p.k1Minimo, 2)
                 add(
                     Aviso(
                         chaves = novos.map(::chaveDoK1),
-                        titulo = "k1 acima de ${IndiceK.exibir(p.k1Minimo, 2)}: " + nomes(novos),
-                        texto = novos.joinToString(" ") { a -> "${a.nome}: k1 ${IndiceK.exibir(a.k1!!, 3)} no concurso ${a.proximo}." },
+                        titulo = if (um != null) "${um.nome}: k1 ${IndiceK.exibir(um.k1!!, 3)}" else "k1 acima de $minimo: " + nomes(novos),
+                        texto = if (um != null) {
+                            "Concurso ${um.proximo}, acima do seu mínimo de $minimo."
+                        } else {
+                            novos.joinToString(" · ") { a -> "${a.nome} ${IndiceK.exibir(a.k1!!, 3)}" }
+                        },
                         destino = destino(novos),
+                        linhas = if (um != null) emptyList() else novos.map { a -> "${a.nome} · concurso ${a.proximo} · k1 ${IndiceK.exibir(a.k1!!, 3)}" },
+                        modalidade = um?.modalidade,
                     ),
                 )
             }
@@ -76,12 +106,20 @@ object AvisosDosJogos {
             val novos = alvos.filter { a -> a.proximo != null && (a.premio ?: 0) > p.premioMinimo && chaveDoPremio(a) !in avisados }
                 .distinctBy { it.modalidade to it.proximo }
             if (novos.isNotEmpty()) {
+                val um = novos.singleOrNull()
+                val minimo = Dinheiro.porExtenso(p.premioMinimo)
                 add(
                     Aviso(
                         chaves = novos.map(::chaveDoPremio),
-                        titulo = "Prêmio acima de ${Dinheiro.porExtenso(p.premioMinimo)}: " + nomes(novos),
-                        texto = novos.joinToString(" ") { a -> "${a.nome}: prêmio estimado de ${Dinheiro.porExtenso(a.premio!!)} no concurso ${a.proximo}." },
+                        titulo = if (um != null) "${um.nome}: ${Dinheiro.porExtenso(um.premio!!)}" else "Prêmio acima de $minimo: " + nomes(novos),
+                        texto = if (um != null) {
+                            "Prêmio estimado do concurso ${um.proximo}, acima dos $minimo que você escolheu."
+                        } else {
+                            novos.joinToString(" · ") { a -> "${a.nome}: ${Dinheiro.porExtenso(a.premio!!)}" }
+                        },
                         destino = destino(novos),
+                        linhas = if (um != null) emptyList() else novos.map { a -> "${a.nome} · concurso ${a.proximo} · ${Dinheiro.porExtenso(a.premio!!)}" },
+                        modalidade = um?.modalidade,
                     ),
                 )
             }

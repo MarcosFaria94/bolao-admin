@@ -140,7 +140,8 @@ enum class FaseDoDeslize { COMECO, ARRASTO, FIM }
 /**
  * Onde ficou o ícone dos cookies do site (desde a 0.38), em frações da página: o meio dele, o alto, a largura e (desde a
  * 0.39) a altura (0 = igual à largura), se ficou à [direita], a [cor] de fundo dele (ARGB; null = não lida) e a
- * [opacidade] dele.
+ * [opacidade] dele. [naPagina] (desde a 0.41): o script pôs o cadeado na própria página, copiado do ícone dos cookies
+ * (o app não desenha o dele).
  */
 data class PosicaoDoCookie(
     val x: Float,
@@ -150,6 +151,7 @@ data class PosicaoDoCookie(
     val direita: Boolean = x >= 0.5f,
     val cor: Int? = null,
     val opacidade: Float = 1f,
+    val naPagina: Boolean = false,
 )
 
 /** O que o app lê para saber se o script terminou: o JSON da resposta, ou null. */
@@ -205,7 +207,28 @@ class NavegadorDaCaixa(private val contexto: Context) {
         destravada = !destravada
         prefs.edit().putBoolean(CADEADO_FECHADO, !destravada).apply()
         aviso = if (destravada) AVISO_CADEADO_ABERTO else AVISO_CADEADO_FECHADO
+        // O cadeado da página (desde a 0.41) troca o desenho também.
+        web?.evaluateJavascript("window.__bolaoCadeadoEstado&&window.__bolaoCadeadoEstado($destravada)", null)
     }
+
+    /**
+     * A ponte do cadeado que fica dentro da página (desde a 0.41; assets/caixa/cookies.js): o toque nele chama
+     * [alternar] (na linha da ponte; a troca vai para a linha das telas) e o desenho pergunta se está [aberto]. A página só
+     * consegue abrir e fechar o cadeado (nada mais do app passa por aqui).
+     */
+    private inner class PonteDoCadeado {
+        @android.webkit.JavascriptInterface
+        fun aberto(): Boolean = destravada
+
+        @android.webkit.JavascriptInterface
+        fun alternar(): Boolean {
+            val novo = !destravada
+            principal.post { if (destravada != novo) alternarCadeado() }
+            return novo
+        }
+    }
+
+    private val principal = android.os.Handler(android.os.Looper.getMainLooper())
 
     /** Quem acompanha o deslize para os lados (a raiz, que move as abas); null = ninguém. */
     var aoDeslizar: ((FaseDoDeslize, Float) -> Unit)? = null
@@ -325,6 +348,7 @@ class NavegadorDaCaixa(private val contexto: Context) {
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
         }
+        addJavascriptInterface(PonteDoCadeado(), PONTE_DO_CADEADO)
         webViewClient = Cliente()
         webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
@@ -639,6 +663,7 @@ fun lerCookie(json: String): PosicaoDoCookie? = runCatching {
         direita = texto("direita")?.toBooleanStrictOrNull() ?: (x >= 0.5f),
         cor = texto("cor")?.let(::corDoCss),
         opacidade = texto("opacidade")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f,
+        naPagina = texto("cadeado")?.toBooleanStrictOrNull() ?: false,
     ).takeIf { it.x in 0f..1f && it.topo in 0f..1f }
 }.getOrNull()
 
@@ -685,6 +710,9 @@ const val MARGEM_DO_COOKIE = 27f
 
 /** A cor do ícone dos cookies como apareceu (azul a 50%: sobre o branco dá o azul-claro da foto, #8AACD1). */
 const val COR_DO_COOKIE = 0x801559A3.toInt()
+
+/** O nome da ponte do cadeado da página no JavaScript (desde a 0.41): window.BolaoCadeado. */
+const val PONTE_DO_CADEADO = "BolaoCadeado"
 
 /** A chave do cadeado nas preferências (desde a 0.38; true = fechado). */
 private const val CADEADO_FECHADO = "caixa_cadeado_fechado"
@@ -944,11 +972,17 @@ fun PaginaFixaDaCaixa(navegador: NavegadorDaCaixa, posicao: () -> Float?) {
  * O cadeado da página da Caixa (desde a 0.38, pedido do usuário). Desde a 0.39 ele imita o ícone dos cookies do site: o
  * mesmo tamanho, a mesma cor e a mesma transparência; fica logo acima do ícone, quando o script conseguiu passá-lo para
  * a direita, ou espelhado do outro lado, na mesma altura ([lugarDoCadeado]). Tocar abre e fecha.
+ *
+ * Desde a 0.41 (pedido do usuário: "equivalentes em tamanho e transparência"; na foto o cadeado saía 1,3 vez maior e com
+ * a metade da cor) o cadeado vai para dentro da própria página, desenhado pelo script com o tamanho, a cor, a sombra e a
+ * transparência que o navegador dá ao ícone dos cookies ([PosicaoDoCookie.naPagina]). Este aqui fica só para quando o
+ * ícone dos cookies não aparece.
  */
 @Composable
 private fun BoxScope.BotaoDoCadeado(navegador: NavegadorDaCaixa, medida: MedidaDaPagina) {
     val densidade = LocalDensity.current
     val c = navegador.cookie
+    if (c?.naPagina == true) return
     val lugar = lugarDoCadeado(c, medida.largura.toFloat(), medida.altura.toFloat(), densidade.density)
     val fundo = corDoCadeado(c)
     val aberto = navegador.destravada

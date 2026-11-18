@@ -36,8 +36,26 @@ object AvisosDeEspeciais {
         val sorteio: LocalDateTime? get() = dia?.atTime(hora ?: LocalTime.of(20, 0))
     }
 
-    /** Um aviso para o celular: as [chaves] que ele marca como avisadas, o título, o texto e a tela que abre. */
-    data class Aviso(val chaves: List<String>, val titulo: String, val texto: String, val destino: String, val modalidade: Modalidade)
+    /**
+     * Um aviso para o celular: as [chaves] que ele marca como avisadas, o título, o texto, a tela que abre e (desde a
+     * 0.41) as [linhas] do aviso aberto (o concurso, o sorteio, o prêmio, o k1).
+     */
+    data class Aviso(
+        val chaves: List<String>,
+        val titulo: String,
+        val texto: String,
+        val destino: String,
+        val modalidade: Modalidade,
+        val linhas: List<String> = emptyList(),
+    )
+
+    /** As linhas do aviso aberto (desde a 0.41): "Concurso 3100", "Sorteio: 01/01/2027 às 11h", "Prêmio estimado: R$ 1 Bilhão", "k1 0,395". */
+    fun linhas(a: Alvo): List<String> = listOfNotNull(
+        "Concurso ${a.concurso}",
+        a.dia?.let { d -> "Sorteio: " + d.format(DATA) + (a.hora?.let { " às " + AgendaDaCaixa.hora(it) } ?: "") },
+        a.premio?.takeIf { it > 0 }?.let { "Prêmio estimado: " + Dinheiro.porExtenso(it) },
+        a.k1?.let { "k1 " + IndiceK.exibir(it, 3) },
+    )
 
     fun chaveDasApostas(a: Alvo): String = "especial:${a.modalidade.name}:${a.concurso}:abertas"
     fun chaveDaVespera(a: Alvo): String = "especial:${a.modalidade.name}:${a.concurso}:vespera"
@@ -69,6 +87,7 @@ object AvisosDeEspeciais {
                     texto = detalhe(a) + ". Ainda dá para apostar.",
                     destino = a.destino,
                     modalidade = a.modalidade,
+                    linhas = linhas(a) + "Ainda dá para apostar.",
                 )
                 apostas !in avisados && vespera !in avisados -> Aviso(
                     chaves = listOf(apostas),
@@ -76,6 +95,7 @@ object AvisosDeEspeciais {
                     texto = detalhe(a) + ".",
                     destino = a.destino,
                     modalidade = a.modalidade,
+                    linhas = linhas(a),
                 )
                 else -> null
             }

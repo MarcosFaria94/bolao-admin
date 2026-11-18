@@ -17,11 +17,18 @@ import io.github.marcosfaria94.bolao.R
 import io.github.marcosfaria94.bolao.data.Pendencia
 import io.github.marcosfaria94.bolao.data.Premiada
 import io.github.marcosfaria94.bolao.data.Sessoes
+import io.github.marcosfaria94.bolao.domain.Modalidade
 
 /**
- * Os dois avisos que vão para o celular: "Ação necessária" (há pendência no bolão) e
- * "Aposta premiada" (sem o valor: o prêmio é surpresa ao abrir o app). Todo o resto fica
- * no resumo do Painel de Jogos (o ícone da barra de cima; até a 0.16, nas Notificações do app).
+ * Os avisos que vão para o celular: as pendências do bolão, a aposta premiada (sem o valor: o prêmio é surpresa ao abrir
+ * o app), os concursos especiais e os avisos dos jogos (acumulou, k1, prêmio). Todo o resto fica no resumo do Painel de
+ * Jogos.
+ *
+ * Refeitos na 0.41 (pedido do usuário: "reformular os pushs, não gostei do atual"): o desenho grande da modalidade (o
+ * trevo de corações na cor dela, [Emblema]) ou o do app; o título com o principal ("Mega-Sena acumulou", "Quina: k1
+ * 0,850", "3 pendências") sem o nome da sessão na frente (ele vai no cabeçalho do aviso); o aviso aberto em linhas; o
+ * dourado do app no lugar do azul-noite (que sumia no tema escuro); e um botão para os Detalhes quando é de uma
+ * modalidade só.
  */
 object Notificador {
     private const val CANAL_ACOES = "acoes"
@@ -40,7 +47,8 @@ object Notificador {
     /** Um aviso só de "Ação necessária", atualizado com a lista de pendências. */
     private const val ID_ACOES = 1001
 
-    private const val COR = 0xFF13294B.toInt()
+    /** O dourado do app (desde a 0.41; o azul-noite de antes não aparecia no tema escuro). */
+    private const val COR = 0xFFF2B630.toInt()
 
     /** O "Ação necessária" do modo de teste e o começo dos números das outras sessões (desde a 0.21). */
     private const val ID_ACOES_TESTE = 1003
@@ -70,29 +78,62 @@ object Notificador {
         )
         nm.createNotificationChannel(
             NotificationChannel(CANAL_JOGOS, "Avisos dos jogos", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Os avisos de Ajustes > Parâmetros: concurso que acumulou, k1 acima do escolhido, prêmio acima do escolhido."
+                description = "Os avisos de Ajustes > Notificações: concurso que acumulou, k1 acima do escolhido, prêmio acima do escolhido."
             },
         )
     }
 
     /**
-     * Um aviso dos Parâmetros (desde a 0.38): acumulou, k1 acima de x ou prêmio acima de n. [prefixo]: o nome da sessão
-     * (com mais de uma). Tocar abre a página da modalidade (ou os Jogos, com mais de uma), na sessão.
+     * O começo de todos os avisos (desde a 0.41): o trevo pequeno, o dourado, o desenho grande da modalidade [m] (ou o do
+     * app), o título, o texto e, com mais de uma sessão (ou no teste), o nome dela no cabeçalho ([prefixo] "Nome · ").
+     */
+    private fun aviso(context: Context, canal: String, titulo: String, texto: String, prefixo: String, m: Modalidade?): NotificationCompat.Builder =
+        NotificationCompat.Builder(context, canal)
+            .setSmallIcon(R.drawable.ic_notificacao)
+            .setColor(COR)
+            .setLargeIcon(runCatching { Emblema.de(m) }.getOrNull())
+            .setContentTitle(titulo)
+            .setContentText(texto)
+            .setShowWhen(true)
+            .setAutoCancel(true)
+            .apply { prefixo.removeSuffix(" · ").takeIf { it.isNotBlank() }?.let { setSubText(it) } }
+
+    /** O aviso aberto: as [linhas], uma embaixo da outra (até 6); sem elas, o texto inteiro. */
+    private fun aberto(texto: String, linhas: List<String>, resumo: String? = null): NotificationCompat.Style =
+        if (linhas.isEmpty()) {
+            NotificationCompat.BigTextStyle().bigText(texto)
+        } else {
+            NotificationCompat.InboxStyle().also { i ->
+                linhas.take(6).forEach { i.addLine(it) }
+                (resumo ?: if (linhas.size > 6) "+${linhas.size - 6}" else null)?.let { i.setSummaryText(it) }
+            }
+        }
+
+    /** O botão "Detalhes" de um aviso que abre a página de uma modalidade ("modalidade/X" → "detalhes/X"). */
+    private fun comDetalhes(b: NotificationCompat.Builder, context: Context, destino: String, codigo: Int, sessao: String?) {
+        val detalhes = when {
+            destino.startsWith("modalidade/") -> "detalhes/" + destino.removePrefix("modalidade/")
+            destino.startsWith("especial/") && destino.endsWith("?detalhes=false") -> destino.removeSuffix("?detalhes=false") + "?detalhes=true"
+            else -> return
+        }
+        b.addAction(0, "Detalhes", abrir(context, detalhes, codigo + 1, sessao))
+    }
+
+    /**
+     * Um aviso dos Parâmetros (desde a 0.38; desde a 0.41 nas Notificações): acumulou, k1 acima de x ou prêmio acima de
+     * n. [prefixo]: o nome da sessão (com mais de uma). Tocar abre a página da modalidade (ou os Jogos, com mais de uma),
+     * na sessão.
      */
     @SuppressLint("MissingPermission")
     fun avisoDosJogos(context: Context, a: io.github.marcosfaria94.bolao.domain.AvisosDosJogos.Aviso, prefixo: String, sessao: String) {
         if (!permitido(context)) return
         val id = ID_JOGOS + ((sessao + a.chaves.first()).hashCode() and 0xFFF)
-        val n = NotificationCompat.Builder(context, CANAL_JOGOS)
-            .setSmallIcon(R.drawable.ic_notificacao)
-            .setColor(COR)
-            .setContentTitle(prefixo + a.titulo)
-            .setContentText(a.texto)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(a.texto))
+        val b = aviso(context, CANAL_JOGOS, a.titulo, a.texto, prefixo, a.modalidade)
+            .setStyle(aberto(a.texto, a.linhas))
             .setContentIntent(abrir(context, a.destino, id, sessao))
-            .setAutoCancel(true)
-            .build()
-        NotificationManagerCompat.from(context).notify(id, n)
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+        comDetalhes(b, context, a.destino, id, sessao)
+        NotificationManagerCompat.from(context).notify(id, b.build())
     }
 
     /**
@@ -103,16 +144,12 @@ object Notificador {
     fun concursoEspecial(context: Context, a: io.github.marcosfaria94.bolao.domain.AvisosDeEspeciais.Aviso) {
         if (!permitido(context)) return
         val id = ID_ESPECIAIS + (a.chaves.last().hashCode() and 0xFFF)
-        val n = NotificationCompat.Builder(context, CANAL_ESPECIAIS)
-            .setSmallIcon(R.drawable.ic_notificacao)
-            .setColor(COR)
-            .setContentTitle(a.titulo)
-            .setContentText(a.texto)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(a.texto))
+        val b = aviso(context, CANAL_ESPECIAIS, a.titulo, a.texto, "", a.modalidade)
+            .setStyle(aberto(a.texto, a.linhas))
             .setContentIntent(abrir(context, a.destino, id))
-            .setAutoCancel(true)
-            .build()
-        NotificationManagerCompat.from(context).notify(id, n)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+        comDetalhes(b, context, a.destino, id, null)
+        NotificationManagerCompat.from(context).notify(id, b.build())
     }
 
     fun permitido(context: Context): Boolean =
@@ -145,22 +182,21 @@ object Notificador {
     fun acaoNecessaria(context: Context, novas: List<Pendencia>, todas: List<Pendencia>, prefixo: String = "", sessao: String = Sessoes.PRINCIPAL) {
         if (!permitido(context) || novas.isEmpty()) return
         val principal = novas.first()
-        val texto = if (todas.size <= 1) "${principal.titulo}: ${principal.texto}" else "${principal.titulo} e mais ${todas.size - 1} pendência(s)."
-        val lista = NotificationCompat.InboxStyle()
-        todas.take(6).forEach { lista.addLine(it.titulo) }
-        if (todas.size > 6) lista.setSummaryText("+${todas.size - 6}")
-        val n = NotificationCompat.Builder(context, CANAL_ACOES)
-            .setSmallIcon(R.drawable.ic_notificacao)
-            .setColor(COR)
-            .setContentTitle(prefixo + "Ação necessária")
-            .setContentText(texto)
-            .setStyle(if (todas.size <= 1) NotificationCompat.BigTextStyle().bigText(texto) else lista)
+        // Desde a 0.41: com uma pendência, ela no título; com várias, "3 pendências" e a lista no aviso aberto.
+        val uma = todas.size <= 1
+        val titulo = if (uma) principal.titulo else tituloDasPendencias(todas.size)
+        val texto = if (uma) principal.texto else todas.take(3).joinToString(" · ") { it.titulo } + if (todas.size > 3) " · …" else ""
+        val modalidade = todas.mapNotNull { it.modalidade }.distinct().singleOrNull()?.takeIf { uma }
+        val b = aviso(context, CANAL_ACOES, titulo, texto, prefixo, modalidade)
+            .setStyle(aberto(texto, if (uma) emptyList() else todas.map { it.titulo }, "Toque para abrir o Painel de Jogos"))
             .setNumber(todas.size)
             .setContentIntent(abrir(context, "meus-jogos", idDasAcoes(sessao), sessao))
-            .setAutoCancel(true)
-            .build()
-        NotificationManagerCompat.from(context).notify(idDasAcoes(sessao), n)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+        NotificationManagerCompat.from(context).notify(idDasAcoes(sessao), b.build())
     }
+
+    /** O título do aviso com várias pendências (desde a 0.41): "2 pendências". */
+    fun tituloDasPendencias(n: Int): String = if (n == 1) "1 pendência" else "$n pendências"
 
     /**
      * Tira o aviso "Ação necessária" da sessão [sessao] (sem pendências, ou o Administrador já está
@@ -196,14 +232,9 @@ object Notificador {
     ) {
         if (!permitido(context)) return
         val id = (sessao.orEmpty() + p.chave).hashCode()
-        val b = NotificationCompat.Builder(context, CANAL_PREMIOS)
-            .setSmallIcon(R.drawable.ic_notificacao)
-            .setColor(COR)
-            .setContentTitle(prefixo + if (comToque) "Prêmio principal!" else p.titulo)
-            .setContentText(p.texto)
+        val b = aviso(context, CANAL_PREMIOS, if (comToque) "Prêmio principal!" else p.titulo, p.texto, prefixo, p.aposta.modalidade)
             .setStyle(NotificationCompat.BigTextStyle().bigText(p.texto))
             .setContentIntent(abrir(context, p.destino, id, sessao))
-            .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setSilent(quieto)
         if (comToque) {
@@ -219,13 +250,10 @@ object Notificador {
     @SuppressLint("MissingPermission")
     fun teste(context: Context) {
         if (!permitido(context)) return
-        val n = NotificationCompat.Builder(context, CANAL_ACOES)
-            .setSmallIcon(R.drawable.ic_notificacao)
-            .setColor(COR)
-            .setContentTitle("Notificações funcionando")
-            .setContentText("É assim que chegam os avisos de ação necessária e de aposta premiada.")
+        val texto = "É assim que chegam os avisos: as pendências do bolão, as apostas premiadas, os concursos especiais e os avisos dos jogos."
+        val n = aviso(context, CANAL_ACOES, "Notificações funcionando", texto, "", null)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(texto))
             .setContentIntent(abrir(context, "meus-jogos", 7))
-            .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(context).notify(7, n)
     }

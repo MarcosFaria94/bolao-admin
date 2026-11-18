@@ -85,11 +85,14 @@ const val PARAMETRO_SALDO = "Não jogar sem saldo"
 const val PARAMETRO_APORTE = "Aporte mensal"
 const val PARAMETRO_PRECO = "Preço da aposta simples"
 const val PARAMETRO_CALENDARIO = "Calendário de apostas"
-const val PARAMETRO_ACUMULOU = "Avisar se o concurso acumular"
+const val PARAMETRO_ACUMULOU = "Concurso acumulou"
 
-/** Os avisos com valor (desde a 0.38): o título e, ao lado, o valor num botão pequeno ("Avisar se k1 > [0,80]"). */
-const val PARAMETRO_K1 = "Avisar se k1 >"
-const val PARAMETRO_PREMIO = "Avisar se algum prêmio >"
+/**
+ * Os avisos com valor (desde a 0.38): o título e, ao lado, o valor num botão pequeno. Desde a 0.41, nas Notificações,
+ * "k1 acima de [0,80]" e "Prêmio acima de [R$ 100 mi]" (eram "Avisar se k1 >" e "Avisar se algum prêmio >").
+ */
+const val PARAMETRO_K1 = "k1 acima de"
+const val PARAMETRO_PREMIO = "Prêmio acima de"
 
 /** O valor curto da linha do aviso do prêmio: "R$ 100 mi", "R$ 1,5 bi", "R$ 500 mil". */
 fun valorCurto(centavos: Long): String {
@@ -119,12 +122,18 @@ object AjudaDosParametros {
     const val PREMIO = "Avisa no celular quando o prêmio estimado do próximo concurso de alguma modalidade (ou de um concurso especial) passa do valor escolhido (toque no valor para mudar)."
 }
 
-/** O que a linha "Parâmetros" da lista dos Ajustes mostra à direita: o calendário. */
+/**
+ * O calendário em poucas palavras ("10 dias por mês"). Até a 0.40 era o que a linha "Parâmetros" da lista dos Ajustes
+ * mostrava à direita; desde a 0.41 o calendário fica nas Notificações (a linha mostra [RESUMO_DOS_PARAMETROS]).
+ */
 fun resumoDosParametros(p: Parametros): String = when {
     p.semDiaDefinido -> SEM_DIA_DEFINIDO
     p.dias.size == 1 -> "1 dia por mês"
     else -> "${p.dias.size} dias por mês"
 }
+
+/** O que a linha "Parâmetros" da lista dos Ajustes mostra à direita (desde a 0.41). */
+const val RESUMO_DOS_PARAMETROS = "Preços"
 
 /** O valor da linha do calendário nos Parâmetros (curto, para o título caber com a letra grande): "10 dias", "Nenhum". */
 fun resumoCurtoDoCalendario(p: Parametros): String = when {
@@ -149,8 +158,9 @@ fun lerK1(texto: String): Double? = texto.trim().replace(',', '.').toDoubleOrNul
  * - Valores: o aporte mensal (só no bolão) e o preço da aposta simples, que abre e fecha embaixo da linha (começa fechado);
  * - Apostas: registrar sem confirmação, mais números, teimosinha, o stop loss (sem limite por padrão) e o "Não jogar sem
  *   saldo" (desligado por padrão; só no bolão);
- * - Avisos (até a 0.37, "Calendário de apostas"): o calendário (abre a janela com os dias do mês), avisar se o concurso
- *   acumular, se o k1 passar de x e se algum prêmio passar de n (os três desligados por padrão).
+ * - Avisos (até a 0.37, "Calendário de apostas"; desde a 0.41 em Ajustes > Notificações, pedido do usuário: "colocar
+ *   Avisos em Notificações"; [AvisosDosJogosDaSessao]): o calendário, avisar se o concurso acumular, se o k1 passar de x
+ *   e se algum prêmio passar de n. Continuam sendo da sessão (guardados nos parâmetros dela).
  * Cada toque já vale.
  */
 @Composable
@@ -166,9 +176,6 @@ internal fun ParametrosDaSessao(estado: Estado) {
     var editandoPreco by remember { mutableStateOf<io.github.marcosfaria94.bolao.domain.Modalidade?>(null) }
     var precosAbertos by rememberSaveable { mutableStateOf(false) }
     var editandoStop by remember { mutableStateOf(false) }
-    var editandoCalendario by remember { mutableStateOf(false) }
-    var editandoK1 by remember { mutableStateOf(false) }
-    var editandoPremio by remember { mutableStateOf(false) }
 
     Secao("Valores") {
         if (!estado.individual) {
@@ -209,28 +216,6 @@ internal fun ParametrosDaSessao(estado: Estado) {
         }
     }
 
-    Secao("Avisos") {
-        LinhaDoParametro(
-            PARAMETRO_CALENDARIO,
-            AjudaDosParametros.CALENDARIO + if (!estado.individual) AjudaDosParametros.CALENDARIO_BOLAO else "",
-            aoTocar = { editandoCalendario = true },
-        ) {
-            ValorDoParametro(resumoCurtoDoCalendario(p), comSeta = true)
-        }
-        Divisor()
-        ChaveDoParametro(PARAMETRO_ACUMULOU, AjudaDosParametros.ACUMULOU, p.avisarAcumulado) { v -> mudar { it.copy(avisarAcumulado = v) } }
-        Divisor()
-        ChaveDoParametro(
-            PARAMETRO_K1, AjudaDosParametros.K1, p.avisarK1,
-            valor = IndiceK.exibir(p.k1Minimo, 2), aoTocarNoValor = { editandoK1 = true },
-        ) { v -> mudar { it.copy(avisarK1 = v) } }
-        Divisor()
-        ChaveDoParametro(
-            PARAMETRO_PREMIO, AjudaDosParametros.PREMIO, p.avisarPremio,
-            valor = valorCurto(p.premioMinimo), aoTocarNoValor = { editandoPremio = true },
-        ) { v -> mudar { it.copy(avisarPremio = v) } }
-    }
-
     if (editandoAporte) {
         DialogoDinheiro(
             titulo = PARAMETRO_APORTE,
@@ -261,15 +246,6 @@ internal fun ParametrosDaSessao(estado: Estado) {
     }
     if (editandoStop) {
         JanelaDoStopLoss(p.limiteMensal, aoSalvar = { l -> editandoStop = false; mudar { it.copy(limiteMensal = l) } }, aoFechar = { editandoStop = false })
-    }
-    if (editandoCalendario) {
-        JanelaDoCalendario(estado, p, mudar = ::mudar, aoFechar = { editandoCalendario = false })
-    }
-    if (editandoK1) {
-        JanelaDoK1(p.k1Minimo, aoSalvar = { x -> editandoK1 = false; mudar { it.copy(k1Minimo = x, avisarK1 = true) } }, aoFechar = { editandoK1 = false })
-    }
-    if (editandoPremio) {
-        JanelaDoPremio(p.premioMinimo, aoSalvar = { n -> editandoPremio = false; mudar { it.copy(premioMinimo = n, avisarPremio = true) } }, aoFechar = { editandoPremio = false })
     }
 }
 
@@ -440,7 +416,7 @@ private fun OpcaoDoStop(texto: String, escolhida: Boolean, aoEscolher: () -> Uni
 
 /** A janela do k1 do aviso (desde a 0.38). */
 @Composable
-private fun JanelaDoK1(atual: Double, aoSalvar: (Double) -> Unit, aoFechar: () -> Unit) {
+internal fun JanelaDoK1(atual: Double, aoSalvar: (Double) -> Unit, aoFechar: () -> Unit) {
     var texto by remember { mutableStateOf(IndiceK.exibir(atual, 2)) }
     val lido = lerK1(texto)
     JanelaComCampos(
@@ -466,7 +442,7 @@ private fun JanelaDoK1(atual: Double, aoSalvar: (Double) -> Unit, aoFechar: () -
 
 /** A janela do prêmio do aviso (desde a 0.38). */
 @Composable
-private fun JanelaDoPremio(atual: Long, aoSalvar: (Long) -> Unit, aoFechar: () -> Unit) {
+internal fun JanelaDoPremio(atual: Long, aoSalvar: (Long) -> Unit, aoFechar: () -> Unit) {
     var v by remember { mutableLongStateOf(atual) }
     JanelaComCampos(
         titulo = PARAMETRO_PREMIO,
@@ -483,7 +459,7 @@ private fun JanelaDoPremio(atual: Long, aoSalvar: (Long) -> Unit, aoFechar: () -
 
 /** A janela do calendário de apostas (desde a 0.38; até a 0.37, os dias ficavam direto na tela): os dias do mês. */
 @Composable
-private fun JanelaDoCalendario(estado: Estado, p: Parametros, mudar: ((Parametros) -> Parametros) -> Unit, aoFechar: () -> Unit) {
+internal fun JanelaDoCalendario(estado: Estado, p: Parametros, mudar: ((Parametros) -> Parametros) -> Unit, aoFechar: () -> Unit) {
     AlertDialog(
         onDismissRequest = aoFechar,
         title = { Text(PARAMETRO_CALENDARIO) },

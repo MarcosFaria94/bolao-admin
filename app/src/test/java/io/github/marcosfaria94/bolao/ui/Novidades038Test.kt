@@ -96,7 +96,7 @@ class Novidades038Test {
         val p = Parametros()
         assertNull(p.limiteMensal)
         assertFalse(p.exigirSaldo || p.avisarAcumulado || p.avisarK1 || p.avisarPremio)
-        assertEquals("Avisar se k1 >", PARAMETRO_K1)
+        assertEquals("k1 acima de", PARAMETRO_K1)
         assertEquals("R$ 100 mi", valorCurto(100_000_000_00))
         assertEquals("R$ 1,5 bi", valorCurto(1_500_000_000_00))
         assertEquals("R$ 500 mil", valorCurto(500_000_00))
@@ -143,11 +143,13 @@ class Novidades038Test {
         val avisos = AvisosDosJogos.devidos(p, alvos, hoje, emptySet())
         assertEquals(3, avisos.size)
         // Acumulou: só o recente (a Quina acumulou há 10 dias).
-        assertEquals("Acumulou: Mega-Sena", avisos[0].titulo)
+        // Desde a 0.41 o título diz o principal (uma modalidade) e, com várias, o aviso aberto tem uma linha para cada.
+        assertEquals("Mega-Sena acumulou", avisos[0].titulo)
         assertEquals("modalidade/MEGA_SENA", avisos[0].destino)
         assertEquals("k1 acima de 0,80: Quina e Lotofácil", avisos[1].titulo)
         assertEquals("jogos", avisos[1].destino)
-        assertTrue(avisos[2].titulo.startsWith("Prêmio acima de"))
+        assertEquals(2, avisos[1].linhas.size)
+        assertEquals("Mega-Sena: R$ 120 Milhões", avisos[2].titulo)
         // Uma vez só.
         assertTrue(AvisosDosJogos.devidos(p, alvos, hoje, avisos.flatMap { it.chaves }.toSet()).isEmpty())
     }
