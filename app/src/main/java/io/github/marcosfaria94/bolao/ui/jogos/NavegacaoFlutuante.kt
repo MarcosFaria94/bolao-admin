@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -65,7 +66,7 @@ import kotlinx.coroutines.launch
  * concursos num ritmo que cresce devagar até [CONCURSOS_POR_SEGUNDO] por segundo. Tocar no campo limpa o número para
  * digitar outro. Os concursos seguem a [trilha] (no especial, só os especiais dele; na modalidade, só os regulares).
  *
- * Desde a 0.39 (pedido do usuário): fechado, é uma lupa translúcida no canto de baixo à direita; aberto, a lupa vira um
+ * Desde a 0.39 (pedido do usuário): fechado, é uma lupa no canto de baixo à direita (desde a 0.40 com destaque); aberto, a lupa vira um
  * X, que é o único jeito de fechar: tocar fora do seletor não fecha mais (a página continua rolando e respondendo por
  * baixo). O Concluir do teclado e os caracteres que não são algarismos ([TECLAS_INOCUAS]: "," "." espaço "-") vão ao
  * concurso digitado (se houver) e voltam ao seletor, com o concurso escolhido no campo, sem fechar.
@@ -169,12 +170,16 @@ fun BoxScope.NavegacaoFlutuante(
             }
         }
         Spacer(Modifier.width(8.dp))
-        // A lupa (fechado) ou o X (aberto), no canto: translúcida, para não esconder a página.
+        // A lupa (fechado) ou o X (aberto), no canto. Desde a 0.40 (pedido do usuário) a lupa tem mais destaque, do mesmo
+        // tamanho: o fundo da cor de destaque, o contorno e a lupa no dourado (no escuro; azul-marinho no claro) e uma sombra.
+        val cores = MaterialTheme.colorScheme
         Surface(
             onClick = { if (aberta) fechar() else aoAbrir(true) },
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = if (aberta) 0.85f else 0.6f),
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (aberta) cores.surfaceContainerHighest.copy(alpha = 0.85f) else cores.primaryContainer.copy(alpha = ALFA_DA_LUPA),
+            contentColor = if (aberta) cores.onSurfaceVariant else cores.primary,
+            border = if (aberta) null else BorderStroke(1.5.dp, cores.primary.copy(alpha = 0.8f)),
+            shadowElevation = if (aberta) 0.dp else 6.dp,
             modifier = Modifier.size(TAMANHO_DO_BOTAO),
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -286,6 +291,9 @@ fun proximoIntervalo(atual: Long): Long = maxOf(MENOR_INTERVALO, (atual * 0.88).
 val TECLAS_INOCUAS = setOf(',', '.', ' ', '-')
 
 private val TAMANHO_DO_BOTAO = 44.dp
+
+/** A lupa quase opaca (desde a 0.40; era 60% e sumia no fundo). */
+const val ALFA_DA_LUPA = 0.92f
 
 /** Os nomes do seletor (desde a 0.38 os botões não têm texto: são para quem não vê a tela e os testes). */
 const val RETROCEDER = "Retroceder"

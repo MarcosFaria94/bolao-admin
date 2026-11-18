@@ -150,6 +150,12 @@ Os dados (integrantes, chaves Pix, saldo, comprovantes) ficam **só no celular**
 - **Estatísticas**: os **Times notáveis** abrem sem travar (as contas saíram da linha da tela e as medidas da tabela não se repetem) e o mesmo time escrito de dois jeitos pela Caixa ("A B C/RN" e "ABC/RN") fica numa linha só. A nota do **Atraso** ficou mais clara: há quantos concursos o número (ou o time) não sai; 0 = saiu no último.
 - **Calculadora**: as porcentagens têm o **~** na frente (~34,3%, ~100%): são arredondadas, e "100%" sem ele parecia certeza. Saiu o "Certeza" do "1 em".
 
+## Time com outra grafia, lupa com destaque e calculadora com todos os controles (desde a 0.40)
+
+- **Time do Coração**: a Caixa passou a escrever alguns times de outro jeito ("CONFIANCA SAF/SE", "BARRA FC/SC", "SAMP CORREA/MA"). O app reconhece o time da lista mesmo assim: o brasão e o nome aparecem nos Detalhes, os Times notáveis juntam as grafias numa linha só e, principalmente, a **conferência** conta o acerto do Time do Coração (apostou no Confiança e saiu "CONFIANCA SAF/SE" = acertou). Vale com a mesma UF, sem os finais "SAF", "FC", "EC"... ou com o nome abreviado palavra por palavra.
+- **Detalhes**: a **lupa** do seletor dos concursos ganhou destaque, do mesmo tamanho: o fundo da cor de destaque, o contorno e a lupa em dourado (no tema escuro) e uma sombra.
+- **Calculadora**: todos os tipos de aposta com mais números já aparecem, cada um com o seu controle, começando em 0 (o das apostas simples começa em 1); saiu o "Adicionar apostas com mais números". Os controles ficaram menores, com **−** e **+** dos lados para mudar de uma em uma, e o pino fica cinza nos que estão em 0. Os títulos são só "6 números", "8 números", "7 números e 3 trevos". O **Qualquer prêmio** fica à parte, num quadro de outra cor com o **Σ**: é a chance de todas as faixas juntas.
+
 ## Sessões (vários bolões)
 
 O app pode ter mais de um bolão ativo ao mesmo tempo: cada **sessão** é um bolão com os seus dados, ajustes, comprovantes e backup, separados dos das outras. O botão **Alternar sessão**, ao lado do Painel de Jogos, abre a tela das sessões (puxar para baixo ou deslizar para os lados sai):

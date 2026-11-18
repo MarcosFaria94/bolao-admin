@@ -99,10 +99,19 @@ val TIMES: List<TimeDoCoracao> = listOf(
 /** Os times como a Caixa escreve ("VASCO DA GAMA/RJ"). */
 val TIMES_DO_CORACAO: List<String> = TIMES.map { it.caixa }
 
-/** O time da lista com este nome da Caixa (sem diferença de acento e maiúsculas); null = digitado à mão. */
+/**
+ * O time da lista com este nome da Caixa (sem diferença de acento e maiúsculas); null = digitado à mão ou de outro biênio.
+ * Desde a 0.40 também com as grafias da Caixa que fogem da lista ([mesmoTime]: "CONFIANCA SAF/SE", "BARRA FC/SC",
+ * "SAMP CORREA/MA"): antes, esses ficavam sem o brasão.
+ */
 fun timeDoCoracao(caixa: String?): TimeDoCoracao? {
     if (caixa.isNullOrBlank()) return null
-    return TIMES_PELO_NOME[Conferencia.normalizar(caixa)]
+    val chave = Conferencia.normalizar(caixa)
+    TIMES_PELO_NOME[chave]?.let { return it }
+    return PARECIDOS.getOrPut(chave) {
+        val p = PalavrasDoTime.de(caixa)
+        listOfNotNull(TIMES_EM_PALAVRAS.firstOrNull { it.second.mesmoQue(p) }?.first)
+    }.firstOrNull()
 }
 
 /** Os times pelo nome normalizado (desde a 0.39: antes, cada busca normalizava os 80 nomes da lista). */
@@ -111,6 +120,60 @@ private val TIMES_PELO_NOME: Map<String, TimeDoCoracao> by lazy {
     for (t in TIMES) mapa.putIfAbsent(Conferencia.normalizar(t.caixa), t)
     mapa
 }
+
+/** Os times da lista já separados em palavras (para o [timeDoCoracao] com grafias diferentes). */
+private val TIMES_EM_PALAVRAS: List<Pair<TimeDoCoracao, PalavrasDoTime>> by lazy { TIMES.map { it to PalavrasDoTime.de(it.caixa) } }
+
+/** As grafias diferentes já procuradas (vazia = nenhum time da lista): os Times notáveis passam centenas de nomes. */
+private val PARECIDOS = java.util.concurrent.ConcurrentHashMap<String, List<TimeDoCoracao>>()
+
+/**
+ * Se os dois nomes são do mesmo time, mesmo escritos de jeitos diferentes (desde a 0.40: a Caixa passou a escrever
+ * "CONFIANCA SAF/SE" no lugar de "CONFIANÇA/SE", "BARRA FC/SC", "SAMP CORREA/MA", "SAORAIMUNDO/RR"). Só com a UF nos dois e
+ * igual; o nome vale se for igual sem os espaços, sem os finais "SAF", "FC", "EC"... ou, nos nomes de 2 palavras ou mais,
+ * abreviado palavra por palavra ("SAMP CORREA" = "SAMPAIO CORREA", com 3 letras ou mais).
+ */
+fun mesmoTime(a: String, b: String): Boolean = PalavrasDoTime.de(a).mesmoQue(PalavrasDoTime.de(b))
+
+/** As palavras do nome (sem acento, em maiúsculas, só letras e algarismos) e a UF: "Barra FC / SC" -> ([BARRA, FC], SC). */
+private class PalavrasDoTime(val nome: List<String>, val uf: String) {
+    private val junto = nome.joinToString("")
+    private val semFinais: List<String> = run {
+        var fim = nome.size
+        while (fim > 1 && nome[fim - 1] in FINAIS_DO_TIME) fim--
+        nome.subList(0, fim)
+    }
+    private val juntoSemFinais = semFinais.joinToString("")
+
+    fun mesmoQue(o: PalavrasDoTime): Boolean {
+        if (uf.isEmpty() || uf != o.uf || nome.isEmpty() || o.nome.isEmpty()) return false
+        if (junto == o.junto || juntoSemFinais == o.juntoSemFinais) return true
+        // Abreviado só nos nomes de 2 palavras ou mais ("AMERICA" não vale "AMERICANO").
+        if (semFinais.size != o.semFinais.size || semFinais.size < 2) return false
+        return semFinais.indices.all { i ->
+            val x = semFinais[i]
+            val y = o.semFinais[i]
+            x == y || (minOf(x.length, y.length) >= 3 && (x.startsWith(y) || y.startsWith(x)))
+        }
+    }
+
+    companion object {
+        fun de(t: String): PalavrasDoTime {
+            val (nome, uf) = partesDoTime(t)
+            return PalavrasDoTime(limpo(nome), limpo(uf).joinToString(""))
+        }
+
+        private fun limpo(s: String): List<String> =
+            java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(MARCAS, "").uppercase()
+                .map { if (it.isLetterOrDigit()) it else ' ' }
+                .joinToString("").split(' ').filter { it.isNotEmpty() }
+    }
+}
+
+/** Os finais que a Caixa às vezes põe no nome ("CONFIANCA SAF" = "CONFIANCA"); sempre sobra uma palavra. */
+private val FINAIS_DO_TIME = setOf("SAF", "FC", "EC", "AC", "SC", "CF", "FBC", "SA")
+
+private val MARCAS = Regex("\\p{Mn}+")
 
 /** "VASCO DA GAMA/RJ" -> ("VASCO DA GAMA", "RJ"). */
 fun partesDoTime(time: String): Pair<String, String> {

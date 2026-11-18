@@ -346,12 +346,15 @@ object Conferencia {
     private fun faixaPorNome(c: Concurso, trecho: String): FaixaPremio? =
         c.faixas.firstOrNull { normalizar(it.descricao).contains(normalizar(trecho)) }
 
-    /** Compara nomes ignorando acentos, caixa e pontuação ("Atlético/MG" ~ "ATLETICO MG"). */
+    /**
+     * Compara nomes ignorando acentos, caixa e pontuação ("Atlético/MG" ~ "ATLETICO MG"). Desde a 0.40 também as grafias
+     * diferentes do mesmo time ([mesmoTime]): apostado "CONFIANÇA/SE" e sorteado "CONFIANCA SAF/SE" é acerto.
+     */
     fun mesmoNome(apostado: String?, sorteado: String?): Boolean {
         val a = normalizar(apostado ?: return false)
         val s = normalizar(sorteado ?: return false)
         if (a.isEmpty() || s.isEmpty()) return false
-        return a == s || s.startsWith(a) || a.startsWith(s)
+        return a == s || s.startsWith(a) || a.startsWith(s) || mesmoTime(apostado, sorteado)
     }
 
     fun normalizar(t: String): String =

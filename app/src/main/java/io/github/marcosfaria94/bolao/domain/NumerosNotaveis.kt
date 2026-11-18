@@ -46,7 +46,7 @@ object NumerosNotaveis {
                 when (m.extra) {
                     Extra.TIME_DO_CORACAO -> Grupo(
                         TITULO_TIMES, "Time",
-                        contarTextos(lista, rotuloDe = { it.extra?.let(::chaveDoTime) }) { it.extra?.let(::chaveCompactaDoTime) },
+                        contarTextos(lista, rotuloDe = { it.extra?.let(::chaveDoTime) }) { it.extra?.let(::chaveDoGrupoDoTime) },
                         lista.count { it.extra != null },
                     )
                     Extra.MES_DE_SORTE -> Grupo(TITULO_MESES, "Mês", contarMeses(lista), lista.count { it.extra != null })
@@ -141,6 +141,13 @@ object NumerosNotaveis {
         val uf = if (i < 0) "" else t.substring(i + 1).filter(Char::isLetterOrDigit)
         return if (uf.isEmpty()) nome else "$nome/$uf"
     }
+
+    /**
+     * A chave da linha do time na tabela (desde a 0.40): o time da lista com qualquer grafia da Caixa ("CONFIANCA SAF/SE" e
+     * "CONFIANCA/SE" numa linha só, com o rótulo da grafia mais recente); de fora da lista, a [chaveCompactaDoTime].
+     */
+    fun chaveDoGrupoDoTime(texto: String): String =
+        timeDoCoracao(texto)?.let { chaveCompactaDoTime(it.caixa) } ?: chaveCompactaDoTime(texto)
 
     private fun semAcento(s: String): String = Normalizer.normalize(s, Normalizer.Form.NFD).replace(ACENTOS, "")
 

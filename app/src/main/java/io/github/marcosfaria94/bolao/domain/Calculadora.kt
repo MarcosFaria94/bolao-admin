@@ -9,9 +9,10 @@ import kotlin.math.roundToLong
 
 /**
  * A calculadora de probabilidades (desde a 0.38, pedido do usuário; o ícone ao lado das Estatísticas, nos Detalhes): um
- * controle deslizante para as apostas simples e um para cada tipo de aposta com mais números que a pessoa adiciona; o
- * painel mostra a chance de cada faixa (de acertar pelo menos uma vez com todas essas apostas no mesmo concurso) e a de
- * ganhar algum prêmio. Cada modalidade tem a sua configuração ([ConfigDaCalculadora]), guardada sozinha.
+ * controle deslizante para as apostas simples e (desde a 0.40, todos na tela, começando em 0) um para cada tipo de aposta
+ * com mais números; o painel mostra a chance de cada faixa (de acertar pelo menos uma vez com todas essas apostas no mesmo
+ * concurso) e, à parte, a de ganhar algum prêmio. Cada modalidade tem a sua configuração ([ConfigDaCalculadora]), guardada
+ * sozinha.
  *
  * A conta considera apostas diferentes umas das outras, como se escolhidas ao acaso: a chance de uma faixa com todas
  * elas é 1 − Π (1 − p)ⁿ (p = a chance de uma aposta daquele tipo, n = quantas). Na faixa principal, com apostas
@@ -124,45 +125,58 @@ object Calculadora {
     /** O sinal das porcentagens arredondadas (desde a 0.39). */
     const val APROXIMADO = "~"
 
-    /** O nome de um tipo de aposta: "Apostas simples (6 números)", "Apostas de 8 números", "Apostas de 7 números e 3 trevos". */
-    fun nomeDaLinha(m: Modalidade, numeros: Int, trevos: Int, simples: Boolean = false): String {
+    /**
+     * O nome de um tipo de aposta: "6 números", "8 números", "7 números e 3 trevos", "7 colunas" (desde a 0.40, pedido do
+     * usuário; era "Apostas simples (6 números)" e "Apostas de 8 números").
+     */
+    fun nomeDaLinha(m: Modalidade, numeros: Int, trevos: Int): String {
         val nums = when (m.formato) {
             Formato.COLUNAS -> "7 colunas"
             Formato.LOTECA -> "14 jogos"
             else -> "$numeros números"
         }
         val trv = if (m.trevos > 0) " e $trevos trevos" else ""
-        return if (simples) "Apostas simples ($nums$trv)" else "Apostas de $nums$trv"
+        return "$nums$trv"
     }
+
+    /** O título dos controles das apostas com mais números (desde a 0.40, todos na tela). */
+    fun tituloDosMaisNumeros(m: Modalidade): String = if (m.trevos > 0) "Com mais números ou trevos" else "Com mais números"
 
     /** "1 aposta", "3 apostas". */
     fun quantas(n: Int): String = if (n == 1) "1 aposta" else "$n apostas"
 
-    /** A configuração com mais [apostas] do tipo [numeros]/[trevos] (somando ao que já havia; a simples vai no controle dela). */
-    fun adicionar(m: Modalidade, c: ConfigDaCalculadora, numeros: Int, trevos: Int, apostas: Int): ConfigDaCalculadora {
+    /** Quantas apostas do tipo [numeros]/[trevos] a configuração tem (a simples no controle dela; as outras, 0 se não houver). */
+    fun apostasDe(m: Modalidade, c: ConfigDaCalculadora, numeros: Int, trevos: Int): Int {
         val s = simples(m)
-        if (numeros == s.numeros && trevos == s.trevos) return c.copy(simples = c.simples + apostas)
-        val existente = c.extras.indexOfFirst { it.numeros == numeros && it.trevos == trevos }
-        val extras = if (existente >= 0) {
-            c.extras.mapIndexed { i, e -> if (i == existente) e.copy(apostas = e.apostas + apostas) else e }
-        } else {
-            (c.extras + LinhaDaCalculadora(numeros, trevos, apostas)).sortedWith(compareBy({ it.numeros }, { it.trevos }))
-        }
-        // A amplitude cresce, se for preciso, para o controle caber a quantidade.
-        val maior = (extras.map { it.apostas } + c.simples).max()
-        val amplitude = AMPLITUDES.firstOrNull { it >= maior }?.coerceAtLeast(c.maximo) ?: AMPLITUDES.last()
-        return c.copy(extras = extras, maximo = amplitude)
+        if (numeros == s.numeros && trevos == s.trevos) return c.simples
+        return c.extras.filter { it.numeros == numeros && it.trevos == trevos }.sumOf { it.apostas }
+    }
+
+    /**
+     * A configuração com [apostas] do tipo [numeros]/[trevos] (desde a 0.40 cada tipo tem o seu controle na tela, a simples
+     * começando em 1 e os outros em 0; os que ficam em 0 saem da lista guardada). Nunca abaixo de 0.
+     */
+    fun comApostas(m: Modalidade, c: ConfigDaCalculadora, numeros: Int, trevos: Int, apostas: Int): ConfigDaCalculadora {
+        val q = apostas.coerceAtLeast(0)
+        val s = simples(m)
+        if (numeros == s.numeros && trevos == s.trevos) return c.copy(simples = q)
+        val outras = c.extras.filterNot { it.numeros == numeros && it.trevos == trevos }
+        val extras = if (q == 0) outras else (outras + LinhaDaCalculadora(numeros, trevos, q)).sortedWith(compareBy({ it.numeros }, { it.trevos }))
+        return c.copy(extras = extras)
     }
 }
 
-/** Um controle deslizante a mais da calculadora (desde a 0.38): apostas com [numeros] números (e [trevos]), [apostas] delas. */
+/**
+ * Um tipo de aposta com mais números na calculadora (desde a 0.38): apostas com [numeros] números (e [trevos]), [apostas]
+ * delas. Desde a 0.40 só os que não estão em 0 ficam guardados (o padrão 1 continua, para ler o que já estava guardado).
+ */
 @Serializable
 data class LinhaDaCalculadora(val numeros: Int, val trevos: Int = 0, val apostas: Int = 1)
 
 /**
- * A configuração da calculadora de uma modalidade (desde a 0.38): quantas apostas simples, os controles das apostas com
- * mais números, a amplitude dos controles ([maximo]) e as faixas do painel ([faixas]; null = todas, com o "Qualquer
- * prêmio" = [Calculadora.QUALQUER_PREMIO]). O "Redefinir" volta a esta configuração padrão.
+ * A configuração da calculadora de uma modalidade (desde a 0.38): quantas apostas simples (começa em 1), as apostas com
+ * mais números (as que não estão em 0), a amplitude dos controles ([maximo]) e as faixas do painel ([faixas]; null =
+ * todas, com o "Qualquer prêmio" = [Calculadora.QUALQUER_PREMIO]). O "Redefinir" volta a esta configuração padrão.
  */
 @Serializable
 data class ConfigDaCalculadora(

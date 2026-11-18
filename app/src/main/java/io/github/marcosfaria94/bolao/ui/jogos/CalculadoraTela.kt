@@ -1,6 +1,8 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
 import android.content.Context
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,7 +13,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,11 +20,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Settings
@@ -31,20 +30,21 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -52,13 +52,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.marcosfaria94.bolao.data.Estado
@@ -67,10 +70,9 @@ import io.github.marcosfaria94.bolao.domain.ConfigDaCalculadora
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Probabilidades
-import io.github.marcosfaria94.bolao.ui.comum.JanelaComCampos
 import io.github.marcosfaria94.bolao.ui.comum.TarjaModalidade
-import kotlinx.serialization.json.Json
 import kotlin.math.roundToInt
+import kotlinx.serialization.json.Json
 
 /** O endereço da calculadora de probabilidades (desde a 0.38): "calculadora/MEGA_SENA". */
 const val ROTA_CALCULADORA = "calculadora/{nome}"
@@ -84,14 +86,17 @@ fun temCalculadora(m: Modalidade): Boolean = Calculadora.tem(m)
 /** Os textos e nomes da calculadora (os testes procuram por eles). */
 const val CONFIGURAR_A_CALCULADORA = "Configurar a calculadora"
 const val REDEFINIR = "Redefinir"
-const val ADICIONAR_APOSTAS = "Adicionar apostas com mais números"
 const val TITULO_DO_PAINEL = "Probabilidades"
+
+/** A explicação do "Qualquer prêmio", à parte no painel (desde a 0.40). */
+const val LEGENDA_QUALQUER = "Todas as faixas juntas"
 const val AMPLITUDE = "Amplitude dos controles"
 const val FAIXAS_NO_PAINEL = "Faixas no painel"
 const val TODAS_AS_FAIXAS = "Todas"
 
-/** "Tirar as apostas de 8 números" (o X de cada controle a mais). */
-fun tirarAsApostas(nome: String): String = "Tirar: $nome"
+/** Os botões do ajuste fino de cada controle (desde a 0.40): "Menos uma: 8 números", "Mais uma: 8 números". */
+fun menosUma(nome: String): String = "Menos uma: $nome"
+fun maisUma(nome: String): String = "Mais uma: $nome"
 
 /**
  * A configuração de cada calculadora (desde a 0.38): guardada no celular, uma por modalidade, a cada mudança e ao sair
@@ -113,9 +118,10 @@ object GuardaDaCalculadora {
 
 /**
  * A calculadora de probabilidades da modalidade (desde a 0.38, pedido do usuário; o ícone da calculadora nos Detalhes, ao
- * lado das Estatísticas): o painel com a chance de cada faixa (e de algum prêmio) com as apostas escolhidas e o custo; o
- * controle deslizante das apostas simples e um para cada tipo de aposta com mais números adicionado ("Adicionar apostas
- * com mais números": quantos números e quantas apostas). A engrenagem muda a amplitude dos controles e as faixas do
+ * lado das Estatísticas): o painel com a chance de cada faixa e, à parte (desde a 0.40), a de algum prêmio, com as
+ * apostas escolhidas e o custo; o controle deslizante das apostas simples (começa em 1) e, desde a 0.40 (pedido do
+ * usuário), um para cada tipo de aposta com mais números, todos na tela e começando em 0 (antes era preciso adicioná-los).
+ * Cada controle é pequeno e tem − e + para o ajuste fino. A engrenagem muda a amplitude dos controles e as faixas do
  * painel; "Redefinir" volta ao padrão. A configuração fica guardada sozinha ([GuardaDaCalculadora]).
  */
 @Composable
@@ -123,7 +129,6 @@ fun CalculadoraTela(estado: Estado, m: Modalidade) {
     val ctx = LocalContext.current
     var config by remember(m) { mutableStateOf(GuardaDaCalculadora.ler(ctx, m)) }
     var configurando by remember { mutableStateOf(false) }
-    var adicionando by remember { mutableStateOf(false) }
     // Guarda a cada mudança e ao sair da tela.
     LaunchedEffect(config) { GuardaDaCalculadora.gravar(ctx, m, config) }
     val ultima by rememberUpdatedState(config)
@@ -157,26 +162,26 @@ fun CalculadoraTela(estado: Estado, m: Modalidade) {
             }
         }
         PainelDasChances(m, config, preco)
-        ControleDeApostas(
-            nome = Calculadora.nomeDaLinha(m, simples.numeros, simples.trevos, simples = true),
-            valor = config.simples,
-            maximo = config.maximo,
-            aoMudar = { config = config.copy(simples = it) },
-        )
-        config.extras.forEachIndexed { i, e ->
+        // Cada tipo de aposta com o seu controle: a simples num cartão; as com mais números, todas, noutro.
+        CartaoDosControles(null) {
             ControleDeApostas(
-                nome = Calculadora.nomeDaLinha(m, e.numeros, e.trevos),
-                valor = e.apostas,
+                nome = Calculadora.nomeDaLinha(m, simples.numeros, simples.trevos),
+                valor = config.simples,
                 maximo = config.maximo,
-                aoMudar = { v -> config = config.copy(extras = config.extras.mapIndexed { j, x -> if (j == i) x.copy(apostas = v) else x }) },
-                aoTirar = { config = config.copy(extras = config.extras.filterIndexed { j, _ -> j != i }) },
+                aoMudar = { config = config.copy(simples = it) },
             )
         }
         if (maisNumeros.isNotEmpty()) {
-            OutlinedButton(onClick = { adicionando = true }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(ADICIONAR_APOSTAS, maxLines = 1)
+            CartaoDosControles(Calculadora.tituloDosMaisNumeros(m)) {
+                maisNumeros.forEachIndexed { i, l ->
+                    if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                    ControleDeApostas(
+                        nome = Calculadora.nomeDaLinha(m, l.numeros, l.trevos),
+                        valor = Calculadora.apostasDe(m, config, l.numeros, l.trevos),
+                        maximo = config.maximo,
+                        aoMudar = { v -> config = Calculadora.comApostas(m, config, l.numeros, l.trevos, v) },
+                    )
+                }
             }
         }
         notasDaCalculadora(m).forEach { n ->
@@ -188,16 +193,6 @@ fun CalculadoraTela(estado: Estado, m: Modalidade) {
     if (configurando) {
         JanelaDaEngrenagem(m, config, aoMudar = { config = it }, aoFechar = { configurando = false })
     }
-    if (adicionando) {
-        JanelaDeAdicionar(
-            m, config.maximo,
-            aoAdicionar = { n, t, q ->
-                adicionando = false
-                config = Calculadora.adicionar(m, config, n, t, q)
-            },
-            aoFechar = { adicionando = false },
-        )
-    }
 }
 
 /** As notas do fim da calculadora (como a conta é feita). */
@@ -208,10 +203,16 @@ fun notasDaCalculadora(m: Modalidade): List<String> = listOfNotNull(
     Probabilidades.LEGENDA_DA_MAIS_MILIONARIA.takeIf { m == Modalidade.MAIS_MILIONARIA },
 )
 
-/** O painel: o total de apostas e o custo e, embaixo, cada faixa com o "1 em X" e a porcentagem. */
+/**
+ * O painel: o total de apostas e o custo e, embaixo, cada faixa com o "1 em X" e a porcentagem. Desde a 0.40 (pedido do
+ * usuário) o "Qualquer prêmio" fica à parte, num quadro de outra cor com o Σ e a [LEGENDA_QUALQUER]: é a junção de todas
+ * as faixas, não uma faixa.
+ */
 @Composable
 private fun PainelDasChances(m: Modalidade, config: ConfigDaCalculadora, preco: Long) {
     val chances = remember(m, config) { Calculadora.doPainel(m, config) }
+    val faixas = chances.filter { it.indice != Calculadora.QUALQUER_PREMIO }
+    val qualquer = chances.firstOrNull { it.indice == Calculadora.QUALQUER_PREMIO }
     val total = Calculadora.total(m, config)
     val custo = Calculadora.apostasSimples(m, config) * preco
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), modifier = Modifier.fillMaxWidth()) {
@@ -225,54 +226,168 @@ private fun PainelDasChances(m: Modalidade, config: ConfigDaCalculadora, preco: 
             if (chances.isEmpty()) {
                 Text("Nenhuma faixa escolhida na engrenagem.", style = MaterialTheme.typography.bodyMedium)
             }
-            chances.forEachIndexed { i, c ->
+            faixas.forEachIndexed { i, c ->
                 if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                val qualquer = c.indice == Calculadora.QUALQUER_PREMIO
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Text(
-                        c.nome,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = if (qualquer) FontWeight.Bold else FontWeight.Normal,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(Calculadora.umEm(c.p), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                        Text(
-                            Calculadora.porcentagem(c.p),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                    }
+                    Text(c.nome, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    ChanceAoLado(c.p)
                 }
+            }
+            if (qualquer != null) {
+                if (faixas.isNotEmpty()) Spacer(Modifier.height(4.dp))
+                QuadroDoQualquer(qualquer.p)
             }
         }
     }
 }
 
-/** Um controle deslizante de um tipo de aposta: o nome, quantas e o X (nos adicionados). */
+/** O "1 em X" e, embaixo, a porcentagem, alinhados à direita. */
 @Composable
-private fun ControleDeApostas(nome: String, valor: Int, maximo: Int, aoMudar: (Int) -> Unit, aoTirar: (() -> Unit)? = null) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 40.dp)) {
-                Text(nome, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                Text(Calculadora.quantas(valor), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                if (aoTirar != null) {
-                    IconButton(onClick = aoTirar) { Icon(Icons.Outlined.Close, contentDescription = tirarAsApostas(nome)) }
-                } else {
-                    Spacer(Modifier.width(8.dp))
+private fun ChanceAoLado(p: Double, cor: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    Column(horizontalAlignment = Alignment.End) {
+        Text(Calculadora.umEm(p), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(Calculadora.porcentagem(p), style = MaterialTheme.typography.bodySmall, color = cor, maxLines = 1)
+    }
+}
+
+/**
+ * O "Qualquer prêmio" à parte (desde a 0.40), num quadro de outra cor: em cima o Σ e o nome (a linha toda, para caber com a
+ * letra grande); embaixo a [LEGENDA_QUALQUER] e a chance.
+ */
+@Composable
+private fun QuadroDoQualquer(p: Double) {
+    val cores = MaterialTheme.colorScheme
+    val suave = cores.onSecondaryContainer.copy(alpha = 0.8f)
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = cores.secondaryContainer,
+        contentColor = cores.onSecondaryContainer,
+        border = BorderStroke(1.dp, cores.primary.copy(alpha = 0.45f)),
+        modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(TAMANHO_DO_SIGMA).clip(CircleShape).background(cores.primary.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Σ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = cores.primary)
                 }
+                Spacer(Modifier.width(ESPACO_DO_SIGMA))
+                Text(Calculadora.NOME_QUALQUER, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
             }
-            Slider(
-                value = valor.coerceIn(0, maximo).toFloat(),
-                onValueChange = { aoMudar(it.roundToInt()) },
-                valueRange = 0f..maximo.toFloat(),
-                modifier = Modifier.padding(end = 8.dp).semantics { contentDescription = nome },
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    LEGENDA_QUALQUER,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = suave,
+                    modifier = Modifier.weight(1f).padding(start = TAMANHO_DO_SIGMA + ESPACO_DO_SIGMA, end = 8.dp),
+                )
+                ChanceAoLado(p, suave)
+            }
         }
     }
 }
+
+private val TAMANHO_DO_SIGMA = 28.dp
+private val ESPACO_DO_SIGMA = 10.dp
+
+/** Um cartão com os controles (o [titulo] em cima, se houver). */
+@Composable
+private fun CartaoDosControles(titulo: String?, conteudo: @Composable () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+            if (titulo != null) {
+                Text(
+                    titulo,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp),
+                )
+            }
+            conteudo()
+        }
+    }
+}
+
+/**
+ * O controle de um tipo de aposta: o nome e quantas em cima; embaixo, o − , o controle deslizante (pequeno, desde a 0.40)
+ * e o + (de uma em uma, para o ajuste fino, de 0 ao máximo da amplitude).
+ */
+@Composable
+private fun ControleDeApostas(nome: String, valor: Int, maximo: Int, aoMudar: (Int) -> Unit) {
+    val v = valor.coerceIn(0, maximo)
+    val cores = MaterialTheme.colorScheme
+    Column(Modifier.padding(vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
+            Text(nome, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text(
+                Calculadora.quantas(valor),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (valor > 0) FontWeight.Bold else FontWeight.Normal,
+                color = if (valor > 0) cores.onSurface else cores.onSurfaceVariant,
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BotaoDoAjuste(Icons.Outlined.Remove, menosUma(nome), v > 0) { aoMudar(v - 1) }
+            ControleDeslizantePequeno(v, maximo, nome, aoMudar, Modifier.weight(1f).padding(horizontal = 6.dp))
+            BotaoDoAjuste(Icons.Outlined.Add, maisUma(nome), v < maximo) { aoMudar(v + 1) }
+        }
+    }
+}
+
+/** O − ou o + de um controle (desde a 0.40): redondo, pequeno. */
+@Composable
+private fun BotaoDoAjuste(icone: ImageVector, nome: String, ligado: Boolean, aoTocar: () -> Unit) {
+    val cores = MaterialTheme.colorScheme
+    Surface(
+        onClick = aoTocar,
+        enabled = ligado,
+        shape = CircleShape,
+        color = cores.surfaceContainerHighest,
+        contentColor = if (ligado) cores.onSurface else cores.onSurface.copy(alpha = 0.38f),
+        modifier = Modifier.size(TAMANHO_DO_AJUSTE).semantics { contentDescription = nome },
+    ) {
+        Box(contentAlignment = Alignment.Center) { Icon(icone, contentDescription = null, modifier = Modifier.size(18.dp)) }
+    }
+}
+
+/**
+ * O controle deslizante pequeno (desde a 0.40, pedido do usuário; o padrão do Material tem um pino de 44dp e um trilho de
+ * 16dp): um pino redondo de [TAMANHO_DO_PINO] (cinza em 0) e um trilho de [ALTURA_DO_TRILHO], numa faixa de
+ * [ALTURA_DO_CONTROLE].
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ControleDeslizantePequeno(valor: Int, maximo: Int, nome: String, aoMudar: (Int) -> Unit, modifier: Modifier) {
+    val cores = MaterialTheme.colorScheme
+    val ativo = cores.primary
+    val inativo = cores.surfaceContainerHighest
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+        Slider(
+            value = valor.toFloat(),
+            onValueChange = { aoMudar(it.roundToInt()) },
+            modifier = modifier.height(ALTURA_DO_CONTROLE).semantics { contentDescription = nome },
+            valueRange = 0f..maximo.toFloat(),
+            // O pino cinza em 0: os tipos que estão sendo usados se destacam na lista.
+            thumb = { Box(Modifier.size(TAMANHO_DO_PINO).shadow(1.dp, CircleShape).background(if (valor > 0) ativo else cores.outline, CircleShape)) },
+            track = { estado ->
+                Canvas(Modifier.fillMaxWidth().height(ALTURA_DO_TRILHO)) {
+                    val r = estado.valueRange
+                    val f = if (r.endInclusive > r.start) ((estado.value - r.start) / (r.endInclusive - r.start)).coerceIn(0f, 1f) else 0f
+                    val canto = CornerRadius(size.height / 2, size.height / 2)
+                    drawRoundRect(inativo, cornerRadius = canto)
+                    if (f > 0f) drawRoundRect(ativo, size = Size(size.width * f, size.height), cornerRadius = canto)
+                }
+            },
+        )
+    }
+}
+
+private val TAMANHO_DO_AJUSTE = 30.dp
+private val TAMANHO_DO_PINO = 18.dp
+private val ALTURA_DO_TRILHO = 6.dp
+private val ALTURA_DO_CONTROLE = 28.dp
 
 /** A engrenagem: a amplitude dos controles e as faixas do painel. */
 @Composable
@@ -325,6 +440,8 @@ private fun JanelaDaEngrenagem(m: Modalidade, config: ConfigDaCalculadora, aoMud
                 Text(FAIXAS_NO_PAINEL, style = MaterialTheme.typography.titleSmall)
                 LinhaDeEscolha(TODAS_AS_FAIXAS, config.faixas == null) { v -> com(if (v) indices else emptyList()) }
                 indices.forEach { i ->
+                    // O "Qualquer prêmio" separado das faixas (desde a 0.40: é a junção delas).
+                    if (i == Calculadora.QUALQUER_PREMIO) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     val nome = if (i == Calculadora.QUALQUER_PREMIO) Calculadora.NOME_QUALQUER else nomes[i]
                     LinhaDeEscolha(nome, i in escolhidas) { v -> com(if (v) escolhidas + i else escolhidas - i) }
                 }
@@ -346,63 +463,5 @@ private fun LinhaDeEscolha(nome: String, marcada: Boolean, aoMudar: (Boolean) ->
         Checkbox(checked = marcada, onCheckedChange = null)
         Spacer(Modifier.width(8.dp))
         Text(nome, style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
-/** "Adicionar apostas com mais números": quantos números (e trevos, na +Milionária) e quantas apostas. */
-@Composable
-private fun JanelaDeAdicionar(m: Modalidade, maximo: Int, aoAdicionar: (Int, Int, Int) -> Unit, aoFechar: () -> Unit) {
-    val opcoes = remember(m) { Calculadora.comMaisNumeros(m) }
-    val numeros = opcoes.map { it.numeros }.distinct().sorted()
-    val trevos = opcoes.map { it.trevos }.distinct().sorted()
-    var n by remember { mutableIntStateOf(numeros.firstOrNull { it > m.qtdAposta } ?: numeros.first()) }
-    var t by remember { mutableIntStateOf(m.trevos) }
-    var quantas by remember { mutableStateOf("1") }
-    val q = quantas.toIntOrNull()?.takeIf { it in 1..maximo.coerceAtLeast(Calculadora.AMPLITUDES.last()) }
-    val existe = Calculadora.linha(m, n, t) != null
-    JanelaComCampos(
-        titulo = "Adicionar apostas",
-        aoFechar = aoFechar,
-        botoes = {
-            TextButton(onClick = aoFechar) { Text("Cancelar") }
-            TextButton(onClick = { if (q != null) aoAdicionar(n, t, q) }, enabled = q != null && existe) { Text("Adicionar") }
-        },
-    ) {
-        Escolha("Números jogados", n, (listOf(m.qtdAposta) + numeros).distinct().sorted()) { n = it }
-        if (m.trevos > 0) Escolha("Trevos", t, (listOf(m.trevos) + trevos).distinct().sorted()) { t = it }
-        OutlinedTextField(
-            value = quantas,
-            onValueChange = { novo -> quantas = novo.filter(Char::isDigit).take(4) },
-            label = { Text("Número de apostas") },
-            singleLine = true,
-            isError = q == null,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Calculadora.linha(m, n, t)?.let { l ->
-            Text(
-                "Cada uma vale ${l.apostasSimples} ${if (l.apostasSimples == 1L) "aposta simples" else "apostas simples"}.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/** Um valor com − e + (os números jogados, os trevos). */
-@Composable
-private fun Escolha(nome: String, valor: Int, opcoes: List<Int>, aoMudar: (Int) -> Unit) {
-    val i = opcoes.indexOf(valor)
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Text(nome, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        IconButton(onClick = { if (i > 0) aoMudar(opcoes[i - 1]) }, enabled = i > 0) {
-            Icon(Icons.Outlined.Remove, contentDescription = "Menos: $nome")
-        }
-        Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
-            Text(valor.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        }
-        IconButton(onClick = { if (i < opcoes.lastIndex) aoMudar(opcoes[i + 1]) }, enabled = i in 0 until opcoes.lastIndex) {
-            Icon(Icons.Outlined.Add, contentDescription = "Mais: $nome")
-        }
     }
 }

@@ -257,17 +257,16 @@ class Novidades038Test {
         // Dez apostas simples: a sena fica praticamente 10 vezes mais provável.
         val dez = Calculadora.chances(m, ConfigDaCalculadora(simples = 10))
         assertEquals(10 * uma[0].p, dez[0].p, uma[0].p * 1e-5)
-        // Uma aposta de 7 números vale 7 simples na sena.
-        val sete = Calculadora.adicionar(m, ConfigDaCalculadora(simples = 0), 7, 0, 1)
+        // Uma aposta de 7 números vale 7 simples na sena (desde a 0.40 pelo controle dela, que começa em 0).
+        val sete = Calculadora.comApostas(m, ConfigDaCalculadora(simples = 0), 7, 0, 1)
         assertEquals(7L, Calculadora.apostasSimples(m, sete))
         assertEquals(7 * uma[0].p, Calculadora.chances(m, sete)[0].p, uma[0].p * 1e-6)
-        // Somar o mesmo tipo junta no mesmo controle; a amplitude cresce para caber.
-        val mais = Calculadora.adicionar(m, Calculadora.adicionar(m, ConfigDaCalculadora(), 8, 0, 5), 8, 0, 30)
+        // Mudar o mesmo tipo fica no mesmo controle.
+        val mais = Calculadora.comApostas(m, Calculadora.comApostas(m, ConfigDaCalculadora(), 8, 0, 5), 8, 0, 35)
         assertEquals(1, mais.extras.size)
         assertEquals(35, mais.extras[0].apostas)
-        assertEquals(50, mais.maximo)
         // O tipo da simples vai para o controle da simples.
-        assertEquals(4, Calculadora.adicionar(m, ConfigDaCalculadora(simples = 1), 6, 0, 3).simples)
+        assertEquals(3, Calculadora.comApostas(m, ConfigDaCalculadora(simples = 1), 6, 0, 3).simples)
         // As faixas do painel escolhidas na engrenagem.
         assertEquals(listOf("Quadra", Calculadora.NOME_QUALQUER), Calculadora.doPainel(m, ConfigDaCalculadora(faixas = listOf(2, Calculadora.QUALQUER_PREMIO))).map { it.nome })
         // Dupla Sena: os 2 sorteios.
