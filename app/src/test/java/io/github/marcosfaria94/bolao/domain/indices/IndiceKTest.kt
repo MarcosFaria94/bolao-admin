@@ -26,7 +26,12 @@ class IndiceKTest {
     private fun arquivo(vararg caminhos: String): File =
         caminhos.map { File(it) }.firstOrNull { it.exists() } ?: error("Arquivo não encontrado: ${caminhos.toList()}")
 
-    private val parametros = ParametrosK.ler(arquivo("src/main/assets/parametros_k.json", "app/src/main/assets/parametros_k.json").readText())
+    // Desde a 0.38 o app usa os parâmetros 1.4 (o modelo de vendas com a correção do IPCA); os 15 casos do manual são da
+    // implementação de referência com os parâmetros de antes (1.3, guardados nos recursos dos testes): eles conferem o motor.
+    private val parametros = ParametrosK.ler(
+        (javaClass.classLoader?.getResource("parametros_k_v1_3.json")?.readText()
+            ?: arquivo("src/test/resources/parametros_k_v1_3.json", "app/src/test/resources/parametros_k_v1_3.json").readText()),
+    )
     private val testes: JsonObject = Json.parseToJsonElement(
         (javaClass.classLoader?.getResource("casos_de_teste.json")?.readText()
             ?: arquivo("src/test/resources/casos_de_teste.json", "app/src/test/resources/casos_de_teste.json").readText()),

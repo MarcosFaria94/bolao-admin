@@ -30,6 +30,8 @@ object Notificador {
     /** Os avisos dos concursos especiais (desde a 0.34; um canal novo, com nome próprio nos ajustes do Android). */
     private const val CANAL_ESPECIAIS = "concursos_especiais"
     private const val ID_ESPECIAIS = 30_000
+    private const val CANAL_JOGOS = "avisos_dos_jogos"
+    private const val ID_JOGOS = 34_000
     const val EXTRA_DESTINO = "destino"
 
     /** A sessão do aviso (desde a 0.21): tocar abre o app nela. */
@@ -66,6 +68,31 @@ object Notificador {
                 description = "Mega da Virada, Quina de São João...: quando as apostas abrem e na véspera do sorteio."
             },
         )
+        nm.createNotificationChannel(
+            NotificationChannel(CANAL_JOGOS, "Avisos dos jogos", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Os avisos de Ajustes > Parâmetros: concurso que acumulou, k1 acima do escolhido, prêmio acima do escolhido."
+            },
+        )
+    }
+
+    /**
+     * Um aviso dos Parâmetros (desde a 0.38): acumulou, k1 acima de x ou prêmio acima de n. [prefixo]: o nome da sessão
+     * (com mais de uma). Tocar abre a página da modalidade (ou os Jogos, com mais de uma), na sessão.
+     */
+    @SuppressLint("MissingPermission")
+    fun avisoDosJogos(context: Context, a: io.github.marcosfaria94.bolao.domain.AvisosDosJogos.Aviso, prefixo: String, sessao: String) {
+        if (!permitido(context)) return
+        val id = ID_JOGOS + ((sessao + a.chaves.first()).hashCode() and 0xFFF)
+        val n = NotificationCompat.Builder(context, CANAL_JOGOS)
+            .setSmallIcon(R.drawable.ic_notificacao)
+            .setColor(COR)
+            .setContentTitle(prefixo + a.titulo)
+            .setContentText(a.texto)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(a.texto))
+            .setContentIntent(abrir(context, a.destino, id, sessao))
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(id, n)
     }
 
     /**

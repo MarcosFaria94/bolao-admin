@@ -1,6 +1,19 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -65,13 +78,14 @@ fun DialogoConfirmar(
     confirmar: String,
     aoConfirmar: () -> Unit,
     aoFechar: () -> Unit,
+    cancelar: String = "Cancelar",
 ) {
     AlertDialog(
         onDismissRequest = aoFechar,
         title = { Text(titulo) },
         text = { Text(texto) },
         confirmButton = { TextButton(onClick = aoConfirmar) { Text(confirmar) } },
-        dismissButton = { TextButton(onClick = aoFechar) { Text("Cancelar") } },
+        dismissButton = { TextButton(onClick = aoFechar) { Text(cancelar) } },
     )
 }
 
@@ -128,4 +142,49 @@ fun DialogoArquivoPronto(titulo: String, texto: String, uri: android.net.Uri, ao
             }
         },
     )
+}
+
+/**
+ * Uma janela com campos (desde a 0.38): feita sobre um Dialog que ocupa a tela, com a janela no meio, como a do preço do
+ * volante ([io.github.marcosfaria94.bolao.ui.aposta.JanelaDoPreco]); o AlertDialog com campo de texto não deixa os testes
+ * de tela terminarem. Tocar fora fecha. [botoes]: os botões do pé (à direita).
+ */
+@Composable
+fun JanelaComCampos(
+    titulo: String,
+    aoFechar: () -> Unit,
+    botoes: @Composable RowScope.() -> Unit,
+    conteudo: @Composable ColumnScope.() -> Unit,
+) {
+    Dialog(onDismissRequest = aoFechar, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = aoFechar)
+                .imePadding()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 6.dp,
+                modifier = Modifier
+                    .widthIn(max = 460.dp)
+                    .fillMaxWidth()
+                    // O toque dentro da janela não fecha.
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+            ) {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(titulo, style = MaterialTheme.typography.headlineSmall)
+                    conteudo()
+                    Spacer(Modifier.height(2.dp))
+                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth(), content = botoes)
+                }
+            }
+        }
+    }
 }

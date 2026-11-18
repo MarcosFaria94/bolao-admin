@@ -1,7 +1,12 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.semantics
+import kotlin.math.roundToInt
+import io.github.marcosfaria94.bolao.ui.aposta.nomeDoTimeSorteado
+import io.github.marcosfaria94.bolao.domain.Formato
+import io.github.marcosfaria94.bolao.domain.NumerosNotaveis
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.Slider
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,20 +14,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Insights
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,17 +30,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.domain.Concurso
@@ -61,7 +50,6 @@ import io.github.marcosfaria94.bolao.net.CaixaApi
 import io.github.marcosfaria94.bolao.ui.aposta.valorSemQuebra
 import io.github.marcosfaria94.bolao.ui.comum.CartaoQueAbre
 import io.github.marcosfaria94.bolao.ui.comum.TarjaModalidade
-import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 
 /**
  * Os concursos da página do jogo (desde a 0.37): os resumos do histórico da modalidade e a [trilha] que os Detalhes
@@ -120,35 +108,10 @@ fun rotaDasEstatisticas(m: Modalidade, especial: Int?, concurso: Int?): String =
 fun temEstatisticas(m: Modalidade): Boolean = m != Modalidade.FEDERAL
 
 /**
- * O botão das Estatísticas nos Detalhes (desde a 0.37, no fim, no lugar dos Prêmios típicos): um cartão como os que abrem,
- * com o gráfico e a seta para a direita.
- */
-@Composable
-fun BotaoDasEstatisticas(aoTocar: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClickLabel = "Abrir as estatísticas", onClick = aoTocar)
-                .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
-        ) {
-            Icon(Icons.Outlined.Insights, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(10.dp))
-            Text(TITULO_ESTATISTICAS, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-/**
- * A tela das Estatísticas (desde a 0.37, pelo botão dos Detalhes): no alto a tarja da modalidade (ou a do especial) e,
- * cada um num cartão que começa fechado, abre trazendo-se para a tela e fecha com um toque (como os dos Detalhes):
- * os Concursos notáveis ([ConcursosNotaveis]: os que soltaram o prêmio principal) e os Prêmios típicos (que até a 0.36
- * ficavam nos Detalhes). Na página de um especial, só os especiais da época dele; na da modalidade, só os regulares.
+ * A tela das Estatísticas (desde a 0.37; desde a 0.38 pelo ícone no canto direito da barra dos Detalhes): no alto a tarja
+ * da modalidade (ou a do especial) e, cada um num cartão que começa fechado, abre trazendo-se para a tela e fecha com um
+ * toque (como os dos Detalhes): os Concursos notáveis ([ConcursosNotaveis]: os que soltaram o prêmio principal), desde a
+ * 0.38 os Números notáveis ([NumerosNotaveis], com os Times, Meses, Trevos ou Resultados notáveis) e os Prêmios típicos. Na página de um especial, só os especiais da época dele; na da modalidade, só os regulares.
  * [concurso]: o concurso que estava nos Detalhes (a coluna dos Prêmios típicos; 0 = o último).
  */
 @Composable
@@ -182,6 +145,14 @@ fun EstatisticasTela(m: Modalidade, especial: Int?, concurso: Int?) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         CartaoQueAbre(TITULO_CONCURSOS_NOTAVEIS) { TabelaDosNotaveis(m, pagina, ehEspecial) }
+        // Desde a 0.38: os Números notáveis (e os Times, Meses, Trevos ou Resultados notáveis), um cartão para cada.
+        val grupos = remember(pagina.resumos, pagina.especiais, ehEspecial) {
+            if (pagina.lendo) emptyList() else NumerosNotaveis.grupos(m, pagina.daPagina(ehEspecial))
+        }
+        if (pagina.lendo) {
+            CartaoQueAbre(NumerosNotaveis.TITULO_NUMEROS) { LendoOHistorico() }
+        }
+        grupos.forEach { g -> CartaoQueAbre(g.titulo) { TabelaDosNumeros(m, g, ehEspecial) } }
         CartaoQueAbre(TITULO_PREMIOS_TIPICOS) {
             TabelaDePremiosTipicos(m, u, naTela ?: u, ultimoDaPagina = pagina.trilha?.ultimo ?: u?.numero, semEstimativa = ehEspecial)
         }
@@ -190,25 +161,38 @@ fun EstatisticasTela(m: Modalidade, especial: Int?, concurso: Int?) {
 }
 
 /**
- * Os Concursos notáveis (desde a 0.37): os botões "Maiores prêmios" e "Mais recentes", quantas vezes o prêmio principal
- * saiu e a tabela (Concurso | Prêmio | Ganhadores, que se ordena tocando no título das colunas).
+ * Os Concursos notáveis (desde a 0.37): quantas vezes o prêmio principal saiu e a tabela (Concurso | Prêmio | Ganhadores).
+ * Desde a 0.38 (pedido do usuário) sem os botões "Maiores prêmios"/"Mais recentes": tocar no título de qualquer coluna,
+ * também o Concurso, ordena a lista toda (de novo, ao contrário) e o controle deslizante diz quantos concursos ver (os
+ * primeiros dessa ordem). Começa nos maiores prêmios, 20 concursos.
  */
 @Composable
 private fun TabelaDosNotaveis(m: Modalidade, pagina: ConcursosDaPagina, especial: Boolean) {
     if (pagina.lendo) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            Text("  Lendo o histórico...", style = MaterialTheme.typography.bodyLarge)
-        }
+        LendoOHistorico()
         return
     }
     val daPagina = remember(pagina.resumos, pagina.especiais, especial) { pagina.daPagina(especial) }
-    var jeito by rememberSaveable(m, especial) { mutableIntStateOf(0) }
-    val lista = remember(daPagina, jeito) { if (jeito == 0) ConcursosNotaveis.maiores(daPagina) else ConcursosNotaveis.recentes(daPagina) }
+    var ordem by rememberSaveable(m, especial) { mutableStateOf(ORDEM_DOS_NOTAVEIS) }
+    val todos = remember(daPagina, ordem) { ConcursosNotaveis.ordenar(daPagina, ordem.coluna, ordem.crescente) }
+    var quantos by rememberSaveable(m, especial) { mutableIntStateOf(ConcursosNotaveis.QUANTOS) }
+    val vistos = quantos.coerceIn(1, todos.size.coerceAtLeast(1))
+    val lista = todos.take(vistos)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SeletorDosNotaveis(listOf(ConcursosNotaveis.MAIORES, ConcursosNotaveis.RECENTES), jeito) { jeito = it }
         Text(ConcursosNotaveis.resumo(daPagina), style = MaterialTheme.typography.bodyMedium)
-        if (lista.isEmpty()) return@Column
+        if (todos.isEmpty()) return@Column
+        if (todos.size > 1) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(ConcursosNotaveis.QUANTOS_VER, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                Text(textoDosVistos(vistos, todos.size), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = vistos.toFloat(),
+                onValueChange = { quantos = it.roundToInt().coerceIn(1, todos.size) },
+                valueRange = 1f..todos.size.toFloat(),
+                modifier = Modifier.semantics { contentDescription = ConcursosNotaveis.QUANTOS_VER },
+            )
+        }
         TabelaRolavel(
             primeira = ConcursosNotaveis.COLUNA_CONCURSO,
             grupos = emptyList(),
@@ -217,7 +201,7 @@ private fun TabelaDosNotaveis(m: Modalidade, pagina: ConcursosDaPagina, especial
                 (r.numero.toString() + (r.dia?.let { " (${it.year})" } ?: "")) to
                     listOf(valorSemQuebra(PremiosTipicos.valor(r.total)), ConcursosNotaveis.milhar(r.ganhadores))
             },
-            ordem = lista.map { r -> listOf(r.total, r.ganhadores.toLong()) },
+            deFora = OrdenacaoDeFora(ordem) { j -> ordem = proximaOrdem(ordem, j) },
         )
         val notas = listOfNotNull(
             ConcursosNotaveis.NOTA_DO_PREMIO,
@@ -229,36 +213,82 @@ private fun TabelaDosNotaveis(m: Modalidade, pagina: ConcursosDaPagina, especial
     }
 }
 
-/** Os botões dos Concursos notáveis (como os dos acertos dos Detalhes): o escolhido destacado. */
+/** A ordem de começo dos Concursos notáveis: os maiores prêmios primeiro (desde a 0.38). */
+val ORDEM_DOS_NOTAVEIS = OrdemDaTabela(coluna = 0, crescente = false)
+
+/** A ordem de começo dos Números notáveis: os que mais saíram primeiro (desde a 0.38). */
+val ORDEM_DOS_NUMEROS = OrdemDaTabela(coluna = 0, crescente = false)
+
+/**
+ * Tocar no título da coluna [j] (-1 = a primeira) das tabelas que se ordenam por fora (desde a 0.38): a mesma coluna
+ * inverte; outra começa do maior para o menor (o concurso mais novo, o prêmio maior, o número que mais saiu).
+ */
+fun proximaOrdem(atual: OrdemDaTabela, j: Int): OrdemDaTabela =
+    if (atual.coluna == j) atual.copy(crescente = !atual.crescente) else OrdemDaTabela(j, crescente = false)
+
+/** "20 de 812" (quantos concursos a tabela mostra). */
+fun textoDosVistos(vistos: Int, total: Int): String = "$vistos de ${ConcursosNotaveis.milhar(total)}"
+
 @Composable
-private fun SeletorDosNotaveis(opcoes: List<String>, escolhido: Int, aoEscolher: (Int) -> Unit) {
-    val forma = RoundedCornerShape(12.dp)
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-        opcoes.forEachIndexed { i, nome ->
-            val sim = i == escolhido
-            val fundo = if (sim) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest
-            val texto = if (sim) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 44.dp)
-                    .clip(forma)
-                    .background(fundo)
-                    .clickable { aoEscolher(i) }
-                    .clearAndSetSemantics {
-                        contentDescription = nome
-                        role = Role.Tab
-                        selected = sim
-                        onClick { aoEscolher(i); true }
-                    }
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
-            ) {
-                TextoQueCabe(nome, MaterialTheme.typography.labelLarge, cor = texto, peso = FontWeight.Bold, menor = 9.sp)
-            }
+private fun LendoOHistorico() {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+        Text("  Lendo o histórico...", style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/**
+ * Uma tabela dos Números notáveis (desde a 0.38; e os Times, Meses, Trevos e Resultados notáveis): todos os itens, dos
+ * que mais saíram aos que menos, com as vezes, a % dos concursos e o atraso. Tocar no título de uma coluna ordena.
+ */
+@Composable
+private fun TabelaDosNumeros(m: Modalidade, grupo: NumerosNotaveis.Grupo, especial: Boolean) {
+    var ordem by rememberSaveable(m, especial, grupo.titulo) { mutableStateOf(ORDEM_DOS_NUMEROS) }
+    val loteca = m.formato == Formato.LOTECA
+    // Na Loteca a % é dos jogos (14 por concurso); nas outras, dos concursos.
+    val total = if (loteca) grupo.itens.sumOf { it.vezes } else grupo.concursos
+    val comAtraso = grupo.itens.any { it.atraso != null }
+    val itens = remember(grupo, ordem) {
+        val chave: (NumerosNotaveis.Item) -> Long = when (ordem.coluna) {
+            -1 -> { i -> i.ordem }
+            2 -> { i -> (i.atraso ?: Int.MAX_VALUE).toLong() }
+            else -> { i -> i.vezes.toLong() }
+        }
+        grupo.itens.sortedWith((if (ordem.crescente) compareBy(chave) else compareByDescending(chave)).thenBy { it.ordem })
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(textoDosConcursos(grupo, loteca), style = MaterialTheme.typography.bodyMedium)
+        if (itens.isEmpty()) return@Column
+        TabelaRolavel(
+            primeira = grupo.coluna,
+            grupos = emptyList(),
+            colunas = listOfNotNull(NumerosNotaveis.COLUNA_VEZES, NumerosNotaveis.COLUNA_PORCENTAGEM, NumerosNotaveis.COLUNA_ATRASO.takeIf { comAtraso }),
+            linhas = itens.map { i ->
+                rotuloDoNotavel(grupo, i) to listOfNotNull(
+                    ConcursosNotaveis.milhar(i.vezes),
+                    NumerosNotaveis.porcentagem(i.vezes, total),
+                    (i.atraso?.let { ConcursosNotaveis.milhar(it) } ?: "—").takeIf { comAtraso },
+                )
+            },
+            // A coluna da % ordena como as vezes.
+            deFora = OrdenacaoDeFora(ordem) { j -> ordem = proximaOrdem(ordem, if (j == 1) 0 else j) },
+        )
+        listOfNotNull(NumerosNotaveis.NOTA_DA_PORCENTAGEM, NumerosNotaveis.NOTA_DO_ATRASO.takeIf { comAtraso }).forEach { n ->
+            Text("* $n", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+/** O rótulo da primeira coluna: o número; na Timemania, o nome do time como na lista ("Retrô / PE"). */
+private fun rotuloDoNotavel(grupo: NumerosNotaveis.Grupo, i: NumerosNotaveis.Item): String =
+    if (grupo.titulo == NumerosNotaveis.TITULO_TIMES) nomeDoTimeSorteado(i.rotulo) else i.rotulo
+
+/** "Nos 3.067 concursos da página." / "Nos 17.934 jogos dos 1.281 concursos." */
+fun textoDosConcursos(g: NumerosNotaveis.Grupo, loteca: Boolean): String = when {
+    g.concursos == 0 -> "Nenhum concurso no histórico."
+    loteca -> "Nos ${ConcursosNotaveis.milhar(g.itens.sumOf { it.vezes })} jogos dos ${ConcursosNotaveis.milhar(g.concursos)} concursos."
+    g.concursos == 1 -> "No único concurso da página."
+    else -> "Nos ${ConcursosNotaveis.milhar(g.concursos)} concursos da página."
 }
 
 /**

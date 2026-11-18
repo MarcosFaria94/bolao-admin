@@ -158,6 +158,7 @@ private fun planejar(
     disponivel: Int,
     ordenaveis: Set<Int> = emptySet(),
     extraDoTitulo: Int = 0,
+    primeiraOrdenavel: Boolean = false,
 ): PlanoDaTabela {
     fun larguraDe(t: String, e: TextStyle): Int = medidor.measure(t, e, maxLines = 1, softWrap = false).size.width
     class Medidas(val t: Tentativa, val celula: TextStyle, val cabecalho: TextStyle, val folga: Int, val daPrimeira: Int, val larguras: List<Int>) {
@@ -170,7 +171,7 @@ private fun planejar(
         val negrito = cel.copy(fontWeight = FontWeight.Bold)
         val f = with(d) { t.folga.roundToPx() } * 2
         fun titulo(x: String): Int = if (t.quebrar) larguraEmDuasLinhas(x) { larguraDe(it, cab) } else larguraDe(x, cab)
-        val l0 = maxOf(titulo(primeira), linhas.maxOfOrNull { larguraDe(it.first, negrito) } ?: 0) + f
+        val l0 = maxOf(titulo(primeira) + (if (primeiraOrdenavel) extraDoTitulo else 0), linhas.maxOfOrNull { larguraDe(it.first, negrito) } ?: 0) + f
         // O título das colunas que se ordenam tem a setinha ao lado ([extraDoTitulo]).
         fun extra(j: Int): Int = if (j in ordenaveis) extraDoTitulo else 0
         val ls = colunas.mapIndexed { j, c ->
@@ -199,7 +200,7 @@ private fun planejar(
     fun alturaDe(t: String, largura: Int): Int =
         medidor.measure(t, m.cabecalho, maxLines = 2, constraints = Constraints(maxWidth = maxOf(1, largura - m.folga))).size.height
     val alturaCabecalho = maxOf(
-        alturaDe(primeira, todas[0]),
+        alturaDe(primeira, todas[0] - if (primeiraOrdenavel) extraDoTitulo else 0),
         colunas.indices.maxOfOrNull { j -> alturaDe(colunas[j], todas[j + 1] - if (j in ordenaveis) extraDoTitulo else 0) } ?: 0,
     ) + margem
     var alturaGrupos = 0
@@ -262,6 +263,7 @@ fun TabelaRolavel(
     linhas: List<Pair<String, List<String>>>,
     modifier: Modifier = Modifier,
     ordem: List<List<Long?>>? = null,
+    deFora: OrdenacaoDeFora? = null,
 ) = LetraDaTabela {
     val medidor = rememberTextMeasurer()
     val densidade = LocalDensity.current
@@ -274,15 +276,20 @@ fun TabelaRolavel(
     val linha = MaterialTheme.colorScheme.outlineVariant
 
     // A ordenação (desde a 0.32): a coluna escolhida (-1 = a ordem de sempre) e o sentido.
-    val ordenaveis = if (ordem != null) colunas.indices.toSet() else emptySet()
-    var ordenacao by rememberSaveable(colunas) { mutableStateOf(OrdemDaTabela()) }
-    val vistas = remember(linhas, ordem, ordenacao) { ordenacao.linhas(linhas.size, ordem) }
+    // Desde a 0.38, a ordenação pode vir de fora ([deFora]): as linhas já vêm na ordem e a primeira coluna também ordena.
+    val ordenaveis = if (ordem != null || deFora != null) colunas.indices.toSet() else emptySet()
+    var interna by rememberSaveable(colunas) { mutableStateOf(OrdemDaTabela()) }
+    val ordenacao = deFora?.ordem ?: interna
+    val vistas = remember(linhas, ordem, ordenacao, deFora != null) { if (deFora != null) linhas.indices.toList() else ordenacao.linhas(linhas.size, ordem) }
+    fun tocar(j: Int) {
+        if (deFora != null) deFora.aoTocar(j) else interna = interna.tocar(j)
+    }
     val extraDoTitulo = with(densidade) { (TAMANHO_DA_SETINHA + 2.dp).roundToPx() }
 
     BoxWithConstraints(modifier) {
         val disponivel = constraints.maxWidth
         val p = remember(primeira, grupos, colunas, linhas, celulaBase, cabecalhoBase, densidade, disponivel, ordenaveis) {
-            planejar(medidor, densidade, celulaBase, cabecalhoBase, primeira, grupos, colunas, linhas, disponivel, ordenaveis, extraDoTitulo)
+            planejar(medidor, densidade, celulaBase, cabecalhoBase, primeira, grupos, colunas, linhas, disponivel, ordenaveis, extraDoTitulo, deFora != null)
         }
         fun Int.emDp(): Dp = with(densidade) { this@emDp.toDp() }
         val larguraPrimeira = p.primeira.emDp()
@@ -302,15 +309,23 @@ fun TabelaRolavel(
                         .height(alturaCabecalho)
                         .background(fundoCabecalho)
                         .then(
-                            if (ordem != null) {
-                                Modifier.clickable(onClickLabel = ORDEM_DE_SEMPRE) { ordenacao = OrdemDaTabela() }
-                            } else {
-                                Modifier
+                            when {
+                                deFora != null -> Modifier.clickable(onClickLabel = ordenarPor(primeira)) { tocar(-1) }
+                                ordem != null -> Modifier.clickable(onClickLabel = ORDEM_DE_SEMPRE) { interna = OrdemDaTabela() }
+                                else -> Modifier
                             },
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(primeira, style = p.cabecalho, maxLines = 2, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = folga))
+                    if (deFora != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = folga)) {
+                            Text(primeira, style = p.cabecalho, maxLines = 2, textAlign = TextAlign.Center, modifier = Modifier.weight(1f, fill = false))
+                            Spacer(Modifier.width(2.dp))
+                            SetinhaDaOrdem(ordenacao.coluna == -1, ordenacao.crescente)
+                        }
+                    } else {
+                        Text(primeira, style = p.cabecalho, maxLines = 2, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = folga))
+                    }
                 }
                 HorizontalDivider(color = linha)
                 vistas.forEachIndexed { i, original ->
@@ -374,7 +389,7 @@ fun TabelaRolavel(
                                     .background(fundoCabecalho)
                                     .then(
                                         if (j in ordenaveis) {
-                                            Modifier.clickable(onClickLabel = ordenarPor(c)) { ordenacao = ordenacao.tocar(j) }
+                                            Modifier.clickable(onClickLabel = ordenarPor(c)) { tocar(j) }
                                         } else {
                                             Modifier
                                         },
@@ -385,16 +400,7 @@ fun TabelaRolavel(
                                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = folga)) {
                                         Text(c, style = p.cabecalho, maxLines = 2, textAlign = TextAlign.Center, modifier = Modifier.weight(1f, fill = false))
                                         Spacer(Modifier.width(2.dp))
-                                        Icon(
-                                            when {
-                                                ordenacao.coluna != j -> Icons.Outlined.UnfoldMore
-                                                ordenacao.crescente -> Icons.Outlined.ArrowUpward
-                                                else -> Icons.Outlined.ArrowDownward
-                                            },
-                                            contentDescription = null,
-                                            tint = if (ordenacao.coluna == j) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(TAMANHO_DA_SETINHA),
-                                        )
+                                        SetinhaDaOrdem(ordenacao.coluna == j, ordenacao.crescente)
                                     }
                                 } else {
                                     Text(c, style = p.cabecalho, maxLines = 2, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = folga))
@@ -418,6 +424,28 @@ fun TabelaRolavel(
         }
     }
 }
+
+/** A setinha do título de uma coluna que ordena: as duas setas (não escolhida), para cima ou para baixo. */
+@Composable
+private fun SetinhaDaOrdem(escolhida: Boolean, crescente: Boolean) {
+    Icon(
+        when {
+            !escolhida -> Icons.Outlined.UnfoldMore
+            crescente -> Icons.Outlined.ArrowUpward
+            else -> Icons.Outlined.ArrowDownward
+        },
+        contentDescription = null,
+        tint = if (escolhida) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.size(TAMANHO_DA_SETINHA),
+    )
+}
+
+/**
+ * A ordenação feita fora da tabela (desde a 0.38: os Concursos notáveis e os Números notáveis, que ordenam a lista toda
+ * antes de mostrar só uma parte): a tabela mostra as linhas como vêm, as setinhas pela [ordem] (coluna -1 = a primeira)
+ * e o toque no título de uma coluna chama [aoTocar] (-1 = a primeira).
+ */
+class OrdenacaoDeFora(val ordem: OrdemDaTabela, val aoTocar: (Int) -> Unit)
 
 /** O tamanho da setinha da ordenação no título da coluna (desde a 0.32). */
 private val TAMANHO_DA_SETINHA = 14.dp

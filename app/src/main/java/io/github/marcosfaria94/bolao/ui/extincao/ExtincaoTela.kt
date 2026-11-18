@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.extincao
 
+import io.github.marcosfaria94.bolao.domain.ChavesPix
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -211,7 +212,7 @@ fun ExtincaoTela(estado: Estado) {
                                 Column(Modifier.weight(1f)) {
                                     Text("Pix ${i + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text("${p.apelido} · ${Dinheiro.rs(divisao.cota)}", style = MaterialTheme.typography.titleMedium)
-                                    Text("Chave: ${p.chavePix}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("Chave: ${ChavesPix.exibir(p.chavePix)}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                                 IconButton(onClick = { copiar(ctx, "Chave Pix", p.chavePix) }) {
                                     Icon(Icons.Outlined.ContentCopy, contentDescription = "Copiar chave Pix")

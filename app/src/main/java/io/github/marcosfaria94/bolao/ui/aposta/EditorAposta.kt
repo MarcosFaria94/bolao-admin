@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.aposta
 
+import io.github.marcosfaria94.bolao.domain.Limites
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -476,7 +477,6 @@ fun SecaoVolante(
             add("Teimosinha: informe de 2 a ${Operacoes.MAXIMO_DA_TEIMOSINHA} concursos.")
         }
     }
-    val pronta = completo && pendencias.isEmpty()
     val numero = Operacoes.proximoNumero(estado, hoje)
     val titulo = Operacoes.tituloAposta(estado, r, hoje)
     val comEspelho = r.espelho && Volante.temEspelho(m)
@@ -484,6 +484,9 @@ fun SecaoVolante(
     val concursos = if (comTeimosinha) Operacoes.concursosDaTeimosinha(r) else 1
     val apostas = concursos * (if (comEspelho) 2 else 1)
     val total = r.valor * apostas
+    // Os limites dos Parâmetros (desde a 0.38): o stop loss do mês e o saldo insuficiente.
+    val limite = if (r.valor > 0) Limites.bloqueio(estado, apostas, total, hoje) else null
+    val pronta = completo && pendencias.isEmpty() && limite == null
     // O que as outras apostas do mesmo concurso já têm: o "Completar" não repete o mês nem o time dentro do conjunto.
     val ja = remember(estado.apostas, r.id, r.concurso) {
         val outras = estado.apostas.filter {
@@ -655,7 +658,7 @@ fun SecaoVolante(
             }
         }
     }
-    if (completo) pendencias.firstOrNull()?.let { Aviso(it, alerta = true) }
+    if (completo) (pendencias.firstOrNull() ?: limite)?.let { Aviso(it, alerta = true) }
     if (pronta && !individual && bloqueio == null) {
         Aviso(textoDoVolantePronto(apostas, comEspelho, concursos))
     }

@@ -106,6 +106,8 @@ fun HomeTela(
     // Tocar em "Home" na barra de baixo, já na Home: a lista volta ao começo.
     VoltarAoTopo(rolagem, paraOTopo)
     val movimentos = movimentosDoHistorico(estado, filtro)
+    // Os dias fechados do Histórico (desde a 0.38; tocar na data): "2026-11-17"... Todos começam abertos.
+    var diasFechados by rememberSaveable { mutableStateOf(setOf<String>()) }
     // Filtro mudado (na tela "Filtrar"): a lista volta para o começo do Histórico.
     var filtroVisto by rememberSaveable(visita, key = "filtro-visto-$visita") { mutableStateOf(filtro.resumo()) }
     LaunchedEffect(filtro) {
@@ -177,6 +179,9 @@ fun HomeTela(
             hoje,
             vazio = if (filtro.ehPadrao(hoje)) "Nada registrado em ${Datas.mesAnoCurto(YearMonth.from(hoje))}." else "Nada encontrado com este filtro.",
             abrir = abrir,
+            // Desde a 0.38: tocar na data fecha (e abre) os itens do dia; todos começam abertos, sem seta (pedido do usuário).
+            fechados = diasFechados.mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }.toSet(),
+            aoTocarNoDia = { d -> val k = d.toString(); diasFechados = if (k in diasFechados) diasFechados - k else diasFechados + k },
         )
     }
 }

@@ -3,7 +3,6 @@ package io.github.marcosfaria94.bolao.domain.indices
 import java.time.LocalDate
 import java.time.MonthDay
 import kotlin.math.abs
-import kotlin.math.min
 
 /**
  * O k1 e o k2 dos concursos especiais (desde a 0.33: Mega da Virada, Quina de São João, Lotofácil da
@@ -16,10 +15,11 @@ import kotlin.math.min
  * ganhadores × prêmio de cada faixa, já sem o IR, como a Caixa informa, dividida pela arrecadação); o k2 é a mesma
  * conta só com as faixas de chance de pelo menos 1 em 1.000 (o mesmo corte do k2 dos concursos normais).
  *
- * O k1 e o k2 do próximo especial são a média ponderada desses retornos nos últimos [QUANTOS] especiais do mesmo tipo
- * (da mesma época do ano, [epoca]: a Mega da Virada só com as outras Mega da Virada), com peso maior para os mais
- * recentes (o mais novo pesa [QUANTOS], o seguinte um a menos, até 1): as vendas e o acumulado de cada ano andam
- * juntos, e os anos mais perto contam mais.
+ * O k1 e o k2 do próximo especial são a mediana (o percentil 50) desses retornos nos últimos [QUANTOS] especiais do mesmo
+ * tipo (da mesma época do ano, [epoca]: a Mega da Virada só com as outras Mega da Virada). Desde a 0.38 (pedido do
+ * usuário: "percentil 50 ou média simples"); de 0.33 a 0.37 era a média ponderada (o mais novo pesava 5, até 1). A
+ * mediana não se deixa levar por um ano fora do comum (um rateio esquisito, um ano de venda muito baixa). O retorno é
+ * uma razão (o que pagou ÷ o que arrecadou, no mesmo concurso): a inflação não mexe nele.
  */
 object IndiceEspecial {
 
@@ -33,10 +33,10 @@ object IndiceEspecial {
     /** Até quantos dias da época do especial um concurso especial conta como do mesmo tipo. */
     const val DIAS_DA_EPOCA = 45
 
-    /** Um especial já sorteado na média: o concurso, o dia do sorteio ("dd/mm/aaaa"), o k1 e o k2 dele (o retorno) e o peso. */
+    /** Um especial já sorteado na conta: o concurso, o dia do sorteio ("dd/mm/aaaa"), o k1 e o k2 dele (o retorno); [peso]: 1 (desde a 0.38, a mediana). */
     data class Amostra(val numero: Int, val k1: Double, val k2: Double, val peso: Double, val data: String? = null)
 
-    /** O k1 e o k2 estimados para o próximo especial, com os especiais que entraram na média (o mais novo primeiro). */
+    /** O k1 e o k2 estimados para o próximo especial, com os especiais que entraram na conta (o mais novo primeiro). */
     data class Estimativa(val k1: Double, val k2: Double, val amostras: List<Amostra>)
 
     /**
@@ -90,13 +90,14 @@ object IndiceEspecial {
             .mapNotNull { r -> retorno(m, p.k2PMinimo, r)?.let { r to it } }
             .take(quantos)
         if (validos.isEmpty()) return null
-        val n = min(validos.size, quantos)
-        val amostras = validos.mapIndexed { i, (r, k) -> Amostra(r.numero, k.first, k.second, (n - i).toDouble(), r.dataApuracao) }
-        val pesos = amostras.sumOf { it.peso }
-        return Estimativa(
-            k1 = amostras.sumOf { it.k1 * it.peso } / pesos,
-            k2 = amostras.sumOf { it.k2 * it.peso } / pesos,
-            amostras = amostras,
-        )
+        val amostras = validos.map { (r, k) -> Amostra(r.numero, k.first, k.second, 1.0, r.dataApuracao) }
+        return Estimativa(k1 = mediana(amostras.map { it.k1 }), k2 = mediana(amostras.map { it.k2 }), amostras = amostras)
+    }
+
+    /** A mediana (o percentil 50): o do meio; com uma quantidade par, a média dos dois do meio. */
+    fun mediana(v: List<Double>): Double {
+        val o = v.sorted()
+        val n = o.size
+        return if (n % 2 == 1) o[n / 2] else (o[n / 2 - 1] + o[n / 2]) / 2
     }
 }

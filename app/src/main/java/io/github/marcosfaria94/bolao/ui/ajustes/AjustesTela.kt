@@ -88,6 +88,7 @@ import io.github.marcosfaria94.bolao.bolao
 import io.github.marcosfaria94.bolao.data.Arquivo
 import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.data.Pessoa
+import io.github.marcosfaria94.bolao.domain.ChavesPix
 import io.github.marcosfaria94.bolao.domain.Datas
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Modalidade
@@ -100,15 +101,11 @@ import io.github.marcosfaria94.bolao.ui.atualizacao.AtualizacaoViewModel
 import io.github.marcosfaria94.bolao.ui.comum.CampoData
 import io.github.marcosfaria94.bolao.ui.comum.Compartilhar
 import io.github.marcosfaria94.bolao.ui.comum.CoresEmblema
-import io.github.marcosfaria94.bolao.ui.comum.Desenhos
 import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
-import io.github.marcosfaria94.bolao.ui.comum.DialogoDinheiro
-import io.github.marcosfaria94.bolao.ui.comum.EmblemaDesenho
 import io.github.marcosfaria94.bolao.ui.comum.EmblemaIcone
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
 import io.github.marcosfaria94.bolao.ui.comum.PaddingTela
-import io.github.marcosfaria94.bolao.ui.comum.Secao
 import io.github.marcosfaria94.bolao.ui.comum.TarjaTitulo
 import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
 import io.github.marcosfaria94.bolao.ui.comum.copiar
@@ -134,8 +131,9 @@ const val ROTA_SECAO_AJUSTES = "ajustes/{secao}"
  * lados ou puxando para baixo). A Integridade abre direto a "Verificar integridade". Desde a 0.16 a
  * Atualização (tocar já verifica) e o Modo de teste (liga e desliga na chave) ficam direto na lista,
  * e os Créditos viraram o rodapé da lista. Desde a 0.23 os Integrantes abrem e fecham ali mesmo, na
- * lista (começam abertos), e o "Aporte e preços" está dentro dos Parâmetros. Desde a 0.24 a extinção
- * do bolão fica no fim dos Integrantes abertos (fora dos grupos).
+ * lista (começam abertos), e o "Aporte e preços" está dentro dos Parâmetros. De 0.24 a 0.37 a extinção
+ * do bolão ficava no fim dos Integrantes abertos; desde a 0.38 ela não aparece nos Ajustes (abre pelo "Excluir" da
+ * sessão, na tela das Sessões, pelo endereço "ajustes/extincao").
  */
 enum class SecaoAjuste(val id: String) {
     MODO("modo"),
@@ -208,7 +206,9 @@ enum class SecaoAjuste(val id: String) {
          * Desde a 0.21 o Modo de teste saiu daqui: é uma sessão à parte, na tela das sessões.
          */
         fun grupos(individual: Boolean, informal: Boolean = false): List<Pair<String, List<SecaoAjuste>>> = listOfNotNull(
-            if (individual) "APOSTAS" to listOf(MODO, PARAMETROS, EXTINCAO) else "BOLÃO" to listOf(INTEGRANTES, PARAMETROS),
+            // Desde a 0.38 (pedido do usuário) a extinção saiu dos Ajustes (continua no "Excluir" das Sessões) e o título do
+            // grupo diz o tipo do bolão: "BOLÃO (INFORMAL)" ou "BOLÃO (FORMAL)".
+            if (individual) "APOSTAS" to listOf(MODO, PARAMETROS) else tituloDoGrupoDoBolao(informal) to listOf(INTEGRANTES, PARAMETROS),
             when {
                 individual -> null
                 // O bolão informal (desde a 0.22) não tem termo.
@@ -224,6 +224,12 @@ enum class SecaoAjuste(val id: String) {
         )
     }
 }
+
+/** O título do grupo do bolão nos Ajustes (desde a 0.38): o tipo do bolão entre parênteses. */
+fun tituloDoGrupoDoBolao(informal: Boolean): String = if (informal) "BOLÃO (INFORMAL)" else "BOLÃO (FORMAL)"
+
+/** A situação dos Integrantes na lista dos Ajustes (desde a 0.38 só a quantidade: o tipo do bolão foi para o título do grupo). */
+fun resumoDosIntegrantes(pessoas: Int): String = if (pessoas == 1) "1 pessoa" else "$pessoas pessoas"
 
 /** O grupo da Doação e do Contato (desde a 0.32; até a 0.32, "APOIO"). */
 const val GRUPO_FEEDBACK = "FEEDBACK"
@@ -281,7 +287,7 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
 
     fun situacao(s: SecaoAjuste): Pair<String, TomItem> = when (s) {
         SecaoAjuste.MODO -> "Individual" to TomItem.NORMAL
-        SecaoAjuste.INTEGRANTES -> "${estado.pessoas.size} pessoas" + (if (estado.informal) " · informal" else "") to TomItem.NORMAL
+        SecaoAjuste.INTEGRANTES -> resumoDosIntegrantes(estado.pessoas.size) to TomItem.NORMAL
         SecaoAjuste.PARAMETROS -> resumoDosParametros(estado.parametros) to TomItem.NORMAL
         SecaoAjuste.TERMO ->
             if (estado.termo != null && estado.termoSemAssinatura != null) "Anexado" to TomItem.NORMAL else "Falta anexar" to TomItem.ALERTA
@@ -397,17 +403,6 @@ fun AjustesTela(estado: Estado, atualizacao: AtualizacaoViewModel, abrir: (Strin
                                 Box(Modifier.padding(start = RECUO_DA_LISTA, end = 4.dp)) {
                                     ItemIntegrante(p) { copiar(ctx, "Chave Pix", p.chavePix) }
                                 }
-                            }
-                            // No fim dos integrantes, a extinção do bolão (desde a 0.24), com o ícone alinhado com os nomes.
-                            HorizontalDivider(Modifier.padding(start = RECUO_DA_LISTA), color = MaterialTheme.colorScheme.outlineVariant)
-                            Box(Modifier.padding(start = RECUO_DA_LISTA - RECUO_DO_ICONE)) {
-                                LinhaDaLista(
-                                    titulo = SecaoAjuste.EXTINCAO.titulo(individual),
-                                    situacao = "",
-                                    tom = TomItem.NORMAL,
-                                    icone = iconeDoItem(SecaoAjuste.EXTINCAO),
-                                    vermelho = true,
-                                ) { tocar(SecaoAjuste.EXTINCAO) }
                             }
                         }
                         }
@@ -572,67 +567,6 @@ private fun Integrantes(estado: Estado) {
             if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             ItemIntegrante(p) { copiar(ctx, "Chave Pix", p.chavePix) }
         }
-    }
-}
-
-/**
- * O aporte mensal (só no bolão) e o preço da aposta simples de cada modalidade: desde a 0.23, no alto
- * dos Parâmetros (até a 0.22, a tela "Aporte e preços").
- */
-@Composable
-internal fun Valores(estado: Estado) {
-    val ctx = LocalContext.current
-    val repo = remember { ctx.bolao.repo }
-    val escopo = rememberCoroutineScope()
-    var editandoAporte by remember { mutableStateOf(false) }
-    var editandoPreco by remember { mutableStateOf<Modalidade?>(null) }
-
-    if (!estado.individual) {
-        Secao("Aporte mensal") {
-            LinhaAjuste(
-                emblema = { EmblemaDesenho(Desenhos.Cofrinho, TAMANHO_EMBLEMA) },
-                titulo = "Por integrante",
-                subtitulo = "Total do mês: ${Dinheiro.rs(estado.config.aporteMensal * estado.pessoas.size.coerceAtLeast(1))}",
-                aoTocar = { editandoAporte = true },
-                final = {
-                    Text(Dinheiro.rs(estado.config.aporteMensal), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                },
-            )
-        }
-    }
-    Secao(
-        "Preço da aposta simples",
-        acao = { Text("Toque para mudar", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-    ) {
-        GradePrecos(estado) { editandoPreco = it }
-    }
-
-    if (editandoAporte) {
-        DialogoDinheiro(
-            titulo = "Aporte mensal",
-            inicial = estado.config.aporteMensal,
-            rotulo = "Valor por integrante",
-            explicacao = "Mudanças no aporte precisam da concordância dos 3 integrantes, registrada no grupo.",
-            aoConfirmar = { v ->
-                editandoAporte = false
-                if (v > 0) escopo.launch { repo.atualizar { it.copy(config = it.config.copy(aporteMensal = v)) } }
-            },
-            aoFechar = { editandoAporte = false },
-        )
-    }
-    editandoPreco?.let { m ->
-        DialogoDinheiro(
-            titulo = m.nome,
-            inicial = estado.config.preco(m),
-            rotulo = "Preço da aposta simples",
-            aoConfirmar = { v ->
-                editandoPreco = null
-                if (v > 0) escopo.launch {
-                    repo.atualizar { it.copy(config = it.config.copy(precos = it.config.precos + (m.name to v))) }
-                }
-            },
-            aoFechar = { editandoPreco = null },
-        )
     }
 }
 
@@ -885,7 +819,7 @@ private fun ItemIntegrante(p: Pessoa, aoCopiar: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "Pix: ${p.chavePix}",
+                "Pix: ${ChavesPix.exibir(p.chavePix)}",
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -979,7 +913,7 @@ private const val COLUNAS_PRECOS = 4
 
 /** Tabela de preços: o selo de cada modalidade (desde a 0.27, no lugar da bola), o nome e o preço embaixo; tocar muda o preço. */
 @Composable
-private fun GradePrecos(estado: Estado, aoEscolher: (Modalidade) -> Unit) {
+internal fun GradePrecos(estado: Estado, aoEscolher: (Modalidade) -> Unit) {
     val lista = Modalidade.ATIVAS.filter { !it.precoVariavel }
     Column(Modifier.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         lista.chunked(COLUNAS_PRECOS).forEach { linha ->

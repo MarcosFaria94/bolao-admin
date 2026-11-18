@@ -74,6 +74,21 @@ data class ModalidadeK(
     val vendas: VendasK,
 )
 
+/**
+ * A correção monetária do modelo de vendas (desde a 1.4 dos parâmetros, pedido do usuário na 0.38): o modelo foi
+ * ajustado com a arrecadação e a estimativa de cada concurso em reais do [anoBase] (cada ano corrigido pelo IPCA dele,
+ * ano a ano). Depois do [anoBase], os valores de agora voltam para reais do [anoBase] com o IPCA de cada ano que já
+ * fechou ([ipca], em %); os anos que ainda não estão na lista não corrigem nada.
+ */
+data class CorrecaoMonetaria(val anoBase: Int, val ipca: Map<Int, Double>) {
+    /** Quanto os preços subiram do começo do [anoBase] até o começo do [ano] (1 no [anoBase] e antes dele). */
+    fun fator(ano: Int): Double {
+        var f = 1.0
+        for (y in anoBase until ano) f *= 1 + (ipca[y] ?: return f) / 100
+        return f
+    }
+}
+
 data class ParametrosK(
     val versao: String,
     val irAliquota: Double,
@@ -86,6 +101,8 @@ data class ParametrosK(
     val campoBase: String,
     val basesReserva: List<String>,
     val modalidades: Map<String, ModalidadeK>,
+    /** null = parâmetros sem a correção (até a 1.3): os valores entram como vieram. */
+    val correcao: CorrecaoMonetaria? = null,
 ) {
     companion object {
         fun ler(texto: String): ParametrosK {
@@ -105,6 +122,15 @@ data class ParametrosK(
                 campoBase = api.texto("campo_base") ?: "urlapiloterias",
                 basesReserva = api.lista("bases_reserva").mapNotNull { (it as? JsonPrimitive)?.contentOrNull },
                 modalidades = modalidades,
+                correcao = (o["correcao_monetaria"] as? JsonObject)?.let { c ->
+                    val base = c.inteiro("ano_base") ?: return@let null
+                    val tabela = (c["ipca"] as? JsonObject)?.mapNotNull { (ano, v) ->
+                        val a = ano.toIntOrNull() ?: return@mapNotNull null
+                        val x = (v as? JsonPrimitive)?.doubleOrNull ?: return@mapNotNull null
+                        a to x
+                    }?.toMap().orEmpty()
+                    CorrecaoMonetaria(base, tabela)
+                },
             )
         }
 

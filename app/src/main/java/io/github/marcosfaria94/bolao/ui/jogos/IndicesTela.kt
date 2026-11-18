@@ -56,7 +56,7 @@ const val ROTA_INDICES = "indices"
 
 /** Os 5 passos da conta do k1, em linhas gerais (do guia "k1 e k2"). */
 private val PASSOS = listOf(
-    "Prever as apostas" to "Estima quantas apostas o próximo concurso vai receber, pelo prêmio estimado, pelas apostas do último concurso e pelo dia do sorteio.",
+    "Prever as apostas" to "Estima quantas apostas o próximo concurso vai receber, pelo prêmio estimado, pelas apostas do último concurso e pelo dia do sorteio. A conta aprendeu com os concursos desde dez/2019, com os valores de cada ano corrigidos pela inflação oficial (IPCA).",
     "Montar os potes" to "Calcula quanto do dinheiro das apostas vai para cada faixa de prêmio, com o acumulado na principal.",
     "Dividir entre os ganhadores" to "Considera a chance de levar sozinho ou de dividir o prêmio com outros ganhadores.",
     "Descontar o IR" to "Tira os 30% do imposto de renda dos prêmios acima de R\$\u00A02.428,80.",
@@ -72,14 +72,15 @@ private val COMO_LER = listOf(
     "Concursos especiais" to "Na Mega da Virada, na Quina de São João e nos outros especiais, o k1 e o k2 vêm dos últimos especiais já sorteados (veja abaixo).",
 )
 
-/** Quantos especiais entram na média, por extenso (o texto da explicação). */
+/** Quantos especiais entram na conta (o texto da explicação). */
 private val QUANTOS_ESPECIAIS = IndiceEspecial.QUANTOS
 
 /** A explicação do k1 e do k2 dos concursos especiais (desde a 0.33). */
 val TEXTO_DOS_ESPECIAIS = listOf(
     "No concurso especial o prêmio não acumula: tudo o que vai para os prêmios, com o acumulado do ano todo, sai no próprio sorteio (sem ganhador numa faixa, o prêmio desce para a de baixo).",
     "Por isso o retorno de um especial já sorteado é exato: o que ele pagou, já sem o IR, dividido pelo que arrecadou. O k2 é a mesma conta, só com os prêmios frequentes.",
-    "O k1 e o k2 do próximo especial são a média ponderada desse retorno nos últimos $QUANTOS_ESPECIAIS especiais do mesmo tipo (a Mega da Virada só com as outras Mega da Virada): o mais recente pesa mais (5, depois 4, 3, 2 e 1).",
+    "O k1 e o k2 do próximo especial são a mediana desse retorno nos últimos $QUANTOS_ESPECIAIS especiais do mesmo tipo (a Mega da Virada só com as outras Mega da Virada): o do meio, quando eles ficam em ordem. Um ano fora do comum não puxa a conta.",
+    "Como o retorno é uma divisão de valores do mesmo concurso, a inflação não mexe nele.",
 )
 
 /**
@@ -189,7 +190,8 @@ fun IndicesTela() {
 
 /**
  * O k1 e o k2 dos concursos especiais (desde a 0.33): a explicação e, para cada modalidade com especial, a
- * estimativa e os especiais que entraram na média (o concurso, o retorno dele e o peso).
+ * estimativa e os especiais que entraram na conta (o dia e o retorno de cada um; desde a 0.38 a estimativa é a mediana,
+ * marcada com "mediana" no do meio).
  */
 @Composable
 private fun Especiais(estimativas: Map<Modalidade, IndiceEspecial.Estimativa>) {
@@ -210,11 +212,19 @@ private fun Especiais(estimativas: Map<Modalidade, IndiceEspecial.Estimativa>) {
                         Text("k1 ${textoIndice(e.k1)} · k2 ${textoIndice(e.k2)}", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = suave)
                     }
                 }
+                // O do meio (a mediana; com uma quantidade par, os dois do meio) leva a marca.
+                val doMeio = e.amostras.sortedBy { it.k1 }.let { o -> if (o.size % 2 == 1) listOf(o[o.size / 2]) else listOf(o[o.size / 2 - 1], o[o.size / 2]) }
                 e.amostras.forEach { a ->
                     Row(Modifier.fillMaxWidth().padding(start = 52.dp)) {
                         // O dia do sorteio (sem ele, o concurso), numa linha só.
                         Text(a.data ?: "Concurso ${a.numero}", style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.5.sp), color = suave, maxLines = 1, modifier = Modifier.weight(1f))
-                        Text("k1 ${textoIndice(a.k1)} · peso ${a.peso.toInt()}", style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.5.sp), color = suave, maxLines = 1)
+                        Text(
+                            "k1 ${textoIndice(a.k1)}" + if (a in doMeio) " · mediana" else "",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.5.sp),
+                            fontWeight = if (a in doMeio) FontWeight.Bold else FontWeight.Normal,
+                            color = suave,
+                            maxLines = 1,
+                        )
                     }
                 }
             }

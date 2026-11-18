@@ -24,6 +24,16 @@ data class ResumoDoConcurso(
     val marcado: Boolean = false,
     val ganhadores: Int = 0,
     val porGanhador: Long = 0,
+    /** Os números sorteados (desde a 0.38, para os Números notáveis; na Super Sete, na ordem das colunas). */
+    val numeros: List<Int> = emptyList(),
+    /** Os do 2º sorteio (Dupla Sena). */
+    val segundo: List<Int> = emptyList(),
+    /** Os trevos (+Milionária). */
+    val trevos: List<Int> = emptyList(),
+    /** O Time do Coração (Timemania) ou o Mês de Sorte (Dia de Sorte), sem os caracteres vazios; null = nenhum. */
+    val extra: String? = null,
+    /** Os 14 jogos da Loteca: 1 = coluna 1 (o primeiro time venceu), 0 = coluna do meio (empate), 2 = coluna 2. */
+    val loteca: List<Int> = emptyList(),
 ) {
     /** O total pago na faixa principal (ganhadores × o prêmio de cada um), em centavos. */
     val total: Long get() = ganhadores * porGanhador
@@ -43,6 +53,20 @@ data class ResumoDoConcurso(
                 .minByOrNull { (it["faixa"] as JsonPrimitive).intOrNull!! }
             val ganhadores = (principal?.get("numeroDeGanhadores") as? JsonPrimitive)?.intOrNull ?: 0
             val valor = (principal?.get("valorPremio") as? JsonPrimitive)?.doubleOrNull ?: 0.0
+            fun lista(k: String): List<Int> = (o[k] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content?.trim()?.toIntOrNull() }
+            val extra = (o["nomeTimeCoracaoMesSorte"] as? JsonPrimitive)?.content
+                ?.filter { !it.isISOControl() }?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() }
+            val loteca = (o["listaResultadoEquipeEsportiva"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+                .sortedBy { (it["nuSequencial"] as? JsonPrimitive)?.intOrNull ?: 0 }
+                .mapNotNull { j ->
+                    val a = (j["nuGolEquipeUm"] as? JsonPrimitive)?.intOrNull ?: return@mapNotNull null
+                    val b = (j["nuGolEquipeDois"] as? JsonPrimitive)?.intOrNull ?: return@mapNotNull null
+                    when {
+                        a > b -> 1
+                        a < b -> 2
+                        else -> 0
+                    }
+                }
             ResumoDoConcurso(
                 numero = numero,
                 dia = dia,
@@ -50,6 +74,11 @@ data class ResumoDoConcurso(
                 marcado = (o["indicadorConcursoEspecial"] as? JsonPrimitive)?.intOrNull == 2,
                 ganhadores = ganhadores,
                 porGanhador = (valor * 100).roundToLong(),
+                numeros = lista("listaDezenas"),
+                segundo = lista("listaDezenasSegundoSorteio"),
+                trevos = lista("trevosSorteados"),
+                extra = extra,
+                loteca = loteca,
             )
         }.getOrNull()
 
@@ -181,11 +210,11 @@ class Trilha private constructor(private val lista: List<Int>?, private val pula
  */
 object ConcursosNotaveis {
 
-    /** Quantos concursos aparecem na tabela. */
+    /** Quantos concursos aparecem na tabela (desde a 0.38, o começo do controle deslizante). */
     const val QUANTOS = 20
 
-    const val MAIORES = "Maiores prêmios"
-    const val RECENTES = "Mais recentes"
+    /** O controle deslizante de quantos concursos ver (desde a 0.38; no lugar dos botões "Maiores prêmios"/"Mais recentes"). */
+    const val QUANTOS_VER = "Quantos concursos ver"
 
     const val COLUNA_CONCURSO = "Concurso"
     const val COLUNA_PREMIO = "Prêmio"
@@ -203,6 +232,20 @@ object ConcursosNotaveis {
     /** Os [quantos] mais recentes. */
     fun recentes(resumos: List<ResumoDoConcurso>, quantos: Int = QUANTOS): List<ResumoDoConcurso> =
         notaveis(resumos).sortedByDescending { it.numero }.take(quantos)
+
+    /**
+     * Os notáveis na ordem da tabela (desde a 0.38, a ordenação vale para a lista toda, e o controle deslizante mostra os
+     * primeiros): [coluna] -1 = o concurso, 0 = o prêmio, 1 = os ganhadores; no empate, o mais novo primeiro.
+     */
+    fun ordenar(resumos: List<ResumoDoConcurso>, coluna: Int, crescente: Boolean): List<ResumoDoConcurso> {
+        val chave: (ResumoDoConcurso) -> Long = when (coluna) {
+            -1 -> { r -> r.numero.toLong() }
+            1 -> { r -> r.ganhadores.toLong() }
+            else -> { r -> r.total }
+        }
+        val porChave = if (crescente) compareBy(chave) else compareByDescending(chave)
+        return notaveis(resumos).sortedWith(porChave.thenByDescending { it.numero })
+    }
 
     /** "O prêmio principal saiu em 812 dos 3.085 concursos." */
     fun resumo(resumos: List<ResumoDoConcurso>): String {

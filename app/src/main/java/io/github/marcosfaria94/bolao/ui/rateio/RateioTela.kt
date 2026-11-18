@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.rateio
 
+import io.github.marcosfaria94.bolao.domain.ChavesPix
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -134,7 +135,7 @@ fun RateioTela(estado: Estado, abrir: (String) -> Unit = {}) {
                             Text("Pix ${i + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("${p.apelido} · ${Dinheiro.rs(calculo.cota)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(
-                                "Chave: ${p.chavePix}",
+                                "Chave: ${ChavesPix.exibir(p.chavePix)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,

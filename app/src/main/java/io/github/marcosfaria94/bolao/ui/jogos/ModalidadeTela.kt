@@ -1,5 +1,9 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
+import androidx.compose.runtime.SideEffect
+import io.github.marcosfaria94.bolao.ui.comum.IconeDaBarra
+import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Calculate
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -198,9 +202,22 @@ fun ModalidadeTela(
     // 0.22 não há mais o "← Voltar" nem o "Voltar →": sai-se da página deslizando o dedo ou pelo voltar do celular.
     val barra = LocalBarraDaTela.current
     val dono = LocalViewModelStoreOwner.current
+    // O concurso que está nos Detalhes (desde a 0.38: as Estatísticas abrem com ele) e o especial da página.
+    var concursoDosDetalhes by remember { mutableStateOf<Int?>(null) }
+    var especialDosDetalhes by remember { mutableStateOf<Int?>(null) }
     DisposableEffect(nosDetalhes, dono) {
         val acao = if (nosDetalhes) {
-            AcaoDaBarra(dono, titulo = "Aposta", aoVoltar = voltarDosDetalhes)
+            // Desde a 0.38: as Estatísticas no canto direito da barra (o lado oposto ao "← Aposta") e, ao lado delas, a
+            // calculadora de probabilidades (até a 0.37, as Estatísticas eram um botão no fim dos Detalhes).
+            AcaoDaBarra(
+                dono, titulo = "Aposta", aoVoltar = voltarDosDetalhes,
+                icones = listOfNotNull(
+                    IconeDaBarra(Icons.Outlined.Calculate, TITULO_CALCULADORA) { abrir(rotaDaCalculadora(m)) }.takeIf { temCalculadora(m) },
+                    IconeDaBarra(Icons.Outlined.Insights, TITULO_ESTATISTICAS) {
+                        abrir(rotaDasEstatisticas(m, especialDosDetalhes, concursoDosDetalhes))
+                    }.takeIf { temEstatisticas(m) },
+                ),
+            )
         } else {
             AcaoDaBarra(dono, botao = "Detalhes", aoTocarBotao = { escopo.launch { paginas.animateScrollToPage(1) } })
         }
@@ -264,6 +281,7 @@ fun ModalidadeTela(
     val doProximo = registrada == null && (aposta.concurso == 0 || aposta.concurso == item?.proximoNumero)
     // O concurso especial da aposta (o da página especial ou, quando ele já é o próximo, o da página normal).
     val especialDaAposta = esp ?: Especiais.doConcurso(m, aposta.concurso)
+    SideEffect { especialDosDetalhes = especialDaAposta?.concurso }
     val premio = aposta.premioEstimado?.takeIf { it > 0 } ?: u?.premioEstimadoProximo?.takeIf { doProximo && it > 0 }
         ?: especialDaAposta?.premioEstimado
     val sorteio = aposta.dataSorteio ?: u?.proximaData?.takeIf { doProximo } ?: especialDaAposta?.dia
@@ -284,7 +302,10 @@ fun ModalidadeTela(
     Box(Modifier.fillMaxSize().nestedScroll(puxao)) {
     HorizontalPager(state = paginas, beyondViewportPageCount = 1, flingBehavior = soltarDasPaginas(paginas), modifier = Modifier.fillMaxSize().acompanharPuxao(puxao)) { pagina ->
         if (pagina == 1) {
-            DetalhesDaModalidade(estado, m, u, atualizando, visivel = paginas.currentPage == 1, especial = especialDaAposta, abrir = abrir)
+            DetalhesDaModalidade(
+                estado, m, u, atualizando, visivel = paginas.currentPage == 1, especial = especialDaAposta,
+                aoMudarConcurso = { concursoDosDetalhes = it },
+            )
             return@HorizontalPager
         }
         Column(
@@ -505,7 +526,8 @@ private fun QuadroPremio(
  * Desde a 0.37 (pedidos do usuário): a navegação dos concursos é o botão flutuante no rodapé ([NavegacaoFlutuante]; de
  * 0.28 a 0.36, os botões e o campo no alto); a página de um concurso especial ([especial]) percorre só os especiais da
  * época dele (a Mega da Virada, só as Mega da Virada) e a da modalidade, só os regulares ([rememberConcursosDaPagina]);
- * os Prêmios típicos saíram daqui para a tela das Estatísticas, que abre pelo botão no fim ([BotaoDasEstatisticas]).
+ * os Prêmios típicos saíram daqui para a tela das Estatísticas. Desde a 0.38 as Estatísticas e a calculadora de
+ * probabilidades são ícones no canto direito da barra de cima ([aoMudarConcurso] diz o concurso na tela).
  */
 @Composable
 private fun DetalhesDaModalidade(
@@ -515,7 +537,7 @@ private fun DetalhesDaModalidade(
     atualizando: Boolean,
     visivel: Boolean = true,
     especial: ConcursoEspecial? = null,
-    abrir: (String) -> Unit = {},
+    aoMudarConcurso: (Int?) -> Unit = {},
 ) {
     val mais = estado.parametros.maisNumeros && Volante.aceitaMais(m)
     // O concurso escolhido na navegação (null = o último da página).
@@ -562,6 +584,7 @@ private fun DetalhesDaModalidade(
             ?: runCatching { CaixaApi.concurso(m, n) }.getOrNull()
     }
     val premio = naTela?.let { PremioDoConcurso.de(it, anterior) }
+    LaunchedEffect(numeroNaTela) { aoMudarConcurso(numeroNaTela) }
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier
@@ -592,10 +615,6 @@ private fun DetalhesDaModalidade(
             CartaoQueAbre(TITULO_PROBABILIDADES) { TabelaDeProbabilidades(m, mais) }
             if (mais && Probabilidades.gruposDePremios(m) != null) {
                 CartaoQueAbre(TITULO_QUANTIDADE) { TabelaDeQuantidade(m) }
-            }
-            // Desde a 0.37: as Estatísticas (os Concursos notáveis e os Prêmios típicos, que de 0.32 a 0.36 ficavam aqui).
-            if (temEstatisticas(m)) {
-                BotaoDasEstatisticas { abrir(rotaDasEstatisticas(m, especial?.concurso, naTela?.numero)) }
             }
             // O espaço do botão flutuante, para ele não cobrir o fim da página.
             Spacer(Modifier.height(if (navegacaoAberta) ESPACO_DA_NAVEGACAO_ABERTA else ESPACO_DA_NAVEGACAO_FECHADA))

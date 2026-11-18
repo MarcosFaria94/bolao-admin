@@ -21,6 +21,7 @@ import io.github.marcosfaria94.bolao.data.Sessoes
 import io.github.marcosfaria94.bolao.data.palpite
 import io.github.marcosfaria94.bolao.domain.AgendaDaCaixa
 import io.github.marcosfaria94.bolao.domain.AvisosDeEspeciais
+import io.github.marcosfaria94.bolao.domain.AvisosDosJogos
 import io.github.marcosfaria94.bolao.domain.Conferencia
 import io.github.marcosfaria94.bolao.imagem.ImagemConferencia
 import io.github.marcosfaria94.bolao.net.CaixaApi
@@ -41,7 +42,8 @@ import java.util.concurrent.TimeUnit
  * 3. mostra os dois avisos do celular: "Aposta premiada" e "Ação necessária" (no prêmio principal,
  *    toca o toque dos Ajustes, como uma chamada);
  * 4. marca o próximo despertar;
- * 5. desde a 0.34, avisa dos concursos especiais (apostas abertas e véspera do sorteio; [AvisoDeEspeciais]).
+ * 5. desde a 0.34, avisa dos concursos especiais (apostas abertas e véspera do sorteio; [AvisoDeEspeciais]);
+ * 6. desde a 0.38, os avisos dos Parâmetros de cada sessão (acumulou, k1 acima de x, prêmio acima de n; [AvisosDosJogos]).
  * Desde a 0.21 faz isso em todas as sessões (cada bolão, o Individual e o modo de teste, se existir),
  * e não só na que está em uso: os avisos levam o nome da sessão (com mais de uma) e abrem nela. Os do
  * modo de teste levam "Teste" (e não tocam o toque do prêmio).
@@ -78,6 +80,7 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
         val novasChaves = mutableListOf<String>()
         val varias = app.sessoes.varias
         var algumaPendencia = false
+        val alvosDosAvisos = runCatching { app.indices.alvosDosAvisos() }.getOrDefault(emptyList())
 
         for (id in sessoes) {
             val repo = app.sessoes.repo(id)
@@ -106,6 +109,13 @@ class Vigia(contexto: Context, parametros: WorkerParameters) : CoroutineWorker(c
             val premiadas = Pendencias.premiadas(e, agora, doEspaco)
             premiadasPorSessao += id to premiadas
             novasChaves += novas.map { marca + it.chave } + premiadas.map { marca + it.chave }
+            // 6. Os avisos dos Parâmetros (desde a 0.38): acumulou, k1 acima de x, prêmio acima de n (desligados por padrão).
+            runCatching {
+                AvisosDosJogos.devidos(e.parametros, alvosDosAvisos, agora.toLocalDate(), doEspaco).forEach { a ->
+                    Notificador.avisoDosJogos(ctx, a, prefixo, id)
+                    novasChaves += a.chaves.map { marca + it }
+                }
+            }
         }
 
         // 4. O próximo despertar (resultado que ainda não saiu, apuração, dados dos Jogos), de todas as sessões.

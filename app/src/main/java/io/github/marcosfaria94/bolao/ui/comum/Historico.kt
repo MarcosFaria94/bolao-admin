@@ -1,5 +1,7 @@
 package io.github.marcosfaria94.bolao.ui.comum
 
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -297,10 +299,33 @@ fun valorComSinal(centavos: Long): String = (if (centavos < 0) "- " else "+ ") +
  * uma linha até o fim (sem o total do dia).
  */
 @Composable
-fun CabecalhoDia(data: LocalDate, hoje: LocalDate = LocalDate.now(), modifier: Modifier = Modifier, primeiro: Boolean = false) {
+fun CabecalhoDia(
+    data: LocalDate,
+    hoje: LocalDate = LocalDate.now(),
+    modifier: Modifier = Modifier,
+    primeiro: Boolean = false,
+    fechado: Boolean = false,
+    itens: Int = 0,
+    aoTocar: (() -> Unit)? = null,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.fillMaxWidth().padding(top = if (primeiro) 10.dp else 22.dp, bottom = 10.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = if (primeiro) 10.dp else 22.dp)
+            .then(
+                if (aoTocar != null) {
+                    Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClickLabel = if (fechado) ABRIR_O_DIA else FECHAR_O_DIA,
+                        onClick = aoTocar,
+                    )
+                } else {
+                    Modifier
+                },
+            )
+            .padding(bottom = 10.dp),
     ) {
         Text(
             Datas.relativa(data, hoje),
@@ -314,8 +339,23 @@ fun CabecalhoDia(data: LocalDate, hoje: LocalDate = LocalDate.now(), modifier: M
         )
         Spacer(Modifier.width(10.dp))
         HorizontalDivider(Modifier.weight(1f), thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+        // Fechado (desde a 0.38): quantos itens o dia tem, no fim da linha (sem a seta: a pessoa descobre tocando).
+        if (fechado) {
+            Spacer(Modifier.width(10.dp))
+            Text(
+                if (itens == 1) "1 item" else "$itens itens",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
     }
 }
+
+/** O que tocar na data do Histórico faz (para quem não vê a tela; desde a 0.38). */
+const val FECHAR_O_DIA = "Fechar os itens do dia"
+const val ABRIR_O_DIA = "Abrir os itens do dia"
+
 
 /** Cartão de cada item do Histórico. */
 @Composable
@@ -344,6 +384,8 @@ fun LazyListScope.itensDoHistorico(
     hoje: LocalDate,
     vazio: String,
     abrir: (String) -> Unit,
+    fechados: Set<LocalDate> = emptySet(),
+    aoTocarNoDia: ((LocalDate) -> Unit)? = null,
 ) {
     if (movimentos.isEmpty()) {
         item(key = "historico-vazio") {
@@ -355,7 +397,11 @@ fun LazyListScope.itensDoHistorico(
     }
     val dias = movimentos.groupBy { it.data }.entries.toList()
     dias.forEachIndexed { i, (dia, lista) ->
-        item(key = "dia-$dia") { CabecalhoDia(dia, hoje, primeiro = i == 0) }
+        val fechado = dia in fechados
+        item(key = "dia-$dia") {
+            CabecalhoDia(dia, hoje, primeiro = i == 0, fechado = fechado, itens = lista.size, aoTocar = aoTocarNoDia?.let { f -> { f(dia) } })
+        }
+        if (fechado) return@forEachIndexed
         lista.forEachIndexed { j, mv ->
             item(key = mv.chave) {
                 val destino = destinoDoMovimento(estado, mv)

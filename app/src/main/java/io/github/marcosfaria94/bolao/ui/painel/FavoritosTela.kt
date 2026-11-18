@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.painel
 
+import io.github.marcosfaria94.bolao.domain.Limites
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -129,10 +130,12 @@ fun FavoritosTela(estado: Estado) {
     // Sempre com a confirmação (desde a 0.29), que avisa das apostas repetidas.
     fun pedir(planos: List<PlanoDoFavorito>) {
         val livres = planos.filter { it.impedimento == null }
-        if (livres.isEmpty()) {
-            escopo.launch { avisos.showSnackbar(planos.firstNotNullOfOrNull { it.impedimento } ?: "Nada para apostar.") }
-        } else {
-            apostar = livres
+        // Os limites dos Parâmetros (desde a 0.38): o stop loss do mês e o saldo insuficiente.
+        val limite = Limites.bloqueio(estado, livres.size, livres.sumOf { it.aposta.valor }, hoje)
+        when {
+            livres.isEmpty() -> escopo.launch { avisos.showSnackbar(planos.firstNotNullOfOrNull { it.impedimento } ?: "Nada para apostar.") }
+            limite != null -> escopo.launch { avisos.showSnackbar(limite) }
+            else -> apostar = livres
         }
     }
 

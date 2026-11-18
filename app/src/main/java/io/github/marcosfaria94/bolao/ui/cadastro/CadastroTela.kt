@@ -1,5 +1,8 @@
 package io.github.marcosfaria94.bolao.ui.cadastro
 
+import io.github.marcosfaria94.bolao.domain.ChavesPix
+import io.github.marcosfaria94.bolao.ui.tema.CoresAlerta
+import io.github.marcosfaria94.bolao.domain.TipoDeChave
 import android.app.Application
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -171,12 +174,38 @@ class CadastroViewModel(app: Application, val sessao: String) : AndroidViewModel
         else -> emptyList()
     }
 
+    /** As chaves com CPF que o usuário já aceitou (desde a 0.38: a janela do CPF não volta para elas). */
+    var cpfAceitos by mutableStateOf<Set<String>>(emptySet())
+
+    /** Os integrantes (1, 2...) com chave Pix de CPF que ainda não foi aceita; não vazio = a janela do CPF aberta. */
+    var perguntandoCpf by mutableStateOf<List<Int>>(emptyList())
+
+    /** Os integrantes (1, 2...) cuja chave Pix é um CPF ainda não aceito. */
+    fun chavesComCpf(): List<Int> = pessoas.mapIndexedNotNull { i, p ->
+        (i + 1).takeIf { ChavesPix.tipo(p.pix) == TipoDeChave.CPF && p.pix.trim() !in cpfAceitos }
+    }
+
     fun avancar() {
         tentouAvancar = true
         if (problemasDoPasso().isEmpty()) {
+            // Desde a 0.38: chave com CPF pede confirmação antes de seguir.
+            if (!individual && passo == 2) {
+                val comCpf = chavesComCpf()
+                if (comCpf.isNotEmpty()) {
+                    perguntandoCpf = comCpf
+                    return
+                }
+            }
             passo++
             tentouAvancar = false
         }
+    }
+
+    /** "Usar mesmo assim" na janela do CPF: as chaves ficam aceitas e o cadastro segue. */
+    fun aceitarCpf() {
+        cpfAceitos = cpfAceitos + perguntandoCpf.map { pessoas[it - 1].pix.trim() }
+        perguntandoCpf = emptyList()
+        avancar()
     }
 
     fun voltar() {
@@ -417,6 +446,18 @@ fun CadastroTela(sessao: String, recomeco: Int = 0) {
                 }
             }
         }
+    }
+
+    // A chave Pix com CPF (desde a 0.38): o aviso antes de seguir.
+    if (vm.perguntandoCpf.isNotEmpty()) {
+        DialogoConfirmar(
+            titulo = ChavesPix.TITULO_DO_AVISO_DO_CPF,
+            texto = ChavesPix.avisoDoCpf(vm.perguntandoCpf),
+            confirmar = ChavesPix.USAR_O_CPF,
+            cancelar = ChavesPix.TROCAR_A_CHAVE,
+            aoConfirmar = { vm.aceitarCpf() },
+            aoFechar = { vm.perguntandoCpf = emptyList() },
+        )
     }
 
     if (cancelar) {
@@ -665,6 +706,12 @@ private fun PassoIntegrantes(vm: CadastroViewModel) {
                     onValueChange = { p.pix = it },
                     label = { Text("Chave Pix") },
                     isError = marcarErro && p.pix.isBlank(),
+                    // Desde a 0.38: a chave com CPF ganha o lembrete embaixo (e a janela ao continuar).
+                    supportingText = if (ChavesPix.tipo(p.pix) == TipoDeChave.CPF) {
+                        { Text(ChavesPix.LEMBRETE_DO_CPF, color = CoresAlerta.texto()) }
+                    } else {
+                        null
+                    },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth(),
@@ -755,7 +802,7 @@ private fun PassoTermo(vm: CadastroViewModel, aoEscolherSemAssinatura: () -> Uni
     Text("Confira", style = MaterialTheme.typography.titleMedium)
     vm.pessoas.forEachIndexed { i, p ->
         Text(
-            "• ${p.apelido.trim()}${if (i == vm.administrador) " (Administrador)" else ""} — Pix: ${p.pix.trim()}",
+            "• ${p.apelido.trim()}${if (i == vm.administrador) " (Administrador)" else ""} — Pix: ${ChavesPix.exibir(p.pix)}",
             style = MaterialTheme.typography.bodyMedium,
         )
     }

@@ -83,7 +83,8 @@ data class ResultadoK(
 
 /**
  * Índices k1 (retorno matemático geral) e k2 (curto prazo) e odds das Loterias Caixa.
- * Reprodução fiel da implementação de referência (k_referencia.py, parâmetros v1.2).
+ * Reprodução fiel da implementação de referência (k_referencia.py, parâmetros v1.2). Desde a 0.38 (parâmetros 1.4) o
+ * modelo de vendas foi ajustado com os valores corrigidos pelo IPCA de cada ano ([CorrecaoMonetaria]).
  */
 object IndiceK {
 
@@ -252,21 +253,29 @@ object IndiceK {
         return e >= 2.5 * eAnt && e >= acumEspecial
     }
 
-    fun preverN(v: VendasK, e: Double, nAnt: Double, dia: Int, reserva: Int): Pair<Double, Double> {
+    /**
+     * As vendas previstas (número de apostas simples) e o desvio do log. [fator]: a correção monetária ([CorrecaoMonetaria],
+     * desde a 1.4): a estimativa e as vendas do anterior vão para reais do ano-base do modelo, e a previsão volta para
+     * os reais de agora (1 = sem correção).
+     */
+    fun preverN(v: VendasK, e: Double, nAnt: Double, dia: Int, reserva: Int, fator: Double = 1.0): Pair<Double, Double> {
         val efeito = v.efeitoDiaSemana[dia.toString()] ?: v.efeitoDiaAusente
-        val logN = v.intercepto + efeito + v.bLogEstimativa * ln(e) + v.bLogNAnterior * ln(nAnt) + v.bReserva * reserva
-        return exp(logN) to v.sigmaLog
+        val logN = v.intercepto + efeito + v.bLogEstimativa * ln(e / fator) + v.bLogNAnterior * ln(nAnt / fator) + v.bReserva * reserva
+        return exp(logN) * fator to v.sigmaLog
     }
 
-    /** "20/10/2026" -> 0 (segunda) ... 6 (domingo). */
-    private fun diaDaSemana(texto: String?): Int? {
+    /** "20/10/2026" -> a data (null se não der). */
+    private fun data(texto: String?): LocalDate? {
         val p = texto?.trim()?.split("/") ?: return null
         if (p.size != 3) return null
         val d = p[0].toIntOrNull() ?: return null
         val m = p[1].toIntOrNull() ?: return null
         val a = p[2].toIntOrNull() ?: return null
-        return runCatching { LocalDate.of(a, m, d).dayOfWeek.value - 1 }.getOrNull()
+        return runCatching { LocalDate.of(a, m, d) }.getOrNull()
     }
+
+    /** "20/10/2026" -> 0 (segunda) ... 6 (domingo). */
+    private fun diaDaSemana(texto: String?): Int? = data(texto)?.let { it.dayOfWeek.value - 1 }
 
     /**
      * k1, k2 e as entradas do próximo concurso, a partir do último concurso apurado [u] e do anterior [a].
@@ -293,7 +302,9 @@ object IndiceK {
         val base = ResultadoK(numero, especial, acumulado, reserva, heranca, nAnterior)
         if (especial || e <= 0 || nAnterior <= 0) return base
         val dia = diaDaSemana(u.dataProximoConcurso) ?: return base
-        val (nMed, sigma) = preverN(m.vendas, e, nAnterior, dia, reserva)
+        // A correção monetária (desde a 1.4): os reais de agora em reais do ano-base do modelo.
+        val fator = data(u.dataProximoConcurso)?.year?.let { p.correcao?.fator(it) } ?: 1.0
+        val (nMed, sigma) = preverN(m.vendas, e, nAnterior, dia, reserva, fator)
         var k1 = 0.0
         val porFaixa = LinkedHashMap<Int, Double>()
         for (i in p.ghNos.indices) {

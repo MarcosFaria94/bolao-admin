@@ -1,5 +1,20 @@
 package io.github.marcosfaria94.bolao.ui.caixa
 
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Surface
+import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.BoxScope
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlin.math.abs
+import kotlin.math.hypot
+import android.view.VelocityTracker
+import android.view.ViewConfiguration
 import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
@@ -98,8 +113,9 @@ import kotlin.coroutines.resume
 /**
  * A tela da Caixa (desde a 0.31): o Loterias Online da Caixa dentro do app, pelo botão do trevo na barra de baixo.
  * Desde a 0.32 fica em terceiro na barra (Home, Jogos, Caixa, Ajustes); "caixa" é o endereço dela (abrir("caixa") vai
- * para ela). Desde a 0.36 ela abre só pelo botão: deslizar o dedo fica todo com o site (de 0.32 a 0.35, deslizar para
- * os lados na página trocava de aba e atrapalhava o site) e, nas abas, dos Jogos o dedo vai direto aos Ajustes.
+ * para ela). Na 0.36 e na 0.37 ela abria só pelo botão; desde a 0.38 (pedido do usuário) ela volta para a roda das abas
+ * e tem o cadeado ([BotaoDoCadeado], logo acima do ícone dos cookies do site, que passou para a direita): aberto,
+ * deslizar o dedo para os lados na página passa para a próxima tela; fechado, o dedo fica todo com o site.
  */
 const val ROTA_CAIXA = "caixa"
 
@@ -114,6 +130,12 @@ const val TRANSCREVER = "Transcrever"
 
 /** Quantas vezes o app pergunta ao script se ele terminou (de 300 em 300 ms: 45 segundos). */
 private const val PERGUNTAS = 150
+
+/** As fases do deslize para os lados na página, com o cadeado aberto (desde a 0.38): o valor é o arrasto (px) ou, no fim, a velocidade (px/s). */
+enum class FaseDoDeslize { COMECO, ARRASTO, FIM }
+
+/** Onde ficou o ícone dos cookies do site (desde a 0.38), em frações da página: o meio dele, o alto e a largura. */
+data class PosicaoDoCookie(val x: Float, val topo: Float, val largura: Float)
 
 /** O que o app lê para saber se o script terminou: o JSON da resposta, ou null. */
 private const val LER_RESPOSTA =
@@ -155,6 +177,52 @@ class NavegadorDaCaixa(private val contexto: Context) {
     /** As apostas que já foram para o carrinho do site (pelos ids). */
     val transcritas = mutableStateListOf<String>()
 
+    private val prefs = contexto.getSharedPreferences("app", Context.MODE_PRIVATE)
+
+    /**
+     * O cadeado (desde a 0.38): aberto (o padrão), deslizar o dedo para os lados na página passa para a próxima tela;
+     * fechado, rola a página (o dedo fica todo com o site, como na 0.36 e na 0.37). Fica guardado.
+     */
+    var destravada by mutableStateOf(!prefs.getBoolean(CADEADO_FECHADO, false))
+        private set
+
+    fun alternarCadeado() {
+        destravada = !destravada
+        prefs.edit().putBoolean(CADEADO_FECHADO, !destravada).apply()
+        aviso = if (destravada) AVISO_CADEADO_ABERTO else AVISO_CADEADO_FECHADO
+    }
+
+    /** Quem acompanha o deslize para os lados (a raiz, que move as abas); null = ninguém. */
+    var aoDeslizar: ((FaseDoDeslize, Float) -> Unit)? = null
+
+    /** A página passa o deslize para os lados para as abas (cadeado aberto). */
+    fun deslizar(fase: FaseDoDeslize, valor: Float) {
+        aoDeslizar?.invoke(fase, valor)
+    }
+
+    /** Onde ficou o ícone dos cookies do site (o cadeado vai logo acima); null = não achado (o cadeado fica no canto). */
+    var cookie by mutableStateOf<PosicaoDoCookie?>(null)
+        private set
+
+    private val escopo = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var cookies: Job? = null
+
+    /** O script que leva o ícone dos cookies para a direita (assets/caixa/cookies.js). */
+    private val scriptDosCookies: String by lazy { contexto.assets.open("caixa/cookies.js").bufferedReader().use { it.readText() } }
+
+    /** Leva o ícone dos cookies para a direita e lê onde ele ficou, algumas vezes (o site monta o botão depois de abrir). */
+    private fun cuidarDosCookies(w: WebView) {
+        cookies?.cancel()
+        cookies = escopo.launch {
+            for (espera in listOf(300L, 1_200L, 2_500L, 5_000L)) {
+                delay(espera)
+                runCatching { withTimeoutOrNull(2_000) { avaliar(w, scriptDosCookies) } }
+                val lido = runCatching { withTimeoutOrNull(2_000) { avaliar(w, "window.__bolaoCookie||null") } }.getOrNull()
+                cookie = Transcricao.textoDoJavascript(lido)?.let(::lerCookie) ?: cookie
+            }
+        }
+    }
+
     private var web: WebView? = null
 
     /** O endereço que não abriu (para o "Tentar de novo" ir nele, e não recarregar a página de antes). */
@@ -175,6 +243,7 @@ class NavegadorDaCaixa(private val contexto: Context) {
 
     /** Fecha a página de vez (ao trocar de sessão ou fechar o app). */
     fun destruir() {
+        escopo.cancel()
         web?.let {
             (it.parent as? ViewGroup)?.removeView(it)
             it.destroy()
@@ -223,7 +292,7 @@ class NavegadorDaCaixa(private val contexto: Context) {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun criar(tela: Context): WebView = PaginaDaCaixa(tela).apply {
+    private fun criar(tela: Context): WebView = PaginaDaCaixa(tela, this).apply {
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -285,12 +354,15 @@ class NavegadorDaCaixa(private val contexto: Context) {
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
             endereco = url
+            // O site muda de página sem recarregar (só a parte depois do "#"): o ícone dos cookies de novo.
+            cuidarDosCookies(view)
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
             endereco = url
             if (erro == null && url?.startsWith("https://") == true) trocasParaHttps = 0
             runCatching { CookieManager.getInstance().flush() }
+            cuidarDosCookies(view)
         }
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -378,6 +450,63 @@ class NavegadorDaCaixa(private val contexto: Context) {
         suspendCancellableCoroutine { c -> w.evaluateJavascript(js) { if (c.isActive) c.resume(it) } }
     }
 
+    /** O "Transcrever em lote" da barra de cima foi tocado (desde a 0.38): a tela da Caixa abre a janela. */
+    var pedirLote by mutableStateOf(false)
+
+    /** O lote em andamento: o que está sendo transcrito agora ("2 de 5 · Quina Nº4"); null = nenhum. */
+    var andamentoDoLote by mutableStateOf<String?>(null)
+        private set
+
+    /** Uma aposta do lote e como foi: no carrinho ou o porquê de não ter ido. */
+    data class FeitoNoLote(val pagina: Transcricao.Pagina, val item: Transcricao.Item, val resposta: Transcricao.Resposta)
+
+    /**
+     * O "Transcrever em lote" (desde a 0.38, pedido do usuário): para cada página com apostas ([grupos]), o app muda a
+     * página do site (só a parte depois do "#": a conta continua aberta), espera o volante e transcreve uma aposta depois
+     * da outra, como o "Transcrever" da faixa. O login e o pagamento continuam no site. Devolve como foi cada aposta.
+     */
+    suspend fun transcreverEmLote(grupos: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>): List<FeitoNoLote> {
+        val w = web ?: return emptyList()
+        val feitos = mutableListOf<FeitoNoLote>()
+        val total = grupos.sumOf { it.second.size }
+        var n = 0
+        try {
+            for ((pagina, itens) in grupos) {
+                val chegou = irParaAPagina(w, pagina)
+                for (item in itens) {
+                    n++
+                    andamentoDoLote = "$n de $total · ${nomeDaPagina(pagina)} · ${item.titulo}"
+                    val r = if (!chegou) {
+                        Transcricao.Resposta(mensagem = "Não consegui abrir a página da ${nomeDaPagina(pagina)} no site: abra a página dela e use o $TRANSCREVER.")
+                    } else {
+                        transcrever(item)
+                    }
+                    transcritas.addAll(Transcricao.transcritas(item, r).filter { it !in transcritas })
+                    feitos += FeitoNoLote(pagina, item, r)
+                }
+            }
+        } finally {
+            andamentoDoLote = null
+        }
+        return feitos
+    }
+
+    /** Muda a página do site para a [pagina] e espera o endereço chegar (até 10 s) e o volante aparecer. */
+    private suspend fun irParaAPagina(w: WebView, pagina: Transcricao.Pagina): Boolean {
+        if (Transcricao.pagina(endereco) == pagina) return true
+        val fragmento = Transcricao.fragmento(pagina) ?: return false
+        avaliar(w, "(function(){location.hash=" + Transcricao.textoParaJavascript(fragmento) + ";return 'ok'})()")
+        repeat(40) {
+            delay(250)
+            if (Transcricao.pagina(endereco) == pagina) {
+                // O volante da página nova (o script ainda espera por ele, se demorar).
+                delay(1_200)
+                return true
+            }
+        }
+        return false
+    }
+
     /**
      * Transcreve o [item] na página de agora: o script marca o volante do site, confere e põe no carrinho. O app
      * pergunta de tempos em tempos se terminou.
@@ -401,17 +530,99 @@ class NavegadorDaCaixa(private val contexto: Context) {
 }
 
 /**
- * A página do site: um WebView que fica com o dedo todo (desde a 0.36; de 0.32 a 0.35 ele dividia o dedo com as abas e
- * deslizar para os lados trocava de aba). Nada por cima dela pega o arrasto: rolar, tocar e ampliar são do site.
+ * A página do site. Com o cadeado fechado, ela fica com o dedo todo (como na 0.36 e na 0.37): rolar, tocar e ampliar são
+ * do site. Com o cadeado aberto (desde a 0.38, o padrão), o arrasto para os lados ([ehParaOsLados]) deixa de ser do site
+ * e vai para as abas ([NavegadorDaCaixa.deslizar]): a tela passa para a vizinha; o arrasto para cima e para baixo, o
+ * toque e os dois dedos continuam do site.
  */
 @SuppressLint("ViewConstructor", "ClickableViewAccessibility")
-private class PaginaDaCaixa(contexto: Context) : WebView(contexto) {
+private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorDaCaixa) : WebView(contexto) {
+    private val folga = ViewConfiguration.get(contexto).scaledTouchSlop
+    private var x0 = 0f
+    private var y0 = 0f
+    private var ultimoX = 0f
+    private var decidido = false
+    private var trocando = false
+    private var rastreador: VelocityTracker? = null
+
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        if (e.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                x0 = e.rawX
+                y0 = e.rawY
+                ultimoX = e.rawX
+                decidido = false
+                trocando = false
+                rastreador?.recycle()
+                rastreador = VelocityTracker.obtain()
+            }
+            // Dois dedos (ampliar): do site.
+            MotionEvent.ACTION_POINTER_DOWN -> if (!trocando) decidido = true
+        }
+        rastreador?.let { r ->
+            val bruto = MotionEvent.obtain(e)
+            bruto.setLocation(e.rawX, e.rawY)
+            r.addMovement(bruto)
+            bruto.recycle()
+        }
+        if (trocando) {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    navegador.deslizar(FaseDoDeslize.ARRASTO, e.rawX - ultimoX)
+                    ultimoX = e.rawX
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val v = if (e.actionMasked == MotionEvent.ACTION_UP) rastreador?.let { it.computeCurrentVelocity(1000); it.xVelocity } ?: 0f else 0f
+                    trocando = false
+                    navegador.deslizar(FaseDoDeslize.FIM, v)
+                }
+            }
+            return true
+        }
+        if (!decidido && e.actionMasked == MotionEvent.ACTION_MOVE && navegador.destravada) {
+            val dx = e.rawX - x0
+            val dy = e.rawY - y0
+            if (hypot(dx, dy) > folga) {
+                decidido = true
+                if (ehParaOsLados(dx, dy)) {
+                    trocando = true
+                    // O site para de acompanhar este dedo.
+                    val cancelar = MotionEvent.obtain(e)
+                    cancelar.action = MotionEvent.ACTION_CANCEL
+                    super.onTouchEvent(cancelar)
+                    cancelar.recycle()
+                    ultimoX = e.rawX
+                    navegador.deslizar(FaseDoDeslize.COMECO, 0f)
+                    navegador.deslizar(FaseDoDeslize.ARRASTO, dx)
+                    return true
+                }
+            }
+        }
         val usado = super.onTouchEvent(e)
         return usado || e.actionMasked == MotionEvent.ACTION_DOWN
     }
 }
+
+/** O arrasto ([dx], [dy]) é para os lados: bem mais para os lados que para cima ou para baixo (desde a 0.38). */
+fun ehParaOsLados(dx: Float, dy: Float): Boolean = abs(dx) > 1.5f * abs(dy)
+
+/** O JSON que o script dos cookies deixa na página ({x, topo, largura}); null se não der. */
+fun lerCookie(json: String): PosicaoDoCookie? = runCatching {
+    val o = kotlinx.serialization.json.Json.parseToJsonElement(json) as kotlinx.serialization.json.JsonObject
+    fun f(k: String) = (o[k] as kotlinx.serialization.json.JsonPrimitive).content.toFloat()
+    PosicaoDoCookie(f("x"), f("topo"), f("largura")).takeIf { it.x in 0f..1f && it.topo in 0f..1f }
+}.getOrNull()
+
+/** A chave do cadeado nas preferências (desde a 0.38; true = fechado). */
+private const val CADEADO_FECHADO = "caixa_cadeado_fechado"
+
+/** O cadeado para quem não vê a tela (e os testes) e o aviso ao tocar nele (desde a 0.38). */
+const val CADEADO_ABERTO = "Cadeado aberto: deslizar para os lados passa para a próxima tela"
+const val CADEADO_FECHADO_DESCRICAO = "Cadeado fechado: deslizar para os lados rola a página"
+const val AVISO_CADEADO_ABERTO = "Cadeado aberto: deslize para os lados para passar de tela."
+const val AVISO_CADEADO_FECHADO = "Cadeado fechado: deslizar para os lados rola a página do site."
+
 
 /** O endereço http:// com https:// (o mesmo, com cadeado; desde a 0.36); outro endereço, null. */
 fun enderecoSeguro(url: String?): String? =
@@ -445,6 +656,21 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
 
     val pagina = Transcricao.pagina(navegador.endereco)
     val itens = remember(estado, pagina) { pagina?.let { Transcricao.itens(estado, it, LocalDate.now()) }.orEmpty() }
+    // O "Transcrever em lote" (desde a 0.38): a janela com o que vai, o andamento e, no fim, como foi cada aposta.
+    var resultadoDoLote by remember { mutableStateOf<List<NavegadorDaCaixa.FeitoNoLote>?>(null) }
+    if (navegador.pedirLote) {
+        val lote = remember(estado, navegador.transcritas.size) { Transcricao.emLote(estado, LocalDate.now(), navegador.transcritas) }
+        JanelaDoLote(
+            lote,
+            aoTranscrever = {
+                navegador.pedirLote = false
+                escopo.launch { resultadoDoLote = navegador.transcreverEmLote(lote) }
+            },
+            aoFechar = { navegador.pedirLote = false },
+        )
+    }
+    navegador.andamentoDoLote?.let { AndamentoDoLote(it) }
+    resultadoDoLote?.let { feitos -> ResultadoDoLote(feitos, aoFechar = { resultadoDoLote = null }) }
 
     fun transcrever(item: Transcricao.Item) {
         escopo.launch {
@@ -519,6 +745,68 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
     }
 }
 
+/** O nome do botão da barra de cima da Caixa (desde a 0.38) e o título da janela. */
+const val TRANSCREVER_EM_LOTE = "Transcrever em lote"
+
+/** "5 apostas de 3 modalidades: Mega-Sena (2), Quina (2) e Lotofácil (1)." */
+fun textoDoLote(lote: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>): String {
+    val total = lote.sumOf { it.second.size }
+    if (total == 0) return "Nenhuma aposta para transcrever agora."
+    val partes = lote.map { (p, i) -> "${nomeDaPagina(p)} (${i.size})" }
+    val lista = if (partes.size == 1) partes[0] else partes.dropLast(1).joinToString(", ") + " e " + partes.last()
+    val apostas = if (total == 1) "1 aposta" else "$total apostas"
+    return "$apostas: $lista. O app abre a página de cada modalidade no site e põe as apostas no carrinho, uma depois da outra. " +
+        "Entre na sua conta antes; o pagamento continua no site."
+}
+
+/** A janela do "Transcrever em lote": o que vai e o botão. */
+@Composable
+private fun JanelaDoLote(lote: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>, aoTranscrever: () -> Unit, aoFechar: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = aoFechar,
+        title = { Text(TRANSCREVER_EM_LOTE) },
+        text = { Text(textoDoLote(lote)) },
+        confirmButton = { TextButton(onClick = aoTranscrever, enabled = lote.isNotEmpty()) { Text(TRANSCREVER) } },
+        dismissButton = { TextButton(onClick = aoFechar) { Text("Cancelar") } },
+    )
+}
+
+/** O andamento do lote (não fecha: o site está sendo usado). */
+@Composable
+private fun AndamentoDoLote(texto: String) {
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text(TRANSCREVER_EM_LOTE) },
+        text = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(12.dp))
+                Text(texto)
+            }
+        },
+        confirmButton = {},
+    )
+}
+
+/** Como foi o lote: quantas foram para o carrinho e o porquê das que não foram. */
+@Composable
+private fun ResultadoDoLote(feitos: List<NavegadorDaCaixa.FeitoNoLote>, aoFechar: () -> Unit) {
+    val ok = feitos.count { it.resposta.ok && it.resposta.noCarrinho }
+    AlertDialog(
+        onDismissRequest = aoFechar,
+        title = { Text(if (ok == feitos.size) "No carrinho" else "No carrinho: $ok de ${feitos.size}") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (ok > 0) "Pague no site e depois confirme as apostas aqui (a faixa de cada modalidade ou os Comprovantes)." else "Nenhuma foi para o carrinho.")
+                feitos.filter { !(it.resposta.ok && it.resposta.noCarrinho) }.forEach { f ->
+                    Text("${nomeDaPagina(f.pagina)} · ${f.item.titulo}: ${f.resposta.mensagem}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = aoFechar) { Text("OK") } },
+    )
+}
+
 /** O alto (px, na raiz) e o tamanho do lugar da página na aba da Caixa (desde a 0.33). */
 data class MedidaDaPagina(val topo: Float, val largura: Int, val altura: Int)
 
@@ -559,6 +847,44 @@ fun PaginaFixaDaCaixa(navegador: NavegadorDaCaixa, posicao: () -> Float?) {
                 )
             }
             navegador.erro?.let { ErroDaPagina(it, aoTentar = { navegador.recarregar() }, aoIrAoInicio = { navegador.paginaInicial() }) }
+            if (navegador.erro == null) BotaoDoCadeado(navegador, medida)
+        }
+    }
+}
+
+/**
+ * O cadeado da página da Caixa (desde a 0.38, pedido do usuário): logo acima do ícone dos cookies do site (que o
+ * script levou para a direita); sem achar o ícone, no canto de baixo à direita. Tocar abre e fecha.
+ */
+@Composable
+private fun BoxScope.BotaoDoCadeado(navegador: NavegadorDaCaixa, medida: MedidaDaPagina) {
+    val densidade = LocalDensity.current
+    val c = navegador.cookie
+    val tamanho = 40.dp
+    val (direita, baixo) = with(densidade) {
+        if (c == null) {
+            12.dp to 84.dp
+        } else {
+            val meio = (1f - c.x) * medida.largura
+            val acima = (1f - c.topo) * medida.altura
+            (meio.toDp() - tamanho / 2).coerceAtLeast(4.dp) to (acima.toDp() + 8.dp)
+        }
+    }
+    val aberto = navegador.destravada
+    Surface(
+        onClick = { navegador.alternarCadeado() },
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.92f),
+        contentColor = if (aberto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        shadowElevation = 4.dp,
+        modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .padding(end = direita, bottom = baixo)
+            .size(tamanho)
+            .semantics { contentDescription = if (aberto) CADEADO_ABERTO else CADEADO_FECHADO_DESCRICAO },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(if (aberto) Icons.Outlined.LockOpen else Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(22.dp))
         }
     }
 }

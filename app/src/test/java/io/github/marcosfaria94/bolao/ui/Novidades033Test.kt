@@ -14,7 +14,6 @@ import io.github.marcosfaria94.bolao.domain.indices.ResultadoK
 import io.github.marcosfaria94.bolao.net.CaixaParser
 import io.github.marcosfaria94.bolao.ui.ajustes.GRUPO_FEEDBACK
 import io.github.marcosfaria94.bolao.ui.ajustes.SecaoAjuste
-import io.github.marcosfaria94.bolao.ui.jogos.IR_AO_CONCURSO
 import io.github.marcosfaria94.bolao.ui.jogos.ROTULO_DO_CONCURSO
 import io.github.marcosfaria94.bolao.ui.jogos.SEM_INDICES_NO_ESPECIAL
 import io.github.marcosfaria94.bolao.ui.jogos.indicesDoCartao
@@ -69,17 +68,15 @@ class Novidades033Test {
 
     @Test
     fun mediaPonderadaDosUltimosEspeciais() {
-        // Sete especiais (k1 0,30 a 0,36, do mais velho ao mais novo) e um concurso normal no meio: entram os 5 mais novos,
-        // com pesos 5 (o mais novo) a 1.
+        // Sete especiais (k1 0,30 a 0,36, do mais velho ao mais novo) e um concurso normal no meio: entram os 5 mais novos.
+        // Desde a 0.38 a estimativa é a mediana deles (até a 0.37, a média com pesos 5 a 1).
         val lista = (0 until 7).map { i ->
             val k1 = 0.30 + i * 0.01
             especial(1000 + i * 365, 1_000_000.0, mapOf(1 to (1 to k1 * 1_000_000.0)))
         } + especial(5000, 1_000_000.0, mapOf(1 to (1 to 900_000.0)), indicador = 1)
         val e = IndiceEspecial.estimar(parametros, "megasena", lista.shuffled())!!
         assertEquals(listOf(3190, 2825, 2460, 2095, 1730), e.amostras.map { it.numero })
-        assertEquals(listOf(5.0, 4.0, 3.0, 2.0, 1.0), e.amostras.map { it.peso })
-        val esperado = (5 * 0.36 + 4 * 0.35 + 3 * 0.34 + 2 * 0.33 + 1 * 0.32) / 15
-        assertEquals(esperado, e.k1, 1e-9)
+        assertEquals(0.34, e.k1, 1e-9)
         // Com um especial só, ele mesmo; sem nenhum, nada.
         assertEquals(0.31, IndiceEspecial.estimar(parametros, "megasena", lista.take(2).drop(1))!!.k1, 1e-9)
         assertNull(IndiceEspecial.estimar(parametros, "megasena", emptyList()))
@@ -95,7 +92,8 @@ class Novidades033Test {
         val epoca = Especiais.epoca(Modalidade.MEGA_SENA)!!
         val e = IndiceEspecial.estimar(parametros, "megasena", lista, epoca = epoca)!!
         assertEquals(listOf(2955, 2810), e.amostras.map { it.numero })
-        assertEquals((2 * 0.39 + 1 * 0.40) / 3, e.k1, 1e-9)
+        // Dois: a mediana é a média dos dois (desde a 0.38).
+        assertEquals((0.39 + 0.40) / 2, e.k1, 1e-9)
         // Sem a época, entram todos os especiais (o de maio, o mais novo, pesa mais).
         assertEquals(3010, IndiceEspecial.estimar(parametros, "megasena", lista)!!.amostras.first().numero)
         // A virada do ano: 1º de janeiro é da época de 31 de dezembro; 15 de fevereiro já não é.
@@ -216,7 +214,6 @@ class Novidades033Test {
     fun telasDa033() {
         // Os Detalhes: o campo era só "Concurso" (de 0.33 a 0.36); desde a 0.37 é "Nº Concurso", na navegação flutuante.
         assertEquals("Nº Concurso", ROTULO_DO_CONCURSO)
-        assertEquals("Ir", IR_AO_CONCURSO)
         // O último grupo dos Ajustes se chama FEEDBACK (era APOIO).
         assertEquals("FEEDBACK", GRUPO_FEEDBACK)
         for (individual in listOf(false, true)) assertEquals(GRUPO_FEEDBACK, SecaoAjuste.grupos(individual).last().first)

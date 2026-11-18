@@ -423,7 +423,12 @@ class AcaoDaBarra(
     val botao: String? = null,
     val aoTocarBotao: () -> Unit = {},
     val aoVoltar: (() -> Unit)? = null,
+    /** Os ícones do canto direito (desde a 0.38: a calculadora e as Estatísticas, nos Detalhes), na ordem da barra. */
+    val icones: List<IconeDaBarra> = emptyList(),
 )
+
+/** Um ícone da barra de cima (desde a 0.38): o desenho, o nome (para quem não vê a tela) e o toque. */
+class IconeDaBarra(val icone: androidx.compose.ui.graphics.vector.ImageVector, val descricao: String, val aoTocar: () -> Unit)
 
 /** Guarda a ação da barra da tela de cima (a raiz do app desenha a barra). */
 class BarraDaTela {

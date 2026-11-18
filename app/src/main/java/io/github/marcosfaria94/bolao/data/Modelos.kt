@@ -65,12 +65,42 @@ data class Parametros(
      * vazio = sem dia definido.
      */
     val diasDeAposta: List<Int>? = null,
+    /**
+     * O stop loss (desde a 0.38, pedido do usuário): o limite do mês, em apostas ou em dinheiro gasto. null = sem limite
+     * (o padrão). Passado o limite, o volante e os favoritos não registram ([io.github.marcosfaria94.bolao.domain.Limites]).
+     */
+    val limiteMensal: LimiteMensal? = null,
+    /** Não deixar registrar a aposta que custa mais que o saldo (desde a 0.38; desligado por padrão; não vale no Individual). */
+    val exigirSaldo: Boolean = false,
+    /** Avisar quando o concurso de uma modalidade acumular (desde a 0.38, Parâmetros > Avisos; desligado por padrão). */
+    val avisarAcumulado: Boolean = false,
+    /** Avisar quando o k1 do próximo concurso passar de [k1Minimo] (desde a 0.38; desligado por padrão). */
+    val avisarK1: Boolean = false,
+    val k1Minimo: Double = K1_MINIMO_PADRAO,
+    /** Avisar quando algum prêmio estimado passar de [premioMinimo] (centavos; desde a 0.38; desligado por padrão). */
+    val avisarPremio: Boolean = false,
+    val premioMinimo: Long = PREMIO_MINIMO_PADRAO,
 ) {
+    companion object {
+        /** O k1 do aviso quando ele é ligado pela primeira vez. */
+        const val K1_MINIMO_PADRAO = 0.8
+
+        /** O prêmio do aviso quando ele é ligado pela primeira vez: R$ 100 milhões. */
+        const val PREMIO_MINIMO_PADRAO = 100_000_000_00L
+    }
+
     /** Os dias de aposta que valem, em ordem (vazio = sem dia definido). */
     val dias: List<Int> get() = (diasDeAposta ?: Calendario.DIAS_PROGRAMADOS).filter { it in 1..31 }.distinct().sorted()
 
     val semDiaDefinido: Boolean get() = dias.isEmpty()
 }
+
+/** O stop loss do mês (desde a 0.38): até [valor] apostas ou até [valor] centavos gastos. */
+@Serializable
+data class LimiteMensal(val tipo: TipoDeLimite, val valor: Long)
+
+@Serializable
+enum class TipoDeLimite { APOSTAS, DINHEIRO }
 
 /** Arquivo guardado na pasta interna do app (comprovantes, termo, imagens). */
 @Serializable

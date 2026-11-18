@@ -321,6 +321,34 @@ class Indices(private val context: Context) {
         return anunciados + proximos
     }
 
+    /**
+     * As modalidades para os avisos dos Parâmetros (desde a 0.38: acumulou, k1 acima de x, prêmio acima de n): o último e o
+     * próximo concurso de cada uma (sem a Federal) e os especiais anunciados (só o prêmio).
+     */
+    fun alvosDosAvisos(agora: Instant = Instant.now(), mapa: Map<Modalidade, Item> = _itens.value): List<io.github.marcosfaria94.bolao.domain.AvisosDosJogos.Alvo> {
+        val dosJogos = mapa.values.filter { it.modalidade != Modalidade.FEDERAL }.map { item ->
+            val u = item.ultimo
+            io.github.marcosfaria94.bolao.domain.AvisosDosJogos.Alvo(
+                modalidade = item.modalidade,
+                nome = item.modalidade.nome,
+                ultimo = u?.numero,
+                diaDoUltimo = u?.data,
+                acumulou = u?.acumulado == true && u.temResultado,
+                proximo = item.proximoNumero,
+                premio = u?.premioEstimadoProximo,
+                k1 = item.k1,
+                destino = "modalidade/${item.modalidade.name}",
+            )
+        }
+        val especiais = alvosDosEspeciais(agora, mapa).map { e ->
+            io.github.marcosfaria94.bolao.domain.AvisosDosJogos.Alvo(
+                modalidade = e.modalidade, nome = e.nome, ultimo = null, diaDoUltimo = null, acumulou = false,
+                proximo = e.concurso, premio = e.premio, k1 = null, destino = e.destino,
+            )
+        }
+        return dosJogos + especiais
+    }
+
     /** O k1 e o k2 do concurso [numero] quando ele é um especial anunciado (null = não é, ou sem a estimativa). */
     fun resultadoDoEspecial(m: Modalidade, numero: Int): ResultadoK? {
         if (Especiais.doConcurso(m, numero) == null) return null

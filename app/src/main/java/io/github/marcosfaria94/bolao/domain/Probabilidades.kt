@@ -98,7 +98,18 @@ object Probabilidades {
      * jogados, quantas apostas simples cabem neles (o valor da aposta é o preço da simples vezes isso) e a
      * chance de cada faixa ("1 em X"; null = não dá para acertar essa faixa com essa aposta).
      */
-    data class LinhaDaTabela(val numeros: Int, val trevos: Int, val apostasSimples: Long, val umEm: List<Long?>)
+    data class LinhaDaTabela(
+        val numeros: Int,
+        val trevos: Int,
+        val apostasSimples: Long,
+        val umEm: List<Long?>,
+        /** A chance exata de cada faixa (desde a 0.38, para a calculadora); null = não dá para acertar essa faixa. */
+        val chances: List<Double?> = umEm.map { it?.let { u -> 1.0 / u } },
+    )
+
+    /** A chance [casos] ÷ [total] (desde a 0.38); null = nenhum caso. */
+    private fun chance(casos: BigInteger, total: BigInteger): Double? =
+        if (casos.signum() == 0) null else BigDecimal(casos).divide(BigDecimal(total), java.math.MathContext.DECIMAL64).toDouble()
 
     /** Os nomes das colunas das faixas (na ordem de [tabela]). */
     fun colunas(m: Modalidade): List<String> = when (m) {
@@ -146,12 +157,16 @@ object Probabilidades {
                 val n = m.maior - m.menor + 1
                 val total = c(n, m.qtdSorteada)
                 val dosNumeros = acertosDasColunas(m).map { k -> umEmOuNada(hiper(n, a, m.qtdSorteada, k), total) }
+                val chancesDosNumeros = acertosDasColunas(m).map { k -> chance(hiper(n, a, m.qtdSorteada, k), total) }
                 val extra = when (m.extra) {
                     Extra.TIME_DO_CORACAO -> listOf<Long?>(80)
                     Extra.MES_DE_SORTE -> listOf<Long?>(12)
                     Extra.NENHUM -> emptyList()
                 }
-                LinhaDaTabela(a, m.trevos, Volante.apostasSimples(m, a, m.trevos), dosNumeros + extra)
+                LinhaDaTabela(
+                    a, m.trevos, Volante.apostasSimples(m, a, m.trevos), dosNumeros + extra,
+                    chances = chancesDosNumeros + extra.map { it?.let { u -> 1.0 / u } },
+                )
             }
             // Super Sete, Loteca e Federal: só a aposta simples.
             else -> listOf(LinhaDaTabela(m.qtdAposta, 0, 1, faixas(m).map { it.umEm }))
@@ -166,7 +181,10 @@ object Probabilidades {
             6 to listOf(2), 6 to listOf(1, 0), 5 to listOf(2), 5 to listOf(1, 0), 4 to listOf(2), 4 to listOf(1, 0),
             3 to listOf(2), 3 to listOf(1), 2 to listOf(2), 2 to listOf(1),
         )
-        return LinhaDaTabela(a, b, Volante.apostasSimples(Modalidade.MAIS_MILIONARIA, a, b), faixas.map { (n, ts) -> umEmOuNada(casos(n, ts), total) })
+        return LinhaDaTabela(
+            a, b, Volante.apostasSimples(Modalidade.MAIS_MILIONARIA, a, b), faixas.map { (n, ts) -> umEmOuNada(casos(n, ts), total) },
+            chances = faixas.map { (n, ts) -> chance(casos(n, ts), total) },
+        )
     }
 
     /**

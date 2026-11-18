@@ -394,19 +394,20 @@ class TelasTest {
         // Desde a 0.24: a extinção do bolão fica no fim dos Integrantes abertos (fora dos grupos); o Backup,
         // no Celular. Desde a 0.23: o aporte e os preços nos Parâmetros; o termo na Segurança. Sem o grupo
         // "Sobre" (os Créditos são o rodapé da lista).
-        assertEquals(listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.PARAMETROS), SecaoAjuste.grupos(false).first { it.first == "BOLÃO" }.second)
+        // Desde a 0.38 o título diz o tipo do bolão e a extinção saiu dos Ajustes (fica no "Excluir" das Sessões).
+        assertEquals(listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.PARAMETROS), SecaoAjuste.grupos(false).first { it.first == "BOLÃO (FORMAL)" }.second)
         assertEquals(listOf(SecaoAjuste.TERMO, SecaoAjuste.INTEGRIDADE, SecaoAjuste.AUDITORIA), SecaoAjuste.grupos(false).first { it.first == "SEGURANÇA" }.second)
         assertTrue(SecaoAjuste.grupos(false).none { SecaoAjuste.EXTINCAO in it.second })
         assertTrue(SecaoAjuste.grupos(false, informal = true).none { SecaoAjuste.EXTINCAO in it.second })
         // O bolão informal (desde a 0.22) não tem o termo.
-        assertEquals(listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.PARAMETROS), SecaoAjuste.grupos(false, informal = true).first { it.first == "BOLÃO" }.second)
+        assertEquals(listOf(SecaoAjuste.INTEGRANTES, SecaoAjuste.PARAMETROS), SecaoAjuste.grupos(false, informal = true).first { it.first == "BOLÃO (INFORMAL)" }.second)
         assertEquals(listOf(SecaoAjuste.INTEGRIDADE, SecaoAjuste.AUDITORIA), SecaoAjuste.grupos(false, informal = true).first { it.first == "SEGURANÇA" }.second)
-        // O individual: o "Apagar tudo" no fim do "Apostas"; sem o grupo Segurança.
-        assertEquals(listOf(SecaoAjuste.MODO, SecaoAjuste.PARAMETROS, SecaoAjuste.EXTINCAO), SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second)
+        // O individual: sem o grupo Segurança; desde a 0.38 sem o "Apagar tudo" (fica no "Excluir" das Sessões).
+        assertEquals(listOf(SecaoAjuste.MODO, SecaoAjuste.PARAMETROS), SecaoAjuste.grupos(true).first { it.first == "APOSTAS" }.second)
         // Desde a 0.32, o grupo Apoio (Doação e Contato) no fim.
         assertEquals(listOf("APOSTAS", "CELULAR", "FEEDBACK"), SecaoAjuste.grupos(true).map { it.first })
         assertEquals(listOf(SecaoAjuste.NOTIFICACOES, SecaoAjuste.BIOMETRIA, SecaoAjuste.BACKUP), SecaoAjuste.grupos(true).first { it.first == "CELULAR" }.second)
-        assertEquals(listOf("BOLÃO", "SEGURANÇA", "CELULAR", "FEEDBACK"), SecaoAjuste.grupos(false).map { it.first })
+        assertEquals(listOf("BOLÃO (FORMAL)", "SEGURANÇA", "CELULAR", "FEEDBACK"), SecaoAjuste.grupos(false).map { it.first })
         // O endereço antigo do "Aporte e preços" (avisos de antes da 0.23) abre os Parâmetros.
         assertEquals(SecaoAjuste.PARAMETROS, SecaoAjuste.de("valores"))
         assertEquals(SecaoAjuste.PARAMETROS, SecaoAjuste.de("parametros"))

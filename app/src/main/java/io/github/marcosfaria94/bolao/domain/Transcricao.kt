@@ -75,6 +75,36 @@ object Transcricao {
         return Pagina(m, especial = resto.contains("especial"))
     }
 
+    /**
+     * O endereço da página de modalidade [p] no site (desde a 0.38, para o "Transcrever em lote"): a parte depois do "#"
+     * ("/mega-sena", "/mega-sena/especial"). O app muda só essa parte (o site não recarrega e a conta continua aberta).
+     */
+    fun fragmento(p: Pagina): String? {
+        val nome = when (p.modalidade) {
+            Modalidade.MEGA_SENA -> "mega-sena"
+            Modalidade.LOTOFACIL -> "lotofacil"
+            Modalidade.QUINA -> "quina"
+            Modalidade.LOTOMANIA -> "lotomania"
+            Modalidade.TIMEMANIA -> "timemania"
+            Modalidade.DUPLA_SENA -> "dupla-sena"
+            Modalidade.DIA_DE_SORTE -> "dia-de-sorte"
+            Modalidade.SUPER_SETE -> "super-sete"
+            Modalidade.MAIS_MILIONARIA -> "mais-milionaria"
+            Modalidade.LOTECA -> "loteca"
+            Modalidade.FEDERAL -> return null
+        }
+        return "/" + nome + if (p.especial) "/especial" else ""
+    }
+
+    /**
+     * As páginas com apostas para transcrever (desde a 0.38, o "Transcrever em lote"): cada modalidade (e cada concurso
+     * especial) com os itens dela, na ordem das modalidades; sem as que já foram para o carrinho ([transcritas]).
+     */
+    fun emLote(e: Estado, hoje: LocalDate, transcritas: Collection<String>): List<Pair<Pagina, List<Item>>> =
+        Modalidade.ATIVAS.filter { it.formato != Formato.FEDERAL }.flatMap { m -> listOf(Pagina(m, false), Pagina(m, true)) }
+            .map { p -> p to itens(e, p, hoje).filter { i -> i.ids.isEmpty() || !i.ids.all { it in transcritas } } }
+            .filter { it.second.isNotEmpty() }
+
     // ---------- as apostas que esperam o comprovante ----------
 
     /**
