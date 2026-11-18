@@ -740,11 +740,11 @@ class TelasTest {
         assertEquals(e.config.preco(Modalidade.QUINA), proxima.valor)
         // O aviso das apostas que falta confirmar, no alto do volante (desde a 0.36; antes, o comprovante que faltava).
         assertEquals(
-            "Falta confirmar a aposta Nº3: faça a aposta no site da Caixa (\"Transcrever\") e confirme depois de pagar.",
+            "Falta confirmar a aposta Nº3: faça a aposta no site da Caixa (\"Transcrever em lote\") e confirme depois de pagar.",
             textoFaltaComprovante(listOf(3)),
         )
         assertEquals(
-            "Falta confirmar as apostas Nº3, Nº4 e Nº5: faça as apostas no site da Caixa (\"Transcrever\") e confirme depois de pagar.",
+            "Falta confirmar as apostas Nº3, Nº4 e Nº5: faça as apostas no site da Caixa (\"Transcrever em lote\") e confirme depois de pagar.",
             textoFaltaComprovante(listOf(5, 3, 4)),
         )
         // A confirmação do "Descartar tudo" dos Comprovantes (só os jogos, desde a 0.26).

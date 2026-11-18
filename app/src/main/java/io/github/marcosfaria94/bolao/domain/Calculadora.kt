@@ -95,26 +95,34 @@ object Calculadora {
     /** Quantas apostas ao todo. */
     fun total(m: Modalidade, c: ConfigDaCalculadora): Int = apostas(m, c).sumOf { it.second }
 
-    /** "1 em 50.063.860" (a chance [p] arredondada); "Certeza" com 100%; "—" sem chance. */
+    /**
+     * "1 em 50.063.860" (a chance [p] arredondada); "—" sem chance. Desde a 0.39 sem o "Certeza": as apostas são contadas
+     * como diferentes e feitas ao acaso, e assim a chance nunca chega a 100% (perto disso, "1 em 1").
+     */
     fun umEm(p: Double): String = when {
         p <= 0.0 -> "—"
-        p >= 0.999_999_5 -> "Certeza"
         else -> Probabilidades.texto((1.0 / p).roundToLong().coerceAtLeast(1))
     }
 
-    /** "12,3%", "0,0021%", "< 0,0001%" (a porcentagem com 2 algarismos que contam). */
+    /**
+     * "~12,3%", "~0,0021%", "< 0,0001%" (a porcentagem com 2 algarismos que contam). Desde a 0.39 (pedido do usuário) com o
+     * "~" na frente: é um valor arredondado, e "100%" sem ele parecia certeza ("~100%" é quase certo, não certo).
+     */
     fun porcentagem(p: Double): String {
         val v = p * 100
         if (v <= 0.0) return "0%"
         if (v < 0.0001) return "< 0,0001%"
-        if (v >= 99.995) return "100%"
+        if (v >= 99.995) return "${APROXIMADO}100%"
         val casas = when {
             v >= 10 -> 1
             v >= 1 -> 2
             else -> (2 - kotlin.math.floor(kotlin.math.log10(v)).toInt()).coerceAtMost(6)
         }
-        return BigDecimal(v).setScale(casas, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString().replace('.', ',') + "%"
+        return APROXIMADO + BigDecimal(v).setScale(casas, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString().replace('.', ',') + "%"
     }
+
+    /** O sinal das porcentagens arredondadas (desde a 0.39). */
+    const val APROXIMADO = "~"
 
     /** O nome de um tipo de aposta: "Apostas simples (6 números)", "Apostas de 8 números", "Apostas de 7 números e 3 trevos". */
     fun nomeDaLinha(m: Modalidade, numeros: Int, trevos: Int, simples: Boolean = false): String {

@@ -415,7 +415,7 @@ fun textoDosFavoritos(apostas: List<Aposta>, individual: Boolean): String {
         val lista = if (concursos.size == 1) concursos[0] else concursos.dropLast(1).joinToString(", ") + " e " + concursos.last()
         "As ${apostas.size} apostas vão para os próximos concursos ($lista)"
     }
-    val lembrete = if (individual) "" else " Depois, faça os jogos no site da Caixa (botão Caixa, \"Transcrever\") e confirme."
+    val lembrete = if (individual) "" else " Depois, faça os jogos no site da Caixa (botão Caixa, \"Transcrever em lote\") e confirme."
     return "$destino, e ${Dinheiro.rs(valor)} sai do saldo.$lembrete"
 }
 

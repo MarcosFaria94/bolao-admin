@@ -188,7 +188,7 @@ class Novidades028Test {
         val texto = textoDosFavoritos(apostas, individual = false)
         assertTrue(texto, texto.startsWith("As 2 apostas vão para os próximos concursos (Quina 7149 e Dia de Sorte 1126), e R$"))
         // Desde a 0.36: fazer os jogos no site da Caixa e confirmar (até a 0.35, anexar os comprovantes).
-        assertTrue(texto, texto.endsWith("Depois, faça os jogos no site da Caixa (botão Caixa, \"Transcrever\") e confirme."))
+        assertTrue(texto, texto.endsWith("Depois, faça os jogos no site da Caixa (botão Caixa, \"Transcrever em lote\") e confirme."))
         assertEquals(
             "A aposta da Quina vai para o concurso 7149, e ${io.github.marcosfaria94.bolao.domain.Dinheiro.rs(apostas[0].valor)} sai do saldo.",
             textoDosFavoritos(apostas.take(1), individual = true),

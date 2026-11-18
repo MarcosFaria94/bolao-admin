@@ -1,5 +1,7 @@
 package io.github.marcosfaria94.bolao.ui
 
+import io.github.marcosfaria94.bolao.domain.indices.CorrecaoMonetaria
+
 import io.github.marcosfaria94.bolao.data.LimiteMensal
 import io.github.marcosfaria94.bolao.data.Parametros
 import io.github.marcosfaria94.bolao.data.TipoDeLimite
@@ -27,7 +29,7 @@ import io.github.marcosfaria94.bolao.ui.ajustes.valorCurto
 import io.github.marcosfaria94.bolao.ui.caixa.ehParaOsLados
 import io.github.marcosfaria94.bolao.ui.caixa.lerCookie
 import io.github.marcosfaria94.bolao.ui.caixa.textoDoLote
-import io.github.marcosfaria94.bolao.ui.jogos.TECLAS_QUE_FECHAM
+import io.github.marcosfaria94.bolao.ui.jogos.TECLAS_INOCUAS
 import io.github.marcosfaria94.bolao.ui.jogos.proximaOrdem
 import io.github.marcosfaria94.bolao.ui.jogos.proximoIntervalo
 import io.github.marcosfaria94.bolao.ui.jogos.OrdemDaTabela
@@ -153,8 +155,11 @@ class Novidades038Test {
     @Test
     fun k1ComOIpca() {
         val p = ParametrosK.ler(arquivo("src/main/assets/parametros_k.json", "app/src/main/assets/parametros_k.json").readText())
-        assertEquals("1.4", p.versao)
-        val c = p.correcao!!
+        // Desde a 0.39 (parâmetros 1.5) o arquivo não traz a correção (o modelo de vendas voltou ao da 1.3); o código dela
+        // continua e é conferido com a tabela da 1.4.
+        assertEquals("1.5", p.versao)
+        assertEquals(null, p.correcao)
+        val c = CorrecaoMonetaria(2026, mapOf(2015 to 10.67, 2016 to 6.29, 2017 to 2.95, 2018 to 3.75, 2019 to 4.31, 2020 to 4.52, 2021 to 10.06, 2022 to 5.79, 2023 to 4.62, 2024 to 4.83, 2025 to 4.26))
         assertEquals(2026, c.anoBase)
         assertEquals(1.0, c.fator(2026), 0.0)
         assertEquals(1.0, c.fator(2020), 0.0)
@@ -268,7 +273,7 @@ class Novidades038Test {
         // Dupla Sena: os 2 sorteios.
         val dupla = Calculadora.chances(Modalidade.DUPLA_SENA, ConfigDaCalculadora())
         assertTrue(abs(dupla[0].p * 15_890_700 - 2.0) < 0.01)
-        assertEquals("12,5%", Calculadora.porcentagem(0.125))
+        assertEquals("~12,5%", Calculadora.porcentagem(0.125))
         assertEquals("< 0,0001%", Calculadora.porcentagem(1e-9))
         assertFalse(Calculadora.tem(Modalidade.FEDERAL))
     }
@@ -279,7 +284,7 @@ class Novidades038Test {
         var i = 650L
         repeat(30) { i = proximoIntervalo(i) }
         assertEquals(250L, i)
-        assertEquals(setOf(',', '.', ' ', '-'), TECLAS_QUE_FECHAM)
+        assertEquals(setOf(',', '.', ' ', '-'), TECLAS_INOCUAS)
         assertTrue(ehParaOsLados(30f, 10f))
         assertFalse(ehParaOsLados(20f, 20f))
         assertEquals(io.github.marcosfaria94.bolao.ui.caixa.PosicaoDoCookie(0.9f, 0.85f, 0.1f), lerCookie("{\"x\":0.9,\"topo\":0.85,\"largura\":0.1}"))

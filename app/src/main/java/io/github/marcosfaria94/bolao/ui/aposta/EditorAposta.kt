@@ -705,10 +705,10 @@ fun SecaoVolante(
         val explicacao = if (individual) {
             "Desconta ${Dinheiro.rs(total)} do saldo. Dá para excluir " + (if (varias) "as apostas" else "a aposta") + " depois."
         } else if (varias) {
-            "Desconta ${Dinheiro.rs(total)} do saldo. Depois, faça as apostas no site da Caixa (botão Caixa, \"Transcrever\") " +
+            "Desconta ${Dinheiro.rs(total)} do saldo. Depois, faça as apostas no site da Caixa (botão Caixa, \"Transcrever em lote\") " +
                 "e confirme: até a confirmação, elas ainda podem ser descartadas."
         } else {
-            "Desconta ${Dinheiro.rs(r.valor)} do saldo. Depois, faça a aposta no site da Caixa (botão Caixa, \"Transcrever\") " +
+            "Desconta ${Dinheiro.rs(r.valor)} do saldo. Depois, faça a aposta no site da Caixa (botão Caixa, \"Transcrever em lote\") " +
                 "e confirme: até a confirmação, ela ainda pode ser descartada."
         }
         DialogoSimNao(
@@ -748,18 +748,18 @@ fun textoFaltaComprovante(numeros: List<Int>): String {
     val lista = numeros.sorted().map { "Nº$it" }
     val quais = if (lista.size == 1) "a aposta ${lista[0]}" else "as apostas " + lista.dropLast(1).joinToString(", ") + " e " + lista.last()
     val fazer = if (lista.size == 1) "faça a aposta" else "faça as apostas"
-    return "Falta confirmar $quais: $fazer no site da Caixa (\"Transcrever\") e confirme depois de pagar."
+    return "Falta confirmar $quais: $fazer no site da Caixa (\"Transcrever em lote\") e confirme depois de pagar."
 }
 
 /** O aviso do volante pronto, no bolão: registrar, fazer o jogo no site da Caixa e confirmar (desde a 0.36). */
 fun textoDoVolantePronto(apostas: Int, comEspelho: Boolean, concursos: Int): String =
     if (apostas > 1) {
-        "Registre as apostas e faça o jogo no site da Caixa (botão Caixa, \"Transcrever\")" +
+        "Registre as apostas e faça o jogo no site da Caixa (botão Caixa, \"Transcrever em lote\")" +
             (if (comEspelho) ", com a Aposta espelho" else "") +
             (if (concursos > 1) ", com a teimosinha de $concursos concursos" else "") +
             ". Depois de pagar, confirme."
     } else {
-        "Registre a aposta e faça o jogo no site da Caixa (botão Caixa, \"Transcrever\"). Depois de pagar, confirme."
+        "Registre a aposta e faça o jogo no site da Caixa (botão Caixa, \"Transcrever em lote\"). Depois de pagar, confirme."
     }
 
 /** O botão do volante pronto: "Registrar aposta" ou, com a espelho ou a teimosinha, "Registrar 4 apostas". */

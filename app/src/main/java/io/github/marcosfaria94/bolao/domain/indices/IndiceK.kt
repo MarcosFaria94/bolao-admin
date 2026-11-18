@@ -83,8 +83,10 @@ data class ResultadoK(
 
 /**
  * Índices k1 (retorno matemático geral) e k2 (curto prazo) e odds das Loterias Caixa.
- * Reprodução fiel da implementação de referência (k_referencia.py, parâmetros v1.2). Desde a 0.38 (parâmetros 1.4) o
- * modelo de vendas foi ajustado com os valores corrigidos pelo IPCA de cada ano ([CorrecaoMonetaria]).
+ * Reprodução fiel da implementação de referência (k_referencia.py, parâmetros v1.2). Na 0.38 (parâmetros 1.4) o modelo
+ * de vendas foi ajustado com os valores corrigidos pelo IPCA de cada ano ([CorrecaoMonetaria]); desde a 0.39 (parâmetros
+ * 1.5) voltou o da 1.3, sem a correção: a da 1.4 previa vendas maiores que as reais nos concursos de 2026. O código da
+ * correção continua (sem o bloco "correcao_monetaria" no arquivo, nada muda).
  */
 object IndiceK {
 

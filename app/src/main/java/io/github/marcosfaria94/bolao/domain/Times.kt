@@ -102,8 +102,14 @@ val TIMES_DO_CORACAO: List<String> = TIMES.map { it.caixa }
 /** O time da lista com este nome da Caixa (sem diferença de acento e maiúsculas); null = digitado à mão. */
 fun timeDoCoracao(caixa: String?): TimeDoCoracao? {
     if (caixa.isNullOrBlank()) return null
-    val n = Conferencia.normalizar(caixa)
-    return TIMES.firstOrNull { Conferencia.normalizar(it.caixa) == n }
+    return TIMES_PELO_NOME[Conferencia.normalizar(caixa)]
+}
+
+/** Os times pelo nome normalizado (desde a 0.39: antes, cada busca normalizava os 80 nomes da lista). */
+private val TIMES_PELO_NOME: Map<String, TimeDoCoracao> by lazy {
+    val mapa = LinkedHashMap<String, TimeDoCoracao>()
+    for (t in TIMES) mapa.putIfAbsent(Conferencia.normalizar(t.caixa), t)
+    mapa
 }
 
 /** "VASCO DA GAMA/RJ" -> ("VASCO DA GAMA", "RJ"). */

@@ -1,5 +1,7 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
+import kotlin.math.roundToInt
+
 import androidx.compose.foundation.background
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -160,22 +162,34 @@ private fun planejar(
     extraDoTitulo: Int = 0,
     primeiraOrdenavel: Boolean = false,
 ): PlanoDaTabela {
-    fun larguraDe(t: String, e: TextStyle): Int = medidor.measure(t, e, maxLines = 1, softWrap = false).size.width
+    // Cada texto é medido uma vez por estilo (desde a 0.39): as tentativas com a mesma letra repetiam as medidas, e as
+    // tabelas grandes (os 80 times da Timemania, os 100 números da Lotomania) travavam a tela ao abrir.
+    val medidas = HashMap<Pair<String, TextStyle>, Int>()
+    fun larguraDe(t: String, e: TextStyle): Int = medidas.getOrPut(t to e) { medidor.measure(t, e, maxLines = 1, softWrap = false).size.width }
     class Medidas(val t: Tentativa, val celula: TextStyle, val cabecalho: TextStyle, val folga: Int, val daPrimeira: Int, val larguras: List<Int>) {
         val total: Int get() = daPrimeira + larguras.sum()
     }
-    val cache = HashMap<Tentativa, Medidas>()
-    fun medir(t: Tentativa): Medidas = cache.getOrPut(t) {
+    val cache = HashMap<Pair<Tentativa, Boolean>, Medidas>()
+    /**
+     * As medidas da tabela na tentativa [t]. Sem [exato] (desde a 0.39), com a letra menor, a largura de cada texto é a da
+     * letra de sempre vezes a escala (uma conta, sem medir de novo): serve para ver se a tentativa pode caber; a medida
+     * exata fica só para a que pode servir.
+     */
+    fun medir(t: Tentativa, exato: Boolean = true): Medidas = cache.getOrPut(t to exato) {
         val cel = celulaBase.naEscala(t.escala)
         val cab = cabecalhoBase.naEscala(t.escala)
         val negrito = cel.copy(fontWeight = FontWeight.Bold)
+        val negritoBase = celulaBase.copy(fontWeight = FontWeight.Bold)
+        val aproximar = !exato && t.escala != 1f
+        fun larg(x: String, e: TextStyle, base: TextStyle): Int =
+            if (aproximar) (larguraDe(x, base) * t.escala).roundToInt() else larguraDe(x, e)
         val f = with(d) { t.folga.roundToPx() } * 2
-        fun titulo(x: String): Int = if (t.quebrar) larguraEmDuasLinhas(x) { larguraDe(it, cab) } else larguraDe(x, cab)
-        val l0 = maxOf(titulo(primeira) + (if (primeiraOrdenavel) extraDoTitulo else 0), linhas.maxOfOrNull { larguraDe(it.first, negrito) } ?: 0) + f
+        fun titulo(x: String): Int = if (t.quebrar) larguraEmDuasLinhas(x) { larg(it, cab, cabecalhoBase) } else larg(x, cab, cabecalhoBase)
+        val l0 = maxOf(titulo(primeira) + (if (primeiraOrdenavel) extraDoTitulo else 0), linhas.maxOfOrNull { larg(it.first, negrito, negritoBase) } ?: 0) + f
         // O título das colunas que se ordenam tem a setinha ao lado ([extraDoTitulo]).
         fun extra(j: Int): Int = if (j in ordenaveis) extraDoTitulo else 0
         val ls = colunas.mapIndexed { j, c ->
-            maxOf(titulo(c) + extra(j), linhas.maxOfOrNull { larguraDe(it.second.getOrElse(j) { "" }, cel) } ?: 0) + f
+            maxOf(titulo(c) + extra(j), linhas.maxOfOrNull { larg(it.second.getOrElse(j) { "" }, cel, celulaBase) } ?: 0) + f
         }.toMutableList()
         var inicio = 0
         grupos.forEach { (g, quantas) ->
@@ -191,7 +205,12 @@ private fun planejar(
         }
         Medidas(t, cel, cab, f, l0, ls)
     }
-    val escolhida = primeiraQueCabe(TENTATIVAS_DA_TABELA, disponivel) { medir(it).total }
+    // A primeira que cabe: primeiro pela conta aproximada (com folga, para não descartar a que cabe por um triz); só a que
+    // passa nela é medida de verdade, e a medida exata decide.
+    val escolhida = primeiraQueCabe(TENTATIVAS_DA_TABELA, disponivel) { t ->
+        val aproximada = medir(t, exato = false).total
+        if (aproximada > disponivel * 1.03f + 6) aproximada else medir(t).total
+    }
     val m = medir(escolhida ?: TABELA_ROLANDO)
     val cabe = escolhida != null
     // Cabendo, a tabela ocupa a largura toda (a sobra vai para as colunas por igual).

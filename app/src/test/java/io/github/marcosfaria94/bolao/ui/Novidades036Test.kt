@@ -18,10 +18,7 @@ import io.github.marcosfaria94.bolao.domain.Transcricao
 import io.github.marcosfaria94.bolao.imagem.LayoutTermico
 import io.github.marcosfaria94.bolao.ui.aposta.textoConfirmarAposta
 import io.github.marcosfaria94.bolao.ui.aposta.textoDoVolantePronto
-import io.github.marcosfaria94.bolao.ui.caixa.confirmarAsDoCarrinho
 import io.github.marcosfaria94.bolao.ui.caixa.enderecoSeguro
-import io.github.marcosfaria94.bolao.ui.caixa.noCarrinho
-import io.github.marcosfaria94.bolao.ui.caixa.semApostaParaTranscrever
 import io.github.marcosfaria94.bolao.ui.comprovantes.textoConfirmarTodas
 import io.github.marcosfaria94.bolao.ui.comum.mensagemDaConfirmacao
 import io.github.marcosfaria94.bolao.ui.comum.textoDaConfirmacao
@@ -150,20 +147,14 @@ class Novidades036Test {
         assertEquals("Confirmar todas (4)", textoConfirmarTodas(4))
         assertEquals("Confirmar aposta", textoConfirmarAposta(1))
         assertEquals("Confirmar as 4 apostas", textoConfirmarAposta(4))
-        // A faixa da Caixa.
-        val mega = Transcricao.Pagina(Modalidade.MEGA_SENA, especial = false)
-        assertEquals("Nenhuma aposta da Mega-Sena para transcrever.", semApostaParaTranscrever(mega))
-        assertEquals("No carrinho: pague no site e confirme.", noCarrinho(1, confirmar = true))
-        assertEquals("As 2 no carrinho: pague no site e confirme.", noCarrinho(2, confirmar = true))
-        assertEquals("As 2 apostas já foram para o carrinho.", noCarrinho(2, confirmar = false))
-        assertEquals("Confirmar as do carrinho (2)", confirmarAsDoCarrinho(2))
+        // A faixa da Caixa: desde a 0.39 é a do carrinho (Novidades039Test); a do "Transcrever" de cada página saiu.
         // O aviso do volante pronto.
         assertEquals(
-            "Registre a aposta e faça o jogo no site da Caixa (botão Caixa, \"Transcrever\"). Depois de pagar, confirme.",
+            "Registre a aposta e faça o jogo no site da Caixa (botão Caixa, \"Transcrever em lote\"). Depois de pagar, confirme.",
             textoDoVolantePronto(1, comEspelho = false, concursos = 1),
         )
         assertEquals(
-            "Registre as apostas e faça o jogo no site da Caixa (botão Caixa, \"Transcrever\"), com a Aposta espelho, com a " +
+            "Registre as apostas e faça o jogo no site da Caixa (botão Caixa, \"Transcrever em lote\"), com a Aposta espelho, com a " +
                 "teimosinha de 3 concursos. Depois de pagar, confirme.",
             textoDoVolantePronto(6, comEspelho = true, concursos = 3),
         )

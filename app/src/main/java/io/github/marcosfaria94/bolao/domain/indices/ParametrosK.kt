@@ -75,7 +75,8 @@ data class ModalidadeK(
 )
 
 /**
- * A correção monetária do modelo de vendas (desde a 1.4 dos parâmetros, pedido do usuário na 0.38): o modelo foi
+ * A correção monetária do modelo de vendas (só na 1.4 dos parâmetros, pedido do usuário na 0.38; desde a 1.5, na 0.39,
+ * o arquivo não traz mais o bloco: a correção previa vendas maiores que as reais em 2026 e o modelo voltou ao da 1.3): o modelo foi
  * ajustado com a arrecadação e a estimativa de cada concurso em reais do [anoBase] (cada ano corrigido pelo IPCA dele,
  * ano a ano). Depois do [anoBase], os valores de agora voltam para reais do [anoBase] com o IPCA de cada ano que já
  * fechou ([ipca], em %); os anos que ainda não estão na lista não corrigem nada.

@@ -29,7 +29,7 @@ object NumerosNotaveis {
     const val COLUNA_PORCENTAGEM = "%"
     const val COLUNA_ATRASO = "Atraso"
 
-    const val NOTA_DO_ATRASO = "Atraso: há quantos concursos não sai (0 = saiu no último)."
+    const val NOTA_DO_ATRASO = "Atraso: há quantos concursos ele não sai (0 = saiu no último concurso; 3 = saiu pela última vez 3 concursos antes do último; — = nunca saiu)."
     const val NOTA_DA_PORCENTAGEM = "%: em quantos dos concursos ele saiu."
 
     private val MESES = listOf("Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro")
@@ -44,7 +44,11 @@ object NumerosNotaveis {
                     .map { it.copy(rotulo = numero(m, it.ordem.toInt())) }, n),
                 if (m.trevos > 0) Grupo(TITULO_TREVOS, "Trevo", contar(lista, (1L..6L).toList()) { r -> r.trevos.map { it.toLong() } }, n) else null,
                 when (m.extra) {
-                    Extra.TIME_DO_CORACAO -> Grupo(TITULO_TIMES, "Time", contarTextos(lista) { it.extra?.let(::chaveDoTime) }, lista.count { it.extra != null })
+                    Extra.TIME_DO_CORACAO -> Grupo(
+                        TITULO_TIMES, "Time",
+                        contarTextos(lista, rotuloDe = { it.extra?.let(::chaveDoTime) }) { it.extra?.let(::chaveCompactaDoTime) },
+                        lista.count { it.extra != null },
+                    )
                     Extra.MES_DE_SORTE -> Grupo(TITULO_MESES, "Mês", contarMeses(lista), lista.count { it.extra != null })
                     Extra.NENHUM -> null
                 },
@@ -53,6 +57,25 @@ object NumerosNotaveis {
             Formato.LOTECA -> listOf(Grupo(TITULO_RESULTADOS, "Resultado", resultados(lista), lista.count { it.loteca.isNotEmpty() }))
             Formato.FEDERAL -> emptyList()
         }
+    }
+
+    /**
+     * Os títulos dos cartões da modalidade [m], na ordem de [grupos], sem fazer a conta (desde a 0.39: os cartões aparecem
+     * na hora e a conta chega depois, sem fechar o cartão que já foi aberto).
+     */
+    fun titulos(m: Modalidade): List<String> = when (m.formato) {
+        Formato.NUMEROS -> listOfNotNull(
+            TITULO_NUMEROS,
+            TITULO_TREVOS.takeIf { m.trevos > 0 },
+            when (m.extra) {
+                Extra.TIME_DO_CORACAO -> TITULO_TIMES
+                Extra.MES_DE_SORTE -> TITULO_MESES
+                Extra.NENHUM -> null
+            },
+        )
+        Formato.COLUNAS -> listOf(TITULO_NUMEROS)
+        Formato.LOTECA -> listOf(TITULO_RESULTADOS)
+        Formato.FEDERAL -> emptyList()
     }
 
     /** "05" (com dois algarismos, como nas bolas; na Lotomania, "00" é o 100). */
@@ -68,14 +91,22 @@ object NumerosNotaveis {
         }.sortedWith(compareByDescending<Item> { it.vezes }.thenBy { it.ordem })
     }
 
-    /** Conta os textos (os times): só os que saíram ao menos uma vez. */
-    private fun contarTextos(lista: List<ResumoDoConcurso>, doConcurso: (ResumoDoConcurso) -> String?): List<Item> {
+    /**
+     * Conta os textos (os times): só os que saíram ao menos uma vez. [doConcurso] dá a chave que junta as grafias do mesmo
+     * time; [rotuloDe], o texto da tabela (o da grafia mais recente).
+     */
+    private fun contarTextos(
+        lista: List<ResumoDoConcurso>,
+        rotuloDe: (ResumoDoConcurso) -> String? = { null },
+        doConcurso: (ResumoDoConcurso) -> String?,
+    ): List<Item> {
         val vezes = LinkedHashMap<String, Int>()
         val ultimo = HashMap<String, Int>()
-        val comExtra = lista.filter { doConcurso(it) != null }
-        comExtra.forEachIndexed { i, r -> val k = doConcurso(r)!!; vezes[k] = (vezes[k] ?: 0) + 1; ultimo[k] = i }
-        val ordem = vezes.keys.sorted()
-        return vezes.map { (k, v) -> Item(k, v, ultimo[k]?.let { comExtra.lastIndex - it }, ordem.indexOf(k).toLong()) }
+        val rotulos = HashMap<String, String>()
+        val comExtra = lista.mapNotNull { r -> doConcurso(r)?.let { k -> k to (rotuloDe(r) ?: k) } }
+        comExtra.forEachIndexed { i, (k, rotulo) -> vezes[k] = (vezes[k] ?: 0) + 1; ultimo[k] = i; rotulos[k] = rotulo }
+        val ordem = vezes.keys.sortedBy { rotulos.getValue(it) }.withIndex().associate { (i, k) -> k to i.toLong() }
+        return vezes.map { (k, v) -> Item(rotulos.getValue(k), v, ultimo[k]?.let { comExtra.lastIndex - it }, ordem.getValue(k), chave = k) }
             .sortedWith(compareByDescending<Item> { it.vezes }.thenBy { it.ordem })
     }
 
@@ -97,9 +128,26 @@ object NumerosNotaveis {
 
     /** O time como a Caixa escreve, sem acentos e com a UF depois da barra, para juntar o mesmo time de concursos diferentes. */
     fun chaveDoTime(texto: String): String =
-        semAcento(texto).uppercase(Locale.ROOT).replace(Regex("\\s*/\\s*"), "/").replace(Regex("\\s+"), " ").trim()
+        semAcento(texto).uppercase(Locale.ROOT).replace(BARRA, "/").replace(ESPACOS, " ").trim()
 
-    private fun semAcento(s: String): String = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
+    /**
+     * A chave que junta as grafias do mesmo time (desde a 0.39): só as letras e os algarismos do nome e da UF ("A B C/RN" e
+     * "ABC/RN" eram duas linhas na tabela).
+     */
+    fun chaveCompactaDoTime(texto: String): String {
+        val t = chaveDoTime(texto)
+        val i = t.lastIndexOf('/')
+        val nome = (if (i < 0) t else t.substring(0, i)).filter(Char::isLetterOrDigit)
+        val uf = if (i < 0) "" else t.substring(i + 1).filter(Char::isLetterOrDigit)
+        return if (uf.isEmpty()) nome else "$nome/$uf"
+    }
+
+    private fun semAcento(s: String): String = Normalizer.normalize(s, Normalizer.Form.NFD).replace(ACENTOS, "")
+
+    // Compilados uma vez (desde a 0.39: a Timemania passa milhares de concursos por aqui).
+    private val BARRA = Regex("\\s*/\\s*")
+    private val ESPACOS = Regex("\\s+")
+    private val ACENTOS = Regex("\\p{M}+")
 
     /** A Super Sete: cada número (0 a 9) em cada uma das 7 colunas, "5 na coluna 1". */
     private fun colunas(lista: List<ResumoDoConcurso>): List<Item> {

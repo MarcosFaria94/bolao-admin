@@ -51,7 +51,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AddShoppingCart
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -100,7 +103,6 @@ import io.github.marcosfaria94.bolao.ui.comum.confirmarApostas
 import io.github.marcosfaria94.bolao.ui.comum.mensagemDaConfirmacao
 import io.github.marcosfaria94.bolao.ui.comum.textoDaConfirmacao
 import io.github.marcosfaria94.bolao.ui.comum.tituloDaConfirmacao
-import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -114,8 +116,9 @@ import kotlin.coroutines.resume
  * A tela da Caixa (desde a 0.31): o Loterias Online da Caixa dentro do app, pelo botão do trevo na barra de baixo.
  * Desde a 0.32 fica em terceiro na barra (Home, Jogos, Caixa, Ajustes); "caixa" é o endereço dela (abrir("caixa") vai
  * para ela). Na 0.36 e na 0.37 ela abria só pelo botão; desde a 0.38 (pedido do usuário) ela volta para a roda das abas
- * e tem o cadeado ([BotaoDoCadeado], logo acima do ícone dos cookies do site, que passou para a direita): aberto,
- * deslizar o dedo para os lados na página passa para a próxima tela; fechado, o dedo fica todo com o site.
+ * e tem o cadeado ([BotaoDoCadeado]; desde a 0.39 com o tamanho, a cor e a transparência do ícone dos cookies do site,
+ * logo acima dele ou espelhado do outro lado): aberto, deslizar o dedo para os lados na página passa para a próxima
+ * tela; fechado, o dedo fica todo com o site. Desde a 0.39 as apostas vão para o carrinho só pelo "Transcrever em lote".
  */
 const val ROTA_CAIXA = "caixa"
 
@@ -134,8 +137,20 @@ private const val PERGUNTAS = 150
 /** As fases do deslize para os lados na página, com o cadeado aberto (desde a 0.38): o valor é o arrasto (px) ou, no fim, a velocidade (px/s). */
 enum class FaseDoDeslize { COMECO, ARRASTO, FIM }
 
-/** Onde ficou o ícone dos cookies do site (desde a 0.38), em frações da página: o meio dele, o alto e a largura. */
-data class PosicaoDoCookie(val x: Float, val topo: Float, val largura: Float)
+/**
+ * Onde ficou o ícone dos cookies do site (desde a 0.38), em frações da página: o meio dele, o alto, a largura e (desde a
+ * 0.39) a altura (0 = igual à largura), se ficou à [direita], a [cor] de fundo dele (ARGB; null = não lida) e a
+ * [opacidade] dele.
+ */
+data class PosicaoDoCookie(
+    val x: Float,
+    val topo: Float,
+    val largura: Float,
+    val altura: Float = 0f,
+    val direita: Boolean = x >= 0.5f,
+    val cor: Int? = null,
+    val opacidade: Float = 1f,
+)
 
 /** O que o app lê para saber se o script terminou: o JSON da resposta, ou null. */
 private const val LER_RESPOSTA =
@@ -463,7 +478,7 @@ class NavegadorDaCaixa(private val contexto: Context) {
     /**
      * O "Transcrever em lote" (desde a 0.38, pedido do usuário): para cada página com apostas ([grupos]), o app muda a
      * página do site (só a parte depois do "#": a conta continua aberta), espera o volante e transcreve uma aposta depois
-     * da outra, como o "Transcrever" da faixa. O login e o pagamento continuam no site. Devolve como foi cada aposta.
+     * da outra (desde a 0.39 é o único jeito de pôr apostas no carrinho). O login e o pagamento continuam no site. Devolve como foi cada aposta.
      */
     suspend fun transcreverEmLote(grupos: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>): List<FeitoNoLote> {
         val w = web ?: return emptyList()
@@ -477,7 +492,7 @@ class NavegadorDaCaixa(private val contexto: Context) {
                     n++
                     andamentoDoLote = "$n de $total · ${nomeDaPagina(pagina)} · ${item.titulo}"
                     val r = if (!chegou) {
-                        Transcricao.Resposta(mensagem = "Não consegui abrir a página da ${nomeDaPagina(pagina)} no site: abra a página dela e use o $TRANSCREVER.")
+                        Transcricao.Resposta(mensagem = "Não consegui abrir a página da ${nomeDaPagina(pagina)} no site. Tente o $TRANSCREVER_EM_LOTE de novo.")
                     } else {
                         transcrever(item)
                     }
@@ -607,12 +622,69 @@ private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorD
 /** O arrasto ([dx], [dy]) é para os lados: bem mais para os lados que para cima ou para baixo (desde a 0.38). */
 fun ehParaOsLados(dx: Float, dy: Float): Boolean = abs(dx) > 1.5f * abs(dy)
 
-/** O JSON que o script dos cookies deixa na página ({x, topo, largura}); null se não der. */
+/**
+ * O JSON que o script dos cookies deixa na página ({x, topo, largura} e, desde a 0.39, altura, direita, cor e opacidade);
+ * null se não der.
+ */
 fun lerCookie(json: String): PosicaoDoCookie? = runCatching {
     val o = kotlinx.serialization.json.Json.parseToJsonElement(json) as kotlinx.serialization.json.JsonObject
-    fun f(k: String) = (o[k] as kotlinx.serialization.json.JsonPrimitive).content.toFloat()
-    PosicaoDoCookie(f("x"), f("topo"), f("largura")).takeIf { it.x in 0f..1f && it.topo in 0f..1f }
+    fun texto(k: String) = (o[k] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.content
+    fun f(k: String) = texto(k)!!.toFloat()
+    val x = f("x")
+    PosicaoDoCookie(
+        x = x,
+        topo = f("topo"),
+        largura = f("largura"),
+        altura = texto("altura")?.toFloatOrNull() ?: 0f,
+        direita = texto("direita")?.toBooleanStrictOrNull() ?: (x >= 0.5f),
+        cor = texto("cor")?.let(::corDoCss),
+        opacidade = texto("opacidade")?.toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f,
+    ).takeIf { it.x in 0f..1f && it.topo in 0f..1f }
 }.getOrNull()
+
+/** "rgb(0, 86, 167)" ou "rgba(21, 89, 163, 0.5)" (a cor do CSS) em ARGB; null se não for uma dessas. */
+fun corDoCss(texto: String): Int? {
+    val m = Regex("""rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)""").matchEntire(texto.trim()) ?: return null
+    fun c(i: Int) = m.groupValues[i].toFloat().roundToInt().coerceIn(0, 255)
+    val a = m.groupValues[4].takeIf { it.isNotEmpty() }?.toFloat()?.let { (it * 255).roundToInt().coerceIn(0, 255) } ?: 255
+    return (a shl 24) or (c(1) shl 16) or (c(2) shl 8) or c(3)
+}
+
+/** O lugar do cadeado na página (px): o [tamanho] (o diâmetro), a distância da borda [direita] e a de [baixo]. */
+data class LugarDoCadeado(val tamanho: Float, val direita: Float, val baixo: Float)
+
+/**
+ * Onde fica o cadeado (desde a 0.39, pedido do usuário: "se não der para os dois ficarem do lado direito, espelha eles,
+ * com o mesmo alinhamento, tamanho e transparência"). Com o ícone dos cookies [c] à direita (o script conseguiu passá-lo),
+ * o cadeado fica logo acima dele, no mesmo eixo; com o ícone à esquerda, espelhado: a mesma distância da borda (a direita
+ * no lugar da esquerda), a mesma altura e o mesmo tamanho. Sem achar o ícone, o espelho do que se viu no site da Caixa
+ * (47dp, a 27dp da borda e de baixo). [largura] e [altura]: o tamanho da página (px); [dp]: px por dp.
+ */
+fun lugarDoCadeado(c: PosicaoDoCookie?, largura: Float, altura: Float, dp: Float): LugarDoCadeado {
+    if (c == null) return LugarDoCadeado(TAMANHO_DO_COOKIE * dp, MARGEM_DO_COOKIE * dp, MARGEM_DO_COOKIE * dp)
+    val larguraDoCookie = c.largura * largura
+    val alturaDoCookie = if (c.altura > 0f) c.altura * altura else larguraDoCookie
+    val tamanho = larguraDoCookie.coerceIn(32 * dp, 64 * dp)
+    val baixoDoCookie = altura - (c.topo * altura + alturaDoCookie)
+    return if (c.direita) {
+        val meio = (1f - c.x) * largura
+        LugarDoCadeado(tamanho, (meio - tamanho / 2).coerceAtLeast(4 * dp), baixoDoCookie + alturaDoCookie + 8 * dp)
+    } else {
+        val esquerdaDoCookie = c.x * largura - larguraDoCookie / 2
+        LugarDoCadeado(
+            tamanho,
+            (esquerdaDoCookie + (larguraDoCookie - tamanho) / 2).coerceAtLeast(4 * dp),
+            (baixoDoCookie + (alturaDoCookie - tamanho) / 2).coerceAtLeast(4 * dp),
+        )
+    }
+}
+
+/** O ícone dos cookies como apareceu no site da Caixa (foto do usuário, 0.38): 47dp, a 27dp da borda e de baixo. */
+const val TAMANHO_DO_COOKIE = 47f
+const val MARGEM_DO_COOKIE = 27f
+
+/** A cor do ícone dos cookies como apareceu (azul a 50%: sobre o branco dá o azul-claro da foto, #8AACD1). */
+const val COR_DO_COOKIE = 0x801559A3.toInt()
 
 /** A chave do cadeado nas preferências (desde a 0.38; true = fechado). */
 private const val CADEADO_FECHADO = "caixa_cadeado_fechado"
@@ -632,16 +704,17 @@ fun enderecoSeguro(url: String?): String? =
 private const val LIMITE_DE_TROCAS = 5
 
 /**
- * A tela da Caixa: a página do site, a barra de carregamento em cima e, numa página de modalidade, a faixa do
- * "Transcrever" embaixo (a aposta que vai para o carrinho e o botão). Com o teclado aberto (a conta, a busca do
- * time), a faixa some e a página sobe junto.
+ * A tela da Caixa: a página do site, a barra de carregamento em cima e, no bolão, com apostas no carrinho do site, a
+ * faixa do carrinho embaixo ([FaixaDoCarrinho]: pagar no site e confirmar aqui). Desde a 0.39 (pedido do usuário: "permita
+ * apenas transcrever em lote") as apostas vão para o carrinho só pelo "Transcrever em lote" da barra de cima: a faixa
+ * de cada página de modalidade, com o "Transcrever" de uma aposta de cada vez (de 0.31 a 0.38), saiu. Com o teclado
+ * aberto (a conta, a busca do time), a faixa some e a página sobe junto.
  */
 @Composable
 fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
     val ctx = LocalContext.current
     val avisos = LocalAvisos.current
     val escopo = rememberCoroutineScope()
-    var resposta by remember { mutableStateOf<Transcricao.Resposta?>(null) }
     // As apostas do carrinho esperando a confirmação na janela (desde a 0.36); null = fechada.
     var aConfirmar by remember { mutableStateOf<List<Transcricao.Item>?>(null) }
     var confirmando by remember { mutableStateOf(false) }
@@ -654,31 +727,33 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
         }
     }
 
-    val pagina = Transcricao.pagina(navegador.endereco)
-    val itens = remember(estado, pagina) { pagina?.let { Transcricao.itens(estado, it, LocalDate.now()) }.orEmpty() }
+    // As apostas que esperam o site (de todas as modalidades) e, delas, as que já foram para o carrinho.
+    val pendentes = remember(estado) { Transcricao.emLote(estado, LocalDate.now(), emptyList()).flatMap { it.second } }
+    val transcritas: List<String> = navegador.transcritas
+    val noCarrinho = pendentes.filter { i -> i.ids.isNotEmpty() && i.ids.all { it in transcritas } }
     // O "Transcrever em lote" (desde a 0.38): a janela com o que vai, o andamento e, no fim, como foi cada aposta.
     var resultadoDoLote by remember { mutableStateOf<List<NavegadorDaCaixa.FeitoNoLote>?>(null) }
     if (navegador.pedirLote) {
         val lote = remember(estado, navegador.transcritas.size) { Transcricao.emLote(estado, LocalDate.now(), navegador.transcritas) }
         JanelaDoLote(
             lote,
+            jaNoCarrinho = noCarrinho.sumOf { it.ids.size },
             aoTranscrever = {
                 navegador.pedirLote = false
                 escopo.launch { resultadoDoLote = navegador.transcreverEmLote(lote) }
+            },
+            // Desde a 0.39: as que já foram (uma saiu do carrinho do site) vão de novo, todas.
+            aoTranscreverDeNovo = {
+                navegador.pedirLote = false
+                navegador.transcritas.removeAll(noCarrinho.flatMap { it.ids })
+                val todas = Transcricao.emLote(estado, LocalDate.now(), emptyList())
+                escopo.launch { resultadoDoLote = navegador.transcreverEmLote(todas) }
             },
             aoFechar = { navegador.pedirLote = false },
         )
     }
     navegador.andamentoDoLote?.let { AndamentoDoLote(it) }
-    resultadoDoLote?.let { feitos -> ResultadoDoLote(feitos, aoFechar = { resultadoDoLote = null }) }
-
-    fun transcrever(item: Transcricao.Item) {
-        escopo.launch {
-            val r = navegador.transcrever(item)
-            navegador.transcritas.addAll(Transcricao.transcritas(item, r).filter { it !in navegador.transcritas })
-            if (r.ok && r.noCarrinho && !r.semEspelho) avisos.showSnackbar(r.mensagem) else resposta = r
-        }
-    }
+    resultadoDoLote?.let { feitos -> ResultadoDoLote(feitos, confirmar = !estado.individual, aoFechar = { resultadoDoLote = null }) }
 
     Column(Modifier.fillMaxSize().imePadding()) {
         // O lugar da página (desde a 0.33 a página mesmo fica na camada fixa por cima das abas, PaginaFixaDaCaixa).
@@ -691,31 +766,15 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
                     if (navegador.medida != nova) navegador.medida = nova
                 },
         )
-        if (pagina != null && !teclado) {
-            FaixaDoTranscrever(
-                pagina = pagina,
-                itens = itens,
-                transcritas = navegador.transcritas,
-                transcrevendo = navegador.transcrevendo,
-                aoTranscrever = ::transcrever,
-                aoRecomecar = { feitos ->
-                    navegador.transcritas.removeAll(feitos.flatMap { it.ids })
-                    feitos.firstOrNull()?.let(::transcrever)
-                },
-                // No bolão (desde a 0.36), as do carrinho se confirmam aqui depois de pagas; no Individual não há o que confirmar.
-                aoConfirmar = if (estado.individual) null else { feitos -> aConfirmar = feitos },
+        // No bolão (desde a 0.36), as do carrinho se confirmam aqui depois de pagas; no Individual não há o que confirmar.
+        if (!estado.individual && noCarrinho.isNotEmpty() && !teclado) {
+            FaixaDoCarrinho(
+                apostas = noCarrinho.sumOf { it.ids.size },
                 confirmando = confirmando,
+                ocupado = navegador.transcrevendo,
+                aoConfirmar = { aConfirmar = noCarrinho },
             )
         }
-    }
-
-    resposta?.let { r ->
-        AlertDialog(
-            onDismissRequest = { resposta = null },
-            title = { Text(tituloDaResposta(r)) },
-            text = { Text(r.mensagem) },
-            confirmButton = { TextButton(onClick = { resposta = null }) { Text("OK") } },
-        )
     }
 
     aConfirmar?.let { feitos ->
@@ -748,9 +807,16 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
 /** O nome do botão da barra de cima da Caixa (desde a 0.38) e o título da janela. */
 const val TRANSCREVER_EM_LOTE = "Transcrever em lote"
 
-/** "5 apostas de 3 modalidades: Mega-Sena (2), Quina (2) e Lotofácil (1)." */
-fun textoDoLote(lote: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>): String {
+/**
+ * "5 apostas: Mega-Sena (2), Quina (2) e Lotofácil (1). ..." Sem nenhuma por transcrever: "Nenhuma aposta para transcrever
+ * agora." ou, com [jaNoCarrinho] (desde a 0.39), que elas já estão no carrinho do site.
+ */
+fun textoDoLote(lote: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>, jaNoCarrinho: Int = 0): String {
     val total = lote.sumOf { it.second.size }
+    if (total == 0 && jaNoCarrinho > 0) {
+        val quantas = if (jaNoCarrinho == 1) "A aposta já está" else "As $jaNoCarrinho apostas já estão"
+        return "$quantas no carrinho do site. Se alguma saiu de lá, transcreva de novo."
+    }
     if (total == 0) return "Nenhuma aposta para transcrever agora."
     val partes = lote.map { (p, i) -> "${nomeDaPagina(p)} (${i.size})" }
     val lista = if (partes.size == 1) partes[0] else partes.dropLast(1).joinToString(", ") + " e " + partes.last()
@@ -759,14 +825,30 @@ fun textoDoLote(lote: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>): S
         "Entre na sua conta antes; o pagamento continua no site."
 }
 
-/** A janela do "Transcrever em lote": o que vai e o botão. */
+/**
+ * A janela do "Transcrever em lote": o que vai e o botão. Sem nenhuma por transcrever, mas com apostas já no carrinho
+ * (desde a 0.39), o botão "Transcrever de novo" manda todas outra vez (para quando uma saiu do carrinho do site).
+ */
 @Composable
-private fun JanelaDoLote(lote: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>, aoTranscrever: () -> Unit, aoFechar: () -> Unit) {
+private fun JanelaDoLote(
+    lote: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>,
+    jaNoCarrinho: Int,
+    aoTranscrever: () -> Unit,
+    aoTranscreverDeNovo: () -> Unit,
+    aoFechar: () -> Unit,
+) {
+    val deNovo = lote.isEmpty() && jaNoCarrinho > 0
     AlertDialog(
         onDismissRequest = aoFechar,
         title = { Text(TRANSCREVER_EM_LOTE) },
-        text = { Text(textoDoLote(lote)) },
-        confirmButton = { TextButton(onClick = aoTranscrever, enabled = lote.isNotEmpty()) { Text(TRANSCREVER) } },
+        text = { Text(textoDoLote(lote, jaNoCarrinho)) },
+        confirmButton = {
+            if (deNovo) {
+                TextButton(onClick = aoTranscreverDeNovo) { Text(TRANSCREVER_DE_NOVO) }
+            } else {
+                TextButton(onClick = aoTranscrever, enabled = lote.isNotEmpty()) { Text(TRANSCREVER) }
+            }
+        },
         dismissButton = { TextButton(onClick = aoFechar) { Text("Cancelar") } },
     )
 }
@@ -790,14 +872,20 @@ private fun AndamentoDoLote(texto: String) {
 
 /** Como foi o lote: quantas foram para o carrinho e o porquê das que não foram. */
 @Composable
-private fun ResultadoDoLote(feitos: List<NavegadorDaCaixa.FeitoNoLote>, aoFechar: () -> Unit) {
+private fun ResultadoDoLote(feitos: List<NavegadorDaCaixa.FeitoNoLote>, confirmar: Boolean, aoFechar: () -> Unit) {
     val ok = feitos.count { it.resposta.ok && it.resposta.noCarrinho }
     AlertDialog(
         onDismissRequest = aoFechar,
         title = { Text(if (ok == feitos.size) "No carrinho" else "No carrinho: $ok de ${feitos.size}") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (ok > 0) "Pague no site e depois confirme as apostas aqui (a faixa de cada modalidade ou os Comprovantes)." else "Nenhuma foi para o carrinho.")
+                Text(
+                    when {
+                        ok == 0 -> "Nenhuma foi para o carrinho."
+                        confirmar -> "Pague no site e depois confirme as apostas aqui (a faixa embaixo da página ou os Comprovantes)."
+                        else -> "Pague no site."
+                    },
+                )
                 feitos.filter { !(it.resposta.ok && it.resposta.noCarrinho) }.forEach { f ->
                     Text("${nomeDaPagina(f.pagina)} · ${f.item.titulo}: ${f.resposta.mensagem}", style = MaterialTheme.typography.bodySmall)
                 }
@@ -853,41 +941,49 @@ fun PaginaFixaDaCaixa(navegador: NavegadorDaCaixa, posicao: () -> Float?) {
 }
 
 /**
- * O cadeado da página da Caixa (desde a 0.38, pedido do usuário): logo acima do ícone dos cookies do site (que o
- * script levou para a direita); sem achar o ícone, no canto de baixo à direita. Tocar abre e fecha.
+ * O cadeado da página da Caixa (desde a 0.38, pedido do usuário). Desde a 0.39 ele imita o ícone dos cookies do site: o
+ * mesmo tamanho, a mesma cor e a mesma transparência; fica logo acima do ícone, quando o script conseguiu passá-lo para
+ * a direita, ou espelhado do outro lado, na mesma altura ([lugarDoCadeado]). Tocar abre e fecha.
  */
 @Composable
 private fun BoxScope.BotaoDoCadeado(navegador: NavegadorDaCaixa, medida: MedidaDaPagina) {
     val densidade = LocalDensity.current
     val c = navegador.cookie
-    val tamanho = 40.dp
-    val (direita, baixo) = with(densidade) {
-        if (c == null) {
-            12.dp to 84.dp
-        } else {
-            val meio = (1f - c.x) * medida.largura
-            val acima = (1f - c.topo) * medida.altura
-            (meio.toDp() - tamanho / 2).coerceAtLeast(4.dp) to (acima.toDp() + 8.dp)
-        }
-    }
+    val lugar = lugarDoCadeado(c, medida.largura.toFloat(), medida.altura.toFloat(), densidade.density)
+    val fundo = corDoCadeado(c)
     val aberto = navegador.destravada
-    Surface(
-        onClick = { navegador.alternarCadeado() },
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.92f),
-        contentColor = if (aberto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        shadowElevation = 4.dp,
-        modifier = Modifier
-            .align(Alignment.BottomEnd)
-            .padding(end = direita, bottom = baixo)
-            .size(tamanho)
-            .semantics { contentDescription = if (aberto) CADEADO_ABERTO else CADEADO_FECHADO_DESCRICAO },
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(if (aberto) Icons.Outlined.LockOpen else Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(22.dp))
+    with(densidade) {
+        Surface(
+            onClick = { navegador.alternarCadeado() },
+            shape = CircleShape,
+            color = fundo,
+            contentColor = corDoIconeDoCadeado(fundo),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = lugar.direita.toDp(), bottom = lugar.baixo.toDp())
+                .size(lugar.tamanho.toDp())
+                .semantics { contentDescription = if (aberto) CADEADO_ABERTO else CADEADO_FECHADO_DESCRICAO },
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    if (aberto) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size((lugar.tamanho * 0.5f).toDp()),
+                )
+            }
         }
     }
 }
+
+/** A cor do cadeado: a do ícone dos cookies (com a opacidade dele); sem a cor lida, a da foto ([COR_DO_COOKIE]). */
+fun corDoCadeado(c: PosicaoDoCookie?): Color {
+    val base = Color(c?.cor ?: COR_DO_COOKIE)
+    return base.copy(alpha = (base.alpha * (c?.opacidade ?: 1f)).coerceIn(0.15f, 1f))
+}
+
+/** O ícone branco, como o dos cookies; num fundo claro (o que aparece sobre o branco da página), azul-noite. */
+fun corDoIconeDoCadeado(fundo: Color): Color =
+    if (fundo.compositeOver(Color.White).luminance() > 0.75f) Color(0xFF13294B) else Color.White
 
 /**
  * O teclado está aberto (pela altura dele: zero com ele fechado ou enquanto o celular não informou; o "isImeVisible"
@@ -895,13 +991,6 @@ private fun BoxScope.BotaoDoCadeado(navegador: NavegadorDaCaixa, medida: MedidaD
  */
 @Composable
 fun tecladoAberto(): Boolean = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-
-/** O título da janela da resposta do "Transcrever". */
-fun tituloDaResposta(r: Transcricao.Resposta): String = when {
-    r.noCarrinho -> "No carrinho"
-    r.parcial -> "Confira o volante"
-    else -> "Não deu para transcrever"
-}
 
 /** A página não abriu: o aviso, o "Tentar de novo" e (desde a 0.36) a "Página inicial" do site. */
 @Composable
@@ -928,109 +1017,53 @@ const val PAGINA_INICIAL = "Página inicial"
 fun nomeDaPagina(p: Transcricao.Pagina): String =
     if (p.especial) Especiais.CONHECIDOS.firstOrNull { it.modalidade == p.modalidade }?.nome ?: p.modalidade.nome else p.modalidade.nome
 
-/** O texto da faixa quando não há aposta da modalidade para transcrever (até a 0.35, "esperando comprovante"). */
-fun semApostaParaTranscrever(p: Transcricao.Pagina): String = "Nenhuma aposta da ${nomeDaPagina(p)} para transcrever."
+/** O título da faixa do carrinho (desde a 0.39): "1 aposta no carrinho", "3 apostas no carrinho". */
+fun tituloDoCarrinho(apostas: Int): String = if (apostas == 1) "1 aposta no carrinho" else "$apostas apostas no carrinho"
 
-/**
- * O texto da faixa com todas as apostas da página no carrinho: no bolão (desde a 0.36), o lembrete de pagar e confirmar.
- */
-fun noCarrinho(apostas: Int, confirmar: Boolean): String = when {
-    confirmar && apostas == 1 -> "No carrinho: pague no site e confirme."
-    confirmar -> "As $apostas no carrinho: pague no site e confirme."
-    apostas == 1 -> "A aposta já foi para o carrinho."
-    else -> "As $apostas apostas já foram para o carrinho."
-}
+/** O lembrete da faixa do carrinho (desde a 0.39). */
+const val LEMBRETE_DO_CARRINHO = "Pague no site da Caixa e confirme aqui."
 
-/** O botão da faixa que confirma as do carrinho quando ainda há outras para transcrever: "Confirmar as do carrinho (2)". */
-fun confirmarAsDoCarrinho(apostas: Int): String = "Confirmar as do carrinho ($apostas)"
-
-/** O botão da faixa que transcreve de novo as que já foram (quando uma saiu do carrinho). */
+/** O botão da janela do lote que manda de novo as que já foram para o carrinho (quando uma saiu de lá). */
 const val TRANSCREVER_DE_NOVO = "Transcrever de novo"
 
 /**
- * A faixa do "Transcrever" (numa página de modalidade do site): o selo da modalidade, a próxima aposta para transcrever
- * (o número dela e o jogo, e "1 de 3" quando há mais de uma) e o botão. Todas já no carrinho: o botão vira "De novo"
- * (para quando uma saiu do carrinho). No bolão (desde a 0.36, com [aoConfirmar]), as do carrinho se confirmam aqui
- * depois de pagas: com todas no carrinho o botão vira "Confirmar" (e "Transcrever de novo" fica embaixo); com outras
- * ainda por transcrever, "Confirmar as do carrinho (N)" fica embaixo.
+ * A faixa do carrinho (desde a 0.39, no lugar da faixa do "Transcrever" de cada página): no bolão, com apostas que o
+ * "Transcrever em lote" já pôs no carrinho do site, o ícone do carrinho, quantas são, o lembrete de pagar e o botão
+ * "Confirmar" (todas de uma vez, de todas as modalidades). Fica em qualquer página do site.
  */
 @Composable
-fun FaixaDoTranscrever(
-    pagina: Transcricao.Pagina,
-    itens: List<Transcricao.Item>,
-    transcritas: List<String>,
-    transcrevendo: Boolean,
-    aoTranscrever: (Transcricao.Item) -> Unit,
-    aoRecomecar: (List<Transcricao.Item>) -> Unit,
-    aoConfirmar: ((List<Transcricao.Item>) -> Unit)? = null,
-    confirmando: Boolean = false,
-) {
-    val feitos = itens.filter { i -> i.ids.isNotEmpty() && i.ids.all { it in transcritas } }
-    val proximo = itens.firstOrNull { it !in feitos }
-    val confirmar = aoConfirmar != null
-    val ocupado = transcrevendo || confirmando
+fun FaixaDoCarrinho(apostas: Int, confirmando: Boolean, ocupado: Boolean, aoConfirmar: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         HorizontalDivider()
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
         ) {
-            SeloModalidade(pagina.modalidade, 40.dp)
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.size(40.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Outlined.ShoppingCart, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(22.dp))
+                }
+            }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                val (titulo, detalhe) = when {
-                    proximo != null -> {
-                        val posicao = if (itens.size > 1) " · ${itens.indexOf(proximo) + 1} de ${itens.size}" else ""
-                        proximo.titulo + posicao to proximo.detalhe
-                    }
-                    itens.isEmpty() -> nomeDaPagina(pagina) to semApostaParaTranscrever(pagina)
-                    else -> nomeDaPagina(pagina) to noCarrinho(itens.size, confirmar)
-                }
-                Text(titulo, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(tituloDoCarrinho(apostas), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
-                    detalhe,
+                    LEMBRETE_DO_CARRINHO,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    // O lembrete do carrinho (pagar e confirmar) inteiro, também com a letra grande.
-                    maxLines = if (proximo == null) 4 else 3,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             Spacer(Modifier.width(10.dp))
-            val todosNoCarrinho = proximo == null && feitos.isNotEmpty()
-            when {
-                // Todas no carrinho, no bolão: pagar no site e confirmar.
-                todosNoCarrinho && confirmar -> Button(onClick = { aoConfirmar?.invoke(feitos) }, enabled = !ocupado) {
-                    if (confirmando) {
-                        CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                    } else {
-                        Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text(CONFIRMAR, maxLines = 1)
+            Button(onClick = aoConfirmar, enabled = !confirmando && !ocupado) {
+                if (confirmando) {
+                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                } else {
+                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
-                else -> Button(
-                    onClick = { if (todosNoCarrinho) aoRecomecar(feitos) else proximo?.let(aoTranscrever) },
-                    enabled = !ocupado && (proximo != null || todosNoCarrinho),
-                ) {
-                    if (transcrevendo) {
-                        CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                    } else {
-                        Icon(Icons.Outlined.AddShoppingCart, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (todosNoCarrinho) "De novo" else TRANSCREVER, maxLines = 1)
-                }
-            }
-        }
-        // No bolão, a outra ação embaixo: transcrever de novo (todas no carrinho) ou confirmar as que já foram.
-        if (confirmar && feitos.isNotEmpty()) {
-            TextButton(
-                onClick = { if (proximo == null) aoRecomecar(feitos) else aoConfirmar?.invoke(feitos) },
-                enabled = !ocupado,
-                modifier = Modifier.align(Alignment.End).padding(end = 8.dp, bottom = 4.dp),
-            ) {
-                Text(if (proximo == null) TRANSCREVER_DE_NOVO else confirmarAsDoCarrinho(feitos.sumOf { it.ids.size }), maxLines = 1)
+                Spacer(Modifier.width(8.dp))
+                Text(CONFIRMAR, maxLines = 1)
             }
         }
     }

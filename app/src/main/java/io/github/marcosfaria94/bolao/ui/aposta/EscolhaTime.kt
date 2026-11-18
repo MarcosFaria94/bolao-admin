@@ -91,10 +91,12 @@ fun nomeDoTime(caixa: String?): String? {
  */
 fun nomeDoTimeSorteado(caixa: String): String {
     timeDoCoracao(caixa)?.let { return "${it.nome} / ${it.uf}" }
-    val limpo = caixa.filter { !it.isISOControl() }.replace(Regex("\\s+"), " ").trim()
+    val limpo = caixa.filter { !it.isISOControl() }.replace(ESPACOS_DO_TIME, " ").trim()
     val (nome, uf) = partesDoTime(limpo)
     return if (uf.isBlank()) nome else "$nome / $uf"
 }
+
+private val ESPACOS_DO_TIME = Regex("\\s+")
 
 /** Botão do Time do Coração (Timemania): o brasão e o nome do time; abre a lista dos times. */
 @Composable

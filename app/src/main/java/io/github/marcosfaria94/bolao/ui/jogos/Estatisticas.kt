@@ -1,5 +1,9 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
+import kotlinx.coroutines.withContext
+
+import kotlinx.coroutines.Dispatchers
+
 import androidx.compose.ui.semantics.semantics
 import kotlin.math.roundToInt
 import io.github.marcosfaria94.bolao.ui.aposta.nomeDoTimeSorteado
@@ -23,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -146,13 +151,27 @@ fun EstatisticasTela(m: Modalidade, especial: Int?, concurso: Int?) {
         )
         CartaoQueAbre(TITULO_CONCURSOS_NOTAVEIS) { TabelaDosNotaveis(m, pagina, ehEspecial) }
         // Desde a 0.38: os Números notáveis (e os Times, Meses, Trevos ou Resultados notáveis), um cartão para cada.
-        val grupos = remember(pagina.resumos, pagina.especiais, ehEspecial) {
-            if (pagina.lendo) emptyList() else NumerosNotaveis.grupos(m, pagina.daPagina(ehEspecial))
+        // Desde a 0.39 a conta (milhares de concursos) roda fora da linha da tela: a Timemania travava ao abrir.
+        val grupos by produceState<List<NumerosNotaveis.Grupo>?>(null, pagina.resumos, pagina.especiais, ehEspecial) {
+            value = null
+            if (pagina.lendo) return@produceState
+            val daPagina = pagina.daPagina(ehEspecial)
+            value = withContext(Dispatchers.Default) { NumerosNotaveis.grupos(m, daPagina) }
         }
-        if (pagina.lendo) {
-            CartaoQueAbre(NumerosNotaveis.TITULO_NUMEROS) { LendoOHistorico() }
+        val prontos = grupos
+        // Os cartões aparecem na hora (os títulos não dependem da conta); aberto antes da conta chegar, fica aberto.
+        NumerosNotaveis.titulos(m).forEach { t ->
+            key(t) {
+                CartaoQueAbre(t) {
+                    val g = prontos?.firstOrNull { it.titulo == t }
+                    when {
+                        g != null -> TabelaDosNumeros(m, g, ehEspecial)
+                        prontos == null -> LendoOHistorico()
+                        else -> Text("Nenhum concurso no histórico.", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
         }
-        grupos.forEach { g -> CartaoQueAbre(g.titulo) { TabelaDosNumeros(m, g, ehEspecial) } }
         CartaoQueAbre(TITULO_PREMIOS_TIPICOS) {
             TabelaDePremiosTipicos(m, u, naTela ?: u, ultimoDaPagina = pagina.trilha?.ultimo ?: u?.numero, semEstimativa = ehEspecial)
         }
@@ -256,20 +275,27 @@ private fun TabelaDosNumeros(m: Modalidade, grupo: NumerosNotaveis.Grupo, especi
         }
         grupo.itens.sortedWith((if (ordem.crescente) compareBy(chave) else compareByDescending(chave)).thenBy { it.ordem })
     }
+    // As linhas prontas (desde a 0.39 lembradas: o nome de cada time era procurado de novo a cada desenho).
+    val linhas = remember(itens, total, comAtraso) {
+        itens.map { i ->
+            rotuloDoNotavel(grupo, i) to listOfNotNull(
+                ConcursosNotaveis.milhar(i.vezes),
+                NumerosNotaveis.porcentagem(i.vezes, total),
+                (i.atraso?.let { ConcursosNotaveis.milhar(it) } ?: "—").takeIf { comAtraso },
+            )
+        }
+    }
+    val colunas = remember(comAtraso) {
+        listOfNotNull(NumerosNotaveis.COLUNA_VEZES, NumerosNotaveis.COLUNA_PORCENTAGEM, NumerosNotaveis.COLUNA_ATRASO.takeIf { comAtraso })
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(textoDosConcursos(grupo, loteca), style = MaterialTheme.typography.bodyMedium)
         if (itens.isEmpty()) return@Column
         TabelaRolavel(
             primeira = grupo.coluna,
             grupos = emptyList(),
-            colunas = listOfNotNull(NumerosNotaveis.COLUNA_VEZES, NumerosNotaveis.COLUNA_PORCENTAGEM, NumerosNotaveis.COLUNA_ATRASO.takeIf { comAtraso }),
-            linhas = itens.map { i ->
-                rotuloDoNotavel(grupo, i) to listOfNotNull(
-                    ConcursosNotaveis.milhar(i.vezes),
-                    NumerosNotaveis.porcentagem(i.vezes, total),
-                    (i.atraso?.let { ConcursosNotaveis.milhar(it) } ?: "—").takeIf { comAtraso },
-                )
-            },
+            colunas = colunas,
+            linhas = linhas,
             // A coluna da % ordena como as vezes.
             deFora = OrdenacaoDeFora(ordem) { j -> ordem = proximaOrdem(ordem, if (j == 1) 0 else j) },
         )

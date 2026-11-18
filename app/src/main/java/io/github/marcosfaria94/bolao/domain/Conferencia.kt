@@ -356,7 +356,10 @@ object Conferencia {
 
     fun normalizar(t: String): String =
         Normalizer.normalize(t, Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
+            .replace(ACENTOS, "")
             .uppercase()
             .filter { it.isLetterOrDigit() }
+
+    /** Os acentos soltos pelo NFD (compilado uma vez: desde a 0.39, os Times notáveis chamam isto milhares de vezes). */
+    private val ACENTOS = Regex("\\p{Mn}+")
 }

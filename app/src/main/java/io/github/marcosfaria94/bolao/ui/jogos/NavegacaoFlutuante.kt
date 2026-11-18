@@ -8,7 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,7 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.LastPage
-import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -58,16 +60,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * A navegação dos concursos nos Detalhes. Desde a 0.37 é um botão flutuante, discreto, no rodapé e no centro, só com o
- * "^" (mostrar); desde a 0.38 (pedido do usuário), aberto, ele vira o seletor pequeno: Retroceder e Avançar (só as setas),
- * o campo "Nº Concurso" e o Último (só o ícone, à direita do Avançar). Sem o "Ir" e sem o "v": tocar fora do seletor
- * fecha (indo ao concurso digitado, se houver); o Concluir do teclado e os caracteres que não são algarismos ("," "."
- * espaço "-", as teclas que sobram no teclado de números) também. Segurar Retroceder ou Avançar passa os concursos num
- * ritmo que cresce devagar até [CONCURSOS_POR_SEGUNDO] por segundo. Tocar no campo limpa o número para digitar outro.
- * Os concursos seguem a [trilha] (no especial, só os especiais dele; na modalidade, só os regulares).
+ * A navegação dos concursos nos Detalhes. Desde a 0.37 é um botão flutuante; desde a 0.38, aberto, ele vira o seletor
+ * pequeno: Retroceder e Avançar (só as setas), o campo "Nº Concurso" e o Último. Segurar Retroceder ou Avançar passa os
+ * concursos num ritmo que cresce devagar até [CONCURSOS_POR_SEGUNDO] por segundo. Tocar no campo limpa o número para
+ * digitar outro. Os concursos seguem a [trilha] (no especial, só os especiais dele; na modalidade, só os regulares).
  *
- * [numero]: o concurso na tela; [aoIr]: vai a um concurso da trilha. Fica num Box que ocupa a página: aberto, uma camada
- * transparente por baixo do seletor pega o toque de fora.
+ * Desde a 0.39 (pedido do usuário): fechado, é uma lupa translúcida no canto de baixo à direita; aberto, a lupa vira um
+ * X, que é o único jeito de fechar: tocar fora do seletor não fecha mais (a página continua rolando e respondendo por
+ * baixo). O Concluir do teclado e os caracteres que não são algarismos ([TECLAS_INOCUAS]: "," "." espaço "-") vão ao
+ * concurso digitado (se houver) e voltam ao seletor, com o concurso escolhido no campo, sem fechar.
+ *
+ * [numero]: o concurso na tela; [aoIr]: vai a um concurso da trilha. Fica num Box que ocupa a página.
  */
 @Composable
 fun BoxScope.NavegacaoFlutuante(
@@ -83,97 +86,102 @@ fun BoxScope.NavegacaoFlutuante(
     val numeroAgora by rememberUpdatedState(numero)
     val irAgora by rememberUpdatedState(aoIr)
 
-    /** Fecha o seletor; com um número digitado (diferente do da tela), vai ao concurso da trilha mais perto dele. */
-    fun fechar(digitado: String = texto) {
+    /**
+     * Sai da digitação e volta ao seletor (aberto): com um número digitado (diferente do da tela), vai ao concurso da
+     * trilha mais perto dele; sem nada digitado, o campo volta ao concurso da tela.
+     */
+    fun confirmar(digitado: String = texto) {
         val n = digitado.toIntOrNull()?.takeIf { it > 0 }
         val destino = n?.let { trilha.maisPerto(it) }
         digitando = false
         foco.clearFocus()
         texto = numeroAgora.toString()
-        aoAbrir(false)
         if (destino != null && destino != numeroAgora) irAgora(destino)
     }
 
-    if (aberta) {
-        // O toque fora do seletor (na página) fecha.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val e = awaitPointerEvent()
-                            if (e.changes.any { it.pressed }) fechar()
-                        }
-                    }
-                },
-        )
+    /** O X: fecha o seletor (o que estava sendo digitado não vale). */
+    fun fechar() {
+        digitando = false
+        foco.clearFocus()
+        texto = numeroAgora.toString()
+        aoAbrir(false)
     }
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .align(Alignment.BottomCenter)
+            .align(Alignment.BottomEnd)
+            .fillMaxWidth()
             .imePadding()
             .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
     ) {
-        if (aberta) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                tonalElevation = 3.dp,
-                shadowElevation = 8.dp,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+        // O seletor fica no meio do espaço à esquerda do X.
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            if (aberta) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 3.dp,
+                    shadowElevation = 8.dp,
                 ) {
-                    val anterior = trilha.anterior(numero)
-                    val proximo = trilha.proximo(numero)
-                    BotaoQueRepete(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, RETROCEDER, anterior != null) {
-                        trilha.anterior(numeroAgora)?.let(irAgora)
-                    }
-                    CampoDoConcurso(
-                        texto = texto,
-                        aoMudar = { novo ->
-                            // As teclas que sobram no teclado de números ("," "." espaço "-") fecham o seletor.
-                            if (novo.any { it in TECLAS_QUE_FECHAM }) {
-                                fechar(novo.takeWhile { it.isDigit() })
-                            } else {
-                                texto = novo.filter(Char::isDigit).take(6)
-                            }
-                        },
-                        aoConcluir = { fechar() },
-                        aoFocar = { focado ->
-                            if (focado && !digitando) {
-                                // Ao tocar no campo: limpa o número para digitar outro.
-                                digitando = true
-                                texto = ""
-                            }
-                        },
-                    )
-                    BotaoQueRepete(Icons.AutoMirrored.Outlined.KeyboardArrowRight, AVANCAR, proximo != null) {
-                        trilha.proximo(numeroAgora)?.let(irAgora)
-                    }
-                    BotaoQueRepete(Icons.AutoMirrored.Outlined.LastPage, ULTIMO_CONCURSO, numero != trilha.ultimo, repete = false) {
-                        foco.clearFocus()
-                        irAgora(trilha.ultimo)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                    ) {
+                        val anterior = trilha.anterior(numero)
+                        val proximo = trilha.proximo(numero)
+                        BotaoQueRepete(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, RETROCEDER, anterior != null) {
+                            trilha.anterior(numeroAgora)?.let(irAgora)
+                        }
+                        CampoDoConcurso(
+                            texto = texto,
+                            aoMudar = { novo ->
+                                // As teclas que sobram no teclado de números ("," "." espaço "-") vão ao digitado e ficam no seletor.
+                                if (novo.any { it in TECLAS_INOCUAS }) {
+                                    confirmar(novo.takeWhile { it.isDigit() })
+                                } else {
+                                    texto = novo.filter(Char::isDigit).take(6)
+                                }
+                            },
+                            aoConcluir = { confirmar() },
+                            aoFocar = { focado ->
+                                if (focado && !digitando) {
+                                    // Ao tocar no campo: limpa o número para digitar outro.
+                                    digitando = true
+                                    texto = ""
+                                } else if (!focado && digitando) {
+                                    // Saiu do campo sem concluir: o número da tela volta.
+                                    digitando = false
+                                    texto = numeroAgora.toString()
+                                }
+                            },
+                        )
+                        BotaoQueRepete(Icons.AutoMirrored.Outlined.KeyboardArrowRight, AVANCAR, proximo != null) {
+                            trilha.proximo(numeroAgora)?.let(irAgora)
+                        }
+                        BotaoQueRepete(Icons.AutoMirrored.Outlined.LastPage, ULTIMO_CONCURSO, numero != trilha.ultimo, repete = false) {
+                            foco.clearFocus()
+                            irAgora(trilha.ultimo)
+                        }
                     }
                 }
             }
-        } else {
-            // O botão discreto: "^" mostra o seletor.
-            Surface(
-                onClick = { aoAbrir(true) },
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.88f),
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                shadowElevation = 2.dp,
-            ) {
+        }
+        Spacer(Modifier.width(8.dp))
+        // A lupa (fechado) ou o X (aberto), no canto: translúcida, para não esconder a página.
+        Surface(
+            onClick = { if (aberta) fechar() else aoAbrir(true) },
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = if (aberta) 0.85f else 0.6f),
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(TAMANHO_DO_BOTAO),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
                 Icon(
-                    Icons.Outlined.KeyboardArrowUp,
-                    contentDescription = MOSTRAR_A_NAVEGACAO,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 1.dp).size(26.dp),
+                    if (aberta) Icons.Outlined.Close else Icons.Outlined.Search,
+                    contentDescription = if (aberta) FECHAR_A_NAVEGACAO else MOSTRAR_A_NAVEGACAO,
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
@@ -271,8 +279,11 @@ private const val MENOR_INTERVALO = 1000L / CONCURSOS_POR_SEGUNDO
 /** O próximo intervalo da repetição: 12% mais curto, até o limite de [CONCURSOS_POR_SEGUNDO] por segundo. */
 fun proximoIntervalo(atual: Long): Long = maxOf(MENOR_INTERVALO, (atual * 0.88).toLong())
 
-/** As teclas que fecham o seletor ao digitar no campo (desde a 0.38). */
-val TECLAS_QUE_FECHAM = setOf(',', '.', ' ', '-')
+/**
+ * Os caracteres que não são algarismos no teclado de números (desde a 0.38; na 0.38 fechavam o seletor): desde a 0.39 vão
+ * ao concurso digitado e voltam ao seletor, sem fechar.
+ */
+val TECLAS_INOCUAS = setOf(',', '.', ' ', '-')
 
 private val TAMANHO_DO_BOTAO = 44.dp
 
@@ -281,6 +292,7 @@ const val RETROCEDER = "Retroceder"
 const val AVANCAR = "Avançar"
 const val ULTIMO_CONCURSO = "Último"
 const val MOSTRAR_A_NAVEGACAO = "Mostrar a navegação dos concursos"
+const val FECHAR_A_NAVEGACAO = "Fechar a navegação dos concursos"
 
 /** O nome do campo do concurso nos Detalhes (desde a 0.37, "Nº Concurso"; de 0.33 a 0.36, "Concurso"). */
 const val ROTULO_DO_CONCURSO = "Nº Concurso"

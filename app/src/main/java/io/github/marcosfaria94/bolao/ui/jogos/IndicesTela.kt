@@ -56,7 +56,7 @@ const val ROTA_INDICES = "indices"
 
 /** Os 5 passos da conta do k1, em linhas gerais (do guia "k1 e k2"). */
 private val PASSOS = listOf(
-    "Prever as apostas" to "Estima quantas apostas o próximo concurso vai receber, pelo prêmio estimado, pelas apostas do último concurso e pelo dia do sorteio. A conta aprendeu com os concursos desde dez/2019, com os valores de cada ano corrigidos pela inflação oficial (IPCA).",
+    "Prever as apostas" to "Estima quantas apostas o próximo concurso vai receber, pelo prêmio estimado, pelas apostas do último concurso e pelo dia do sorteio. A conta aprendeu com os concursos já sorteados.",
     "Montar os potes" to "Calcula quanto do dinheiro das apostas vai para cada faixa de prêmio, com o acumulado na principal.",
     "Dividir entre os ganhadores" to "Considera a chance de levar sozinho ou de dividir o prêmio com outros ganhadores.",
     "Descontar o IR" to "Tira os 30% do imposto de renda dos prêmios acima de R\$\u00A02.428,80.",
@@ -68,6 +68,8 @@ private val COMO_LER = listOf(
     "Abaixo de 1 é perda média" to "Em média, toda aposta perde dinheiro: é assim que a loteria funciona. O k1 aponta o jogo que perde menos.",
     "k1 alto com k2 baixo" to "O valor está no prêmio grande, que quase nunca sai (como na Mega-Sena, que costuma ter k2 zero).",
     "Na aba Jogos" to "A lista vem em ordem de k1, e o concurso em destaque é o de maior k1.",
+    "A ordem muda a cada sorteio" to "O k1 é do próximo concurso de cada jogo: quando o prêmio principal acumula, o k1 sobe a cada sorteio; quando alguém ganha, ele cai de uma vez. Por isso os jogos trocam de lugar na lista.",
+    "Vale para uma aposta ao acaso" to "O k1 é o retorno de uma aposta feita ao acaso (como a Surpresinha). Números muito escolhidos (datas, sequências) dividem os prêmios com mais gente: por isso, na média de todos os apostadores, os concursos pagam um pouco menos que o k1 nas faixas divididas (nas de valor fixo, o mesmo).",
     "Sem k1 e k2" to "Loteca e Federal não têm os índices.",
     "Concursos especiais" to "Na Mega da Virada, na Quina de São João e nos outros especiais, o k1 e o k2 vêm dos últimos especiais já sorteados (veja abaixo).",
 )

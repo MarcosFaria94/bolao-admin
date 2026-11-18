@@ -566,7 +566,7 @@ private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String
 const val SITUACAO_A_CONFIRMAR = "Falta confirmar"
 
 /** O que fazer com a aposta que ainda não foi confirmada (desde a 0.36). */
-const val COMO_CONFIRMAR = "Faça a aposta no site da Caixa (botão Caixa, \"Transcrever\") e, depois de pagar, toque em " +
+const val COMO_CONFIRMAR = "Faça a aposta no site da Caixa (botão Caixa, \"Transcrever em lote\") e, depois de pagar, toque em " +
     "Confirmar. Sem a confirmação, a aposta não vale para o bolão (até lá, ela ainda pode ser descartada)."
 
 /** O botão da aposta que ainda não foi confirmada: "Confirmar aposta" ou, pagas juntas, "Confirmar as 4 apostas". */

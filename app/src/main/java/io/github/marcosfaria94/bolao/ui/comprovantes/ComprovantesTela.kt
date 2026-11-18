@@ -547,7 +547,7 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
 const val SECAO_CONFIRMAR = "Confirmar apostas"
 
 /** O que fazer com as apostas a confirmar. */
-const val TEXTO_CONFIRMAR = "Faça as apostas no site da Caixa (botão Caixa, \"Transcrever\") e confirme depois de pagar."
+const val TEXTO_CONFIRMAR = "Faça as apostas no site da Caixa (botão Caixa, \"Transcrever em lote\") e confirme depois de pagar."
 
 /** O botão que confirma as apostas: "Confirmar a aposta" ou "Confirmar todas (3)". */
 fun textoConfirmarTodas(apostas: Int): String = if (apostas == 1) "Confirmar a aposta" else "Confirmar todas ($apostas)"
