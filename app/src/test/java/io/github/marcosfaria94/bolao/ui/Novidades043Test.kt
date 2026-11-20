@@ -6,6 +6,9 @@ import io.github.marcosfaria94.bolao.domain.CalculoEmEtapas.Etapa
 import io.github.marcosfaria94.bolao.domain.CalculoEmEtapas.Modo
 import io.github.marcosfaria94.bolao.domain.CalculoEmEtapas.Pedido
 import io.github.marcosfaria94.bolao.domain.Modalidade
+import io.github.marcosfaria94.bolao.ui.jogos.modalidadeDoPedido
+import io.github.marcosfaria94.bolao.ui.jogos.nomeDaDica
+import io.github.marcosfaria94.bolao.ui.jogos.rotaDaCalculadora
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -13,14 +16,19 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** As novidades da 0.43 que dão para testar sem as telas: o desdobramento com a base e a cobertura. */
+/** As novidades da 0.43 que dão para testar sem as telas: o desdobramento com a base, o empacotamento e o pedido do pop-up. */
 class Novidades043Test {
 
     private val mega = Modalidade.MEGA_SENA
 
     @Test
     fun desdobramentoPelosNumerosOuPelosPremios() {
-        assertEquals(listOf("P", "J", "D", "$", "F", "C"), Modo.entries.map { it.letra })
+        assertEquals(listOf("Apostas", "Chance", "Valor", "Fechamento", "Desdobramento", "Empacotamento"), Modo.entries.map { it.titulo })
+        assertEquals("O que é Empacotamento", nomeDaDica(Modo.COBERTURA))
+        assertEquals(Modalidade.QUINA, modalidadeDoPedido("calculadora/QUINA"))
+        assertEquals("calculadora/MEGA_SENA", rotaDaCalculadora(mega))
+        assertNull(modalidadeDoPedido("calculadora/"))
+        assertNull(modalidadeDoPedido("detalhes/QUINA"))
         var p = CalculoEmEtapas.comModo(Pedido(), Modo.DESDOBRAMENTO)
         assertEquals(listOf(Etapa.BASE, Etapa.NUMEROS), CalculoEmEtapas.etapas(p))
         assertEquals(1, CalculoEmEtapas.etapaAtual(mega, p))

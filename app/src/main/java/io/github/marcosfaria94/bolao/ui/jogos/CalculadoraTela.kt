@@ -1,5 +1,30 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.composed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.onSizeChanged
+import io.github.marcosfaria94.bolao.ui.comum.PuxarParaVoltar
+import io.github.marcosfaria94.bolao.ui.comum.TarjaModalidade
+import io.github.marcosfaria94.bolao.ui.comum.TextoQueCabe
+import androidx.compose.ui.text.TextStyle
+import io.github.marcosfaria94.bolao.domain.Tarjas
 import android.content.Context
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -16,7 +41,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,9 +51,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,7 +58,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Refresh
@@ -52,7 +72,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -104,11 +123,18 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
-/** O endereço da calculadora de probabilidades (desde a 0.38): "calculadora/MEGA_SENA". */
-const val ROTA_CALCULADORA = "calculadora/{nome}"
+/**
+ * O pedido para abrir a calculadora numa modalidade ("calculadora/MEGA_SENA"; nas notificações e nos testes). Até a 0.42 era
+ * uma tela; desde a 0.43 ela abre por cima de tudo (o pop-up), sem rota.
+ */
+const val PREFIXO_DA_CALCULADORA = "calculadora/"
 const val TITULO_CALCULADORA = "Calculadora"
 
-fun rotaDaCalculadora(m: Modalidade): String = "calculadora/${m.name}"
+fun rotaDaCalculadora(m: Modalidade): String = PREFIXO_DA_CALCULADORA + m.name
+
+/** A modalidade do pedido "calculadora/MEGA_SENA" (null = não é a calculadora, ou sem modalidade: "calculadora/"). */
+fun modalidadeDoPedido(r: String): Modalidade? =
+    r.removePrefix(PREFIXO_DA_CALCULADORA).takeIf { r.startsWith(PREFIXO_DA_CALCULADORA) }?.let { n -> Modalidade.entries.firstOrNull { it.name == n } }
 
 /** A calculadora existe em todas as modalidades menos a Federal. */
 fun temCalculadora(m: Modalidade): Boolean = Calculadora.tem(m)
@@ -116,20 +142,40 @@ fun temCalculadora(m: Modalidade): Boolean = Calculadora.tem(m)
 /** A legenda do "Qualquer prêmio" (desde a 0.40). */
 const val LEGENDA_QUALQUER = "Todas as faixas juntas"
 
-/** Os textos e nomes da calculadora em etapas (os testes procuram por eles; desde a 0.42). */
+/** Os textos e nomes da calculadora (os testes procuram por eles; desde a 0.42, as etapas; desde a 0.43, o pop-up). */
+const val ETAPA_MODALIDADE = "Modalidade"
 const val ETAPA_COMO = "Cálculo"
 const val ETAPA_RESULTADO = "Resultado"
+const val PERGUNTA_DA_MODALIDADE = "Em que modalidade?"
+const val PERGUNTA_DO_CALCULO = "O que você quer calcular?"
 const val CAMPO_DA_ETAPA = "Valor da etapa"
 const val AJUDA_DA_CALCULADORA = "Como usar a calculadora"
 const val NOVO_CALCULO = "Novo cálculo"
 const val CONTINUAR = "Continuar"
 const val VER_RESULTADO = "Ver resultado"
+const val FECHAR_A_DICA = "Fechar a dica"
 
-/** O nome de cada passo da barra de cima (para quem não vê a tela e os testes): "Etapa 2: Faixa". */
+/**
+ * O botão da calculadora (desde a 0.43, ao lado do "Alternar sessão", nas abas; até a 0.42, um ícone nos Detalhes): o
+ * quadrado azul-marinho com a calculadora dourada, do tamanho e no jeito do das sessões e do Painel.
+ */
+@Composable
+fun BotaoDaCalculadora(aoTocar: () -> Unit) {
+    IconButton(onClick = aoTocar, modifier = Modifier.size(58.dp).semantics(mergeDescendants = true) { contentDescription = TITULO_CALCULADORA }) {
+        Box(Modifier.size(38.dp).background(AzulMarinho, RoundedCornerShape(38.dp * 0.29f)), contentAlignment = Alignment.Center) {
+            Icon(Icons.Outlined.Calculate, contentDescription = null, tint = Dourado, modifier = Modifier.size(26.dp))
+        }
+    }
+}
+
+/** O nome de cada passo da barra das etapas (para quem não vê a tela e os testes): "Etapa 2: Cálculo". */
 fun nomeDoPasso(numero: Int, titulo: String): String = "Etapa $numero: $titulo"
 
-/** O nome do botão de cada modalidade no seletor de cima: "Calcular na Quina". */
+/** O nome de cada modalidade da lista da etapa 1: "Calcular na Quina". */
 fun nomeDaModalidadeNaCalculadora(m: Modalidade): String = "Calcular na ${m.nome}"
+
+/** O nome do botão de dica de cada cálculo: "O que é Fechamento". */
+fun nomeDaDica(modo: Modo): String = "O que é ${modo.titulo}"
 
 /**
  * A configuração da calculadora da 0.38 à 0.41 (a dos controles e a do teclado), guardada no celular: a calculadora em
@@ -186,123 +232,217 @@ private val GuardaDoPedido = listSaver<Pedido, String>(
 )
 
 /**
- * A calculadora de probabilidades, refeita na 0.42 em etapas que ocupam a tela inteira (pedido do usuário: "faz ser
- * possível trocar a modalidade a qualquer momento; trate como fluxo de etapas de cálculo (1, 2, 3) que ocupa a tela
- * inteira e dê sempre para retroceder/mudar a escolha anterior; o teclado de calculadora é uma ideia ruim"):
- * - **em cima**, as modalidades (trocar a qualquer momento: as escolhas que valem na outra ficam) e a barra das etapas
- *   (cada etapa feita mostra a escolha e, tocada, volta a ela para mudar; o "?" ensina a usar);
- * - **no meio**, a etapa: como calcular (P, J, Q, $, F, D), a faixa, o número (com o teclado do celular e sugestões), o
- *   tipo de jogo ou a garantia do fechamento; no fim, o resultado (o preço, os jogos, as chances de cada faixa e, quando
- *   faz sentido, os prêmios do mínimo ao máximo e os jogos do fechamento ou do desdobramento);
- * - **embaixo**, voltar e continuar.
- * As contas ficam em [CalculoEmEtapas].
+ * A calculadora de probabilidades. Na 0.42, etapas que ocupavam a tela; desde a 0.43 (pedido do usuário) um **pop-up** por
+ * cima da tela (o fundo escurecido; tocar fora fecha):
+ * - **em cima**, o título e o "?" grande no canto direito (como usar);
+ * - **no meio**, a etapa: 1, a **modalidade** (a lista com as tarjas, como na tela Jogos); 2, **o que calcular** (6 botões
+ *   com a palavra inteira, perto da mão, cada um com a dica do que é); depois as perguntas de cada cálculo; no fim, o
+ *   **resultado** (só os números: o preço, quantos jogos e de que tipo, as chances e, quando faz sentido, os prêmios de
+ *   cada faixa, a garantia ou os limites do empacotamento; os jogos em si, não);
+ * - **embaixo**, o botão de continuar (nas etapas de número) ou o novo cálculo, e a **barra das etapas** (tocar numa feita
+ *   volta a ela).
+ * Sem o "Voltar": deslizar o dedo para a direita volta uma etapa (para a esquerda, avança para uma já feita) e puxar para
+ * baixo fecha. O voltar do celular volta uma etapa (na primeira, fecha). As contas ficam em [CalculoEmEtapas].
+ * [inicial]: a modalidade em que abre (já na etapa 2); null = começa escolhendo a modalidade.
  */
 @Composable
-fun CalculadoraTela(estado: Estado, inicial: Modalidade) {
-    var nome by rememberSaveable { mutableStateOf(inicial.name) }
-    val m = Modalidade.entries.firstOrNull { it.name == nome } ?: inicial
+fun CalculadoraPopup(estado: Estado, inicial: Modalidade?, aoFechar: () -> Unit) {
+    var nome by rememberSaveable { mutableStateOf(inicial?.name) }
+    val m = nome?.let { n -> Modalidade.entries.firstOrNull { it.name == n } }
     var pedido by rememberSaveable(stateSaver = GuardaDoPedido) { mutableStateOf(Pedido()) }
-    var passo by rememberSaveable { mutableIntStateOf(0) }
+    var passo by rememberSaveable { mutableIntStateOf(if (inicial != null) 1 else 0) }
     var ajuda by rememberSaveable { mutableStateOf(false) }
-    val preco = estado.config.preco(m)
     val etapas = CalculoEmEtapas.etapas(pedido)
-    val ultimo = etapas.size + 1
-    // Nunca além da primeira etapa sem escolha.
-    val agora = passo.coerceAtMost(CalculoEmEtapas.etapaAtual(m, pedido))
+    // Os passos da barra: 0 = a modalidade, 1 = o que calcular, 2... = as etapas do cálculo, [ultimo] = o resultado.
+    val ultimo = etapas.size + 2
+    val alcance = if (m == null) 0 else 1 + CalculoEmEtapas.etapaAtual(m, pedido)
+    val agora = passo.coerceAtMost(alcance)
+    val fechar by rememberUpdatedState(aoFechar)
 
     fun irPara(i: Int) {
-        passo = i.coerceIn(0, CalculoEmEtapas.etapaAtual(m, pedido))
+        passo = i.coerceIn(0, alcance)
     }
+    // [naEtapa]: o passo do cálculo (1 = o que calcular) em que a escolha foi feita.
     fun escolher(novo: Pedido, naEtapa: Int) {
+        val x = m ?: return
         pedido = novo
-        passo = CalculoEmEtapas.depoisDe(m, novo, naEtapa)
+        passo = 1 + CalculoEmEtapas.depoisDe(x, novo, naEtapa)
     }
-    fun trocarModalidade(nova: Modalidade) {
-        if (nova == m) return
-        val p = CalculoEmEtapas.naModalidade(pedido, m, nova)
+    fun escolherModalidade(nova: Modalidade) {
+        val p = if (m == null) pedido else CalculoEmEtapas.naModalidade(pedido, m, nova)
         nome = nova.name
         pedido = p
-        passo = passo.coerceAtMost(CalculoEmEtapas.etapaAtual(nova, p))
+        passo = 1 + CalculoEmEtapas.etapaAtual(nova, p)
     }
+    BackHandler { if (agora > 0) irPara(agora - 1) else fechar() }
 
-    Column(Modifier.fillMaxSize().imePadding()) {
-        SeletorDeModalidade(m, ::trocarModalidade)
-        BarraDeEtapas(m, pedido, agora, aoTocar = ::irPara, aoAjudar = { ajuda = true })
-        HorizontalDivider()
-        AnimatedContent(
-            targetState = agora,
-            transitionSpec = {
-                val ida = targetState > initialState
-                (slideInHorizontally { if (ida) it / 4 else -it / 4 } + fadeIn()) togetherWith
-                    (slideOutHorizontally { if (ida) -it / 4 else it / 4 } + fadeOut())
-            },
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            label = "etapa",
-        ) { i ->
-            val etapa = etapas.getOrNull(i - 1)
-            when {
-                i == 0 -> EtapaComoCalcular(m, pedido.modo) { escolher(CalculoEmEtapas.comModo(pedido, it), 0) }
-                i >= ultimo -> EtapaDoResultado(m, pedido, preco)
-                etapa == Etapa.BASE -> EtapaDaBase(pedido.base) { escolher(CalculoEmEtapas.comBase(pedido, it), i) }
-                etapa == Etapa.FAIXA -> EtapaDaFaixa(m, pedido) { escolher(CalculoEmEtapas.comFaixa(m, pedido, it), i) }
-                etapa == Etapa.TIPO -> EtapaDoTipo(m, pedido, preco) { n, t -> escolher(pedido.copy(numeros = n, trevos = t), i) }
-                etapa == Etapa.GARANTIA -> EtapaDaGarantia(m, pedido, preco) { escolher(pedido.copy(garantia = it), i) }
-                etapa != null -> EtapaDoNumero(
-                    m, pedido, etapa,
-                    aoMudar = { pedido = it },
-                    aoContinuar = { if (CalculoEmEtapas.completa(m, pedido, etapa)) passo = CalculoEmEtapas.depoisDe(m, pedido, i) },
-                )
-            }
-        }
-        RodapeDaCalculadora(
-            m, pedido, agora, ultimo,
-            aoVoltar = { irPara(agora - 1) },
-            aoRecomecar = { pedido = Pedido(formato = pedido.formato); passo = 0 },
-            aoContinuar = {
-                val e = etapas.getOrNull(agora - 1)
-                if (e != null && CalculoEmEtapas.completa(m, pedido, e)) passo = CalculoEmEtapas.depoisDe(m, pedido, agora)
-            },
+    Box(Modifier.fillMaxSize()) {
+        // O fundo escurecido: tocar fora fecha.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .pointerInput(Unit) { detectTapGestures { fechar() } }
+                .semantics { contentDescription = FORA_DA_CALCULADORA },
         )
+        PuxarParaVoltar(aoVoltar = { fechar() }, modifier = Modifier.align(Alignment.BottomCenter).fillMaxHeight(FRACAO_DA_ALTURA)) {
+            Surface(
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 2.dp,
+                shadowElevation = 12.dp,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars).imePadding()) {
+                    CabecalhoDaCalculadora(aoAjudar = { ajuda = true })
+                    AnimatedContent(
+                        targetState = agora,
+                        transitionSpec = {
+                            val ida = targetState > initialState
+                            (slideInHorizontally { if (ida) it / 4 else -it / 4 } + fadeIn()) togetherWith
+                                (slideOutHorizontally { if (ida) -it / 4 else it / 4 } + fadeOut())
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .deslizarEntreEtapas(
+                                aoVoltar = { if (agora > 0) irPara(agora - 1) },
+                                aoAvancar = { if (agora < alcance) irPara(agora + 1) },
+                            ),
+                        label = "etapa",
+                    ) { i ->
+                        val etapa = etapas.getOrNull(i - 2)
+                        val x = m
+                        when {
+                            i == 0 || x == null -> EtapaDaModalidade(m, ::escolherModalidade)
+                            i == 1 -> EtapaOQueCalcular(x, pedido.modo) { escolher(CalculoEmEtapas.comModo(pedido, it), 0) }
+                            i >= ultimo -> EtapaDoResultado(x, pedido, estado.config.preco(x))
+                            etapa == Etapa.BASE -> EtapaDaBase(pedido.base) { escolher(CalculoEmEtapas.comBase(pedido, it), i - 1) }
+                            etapa == Etapa.FAIXA -> EtapaDaFaixa(x, pedido) { escolher(CalculoEmEtapas.comFaixa(x, pedido, it), i - 1) }
+                            etapa == Etapa.TIPO -> EtapaDoTipo(x, pedido, estado.config.preco(x)) { n, t -> escolher(pedido.copy(numeros = n, trevos = t), i - 1) }
+                            etapa == Etapa.GARANTIA -> EtapaDaGarantia(x, pedido, estado.config.preco(x)) { escolher(pedido.copy(garantia = it), i - 1) }
+                            etapa != null -> EtapaDoNumero(
+                                x, pedido, etapa,
+                                aoMudar = { pedido = it },
+                                aoContinuar = { if (CalculoEmEtapas.completa(x, pedido, etapa)) passo = 1 + CalculoEmEtapas.depoisDe(x, pedido, i - 1) },
+                            )
+                        }
+                    }
+                    RodapeDaCalculadora(
+                        m, pedido, agora, ultimo,
+                        aoRecomecar = { pedido = Pedido(formato = pedido.formato); passo = 1 },
+                        aoContinuar = {
+                            val e = etapas.getOrNull(agora - 2)
+                            if (m != null && e != null && CalculoEmEtapas.completa(m, pedido, e)) passo = 1 + CalculoEmEtapas.depoisDe(m, pedido, agora - 1)
+                        },
+                    )
+                    BarraDeEtapas(m, pedido, agora, alcance, aoTocar = ::irPara)
+                }
+            }
+        }
     }
-    if (ajuda) AjudaDaCalculadora(m) { ajuda = false }
+    if (ajuda) AjudaDaCalculadora { ajuda = false }
 }
 
-// ---------------------------------------------------------------- em cima
+/** Quanto da altura da tela o pop-up ocupa. */
+private const val FRACAO_DA_ALTURA = 0.92f
 
-/** As modalidades, uma ao lado da outra (rola de lado): a escolhida com a cor dela; tocar troca a qualquer momento. */
+/** O nome do fundo escurecido (tocar fecha). */
+const val FORA_DA_CALCULADORA = "Fechar a calculadora"
+
+/**
+ * Deslizar o dedo para os lados entre as etapas (desde a 0.43, no lugar do "Voltar"): para a direita volta uma etapa, para
+ * a esquerda avança (só para uma etapa já feita). Dispara ao passar de um quarto da largura, ou num deslize rápido; uma vez
+ * por gesto. A rolagem para cima e para baixo continua (e o puxão para baixo, que fecha).
+ */
+private fun Modifier.deslizarEntreEtapas(aoVoltar: () -> Unit, aoAvancar: () -> Unit): Modifier = composed {
+    val voltar by rememberUpdatedState(aoVoltar)
+    val avancar by rememberUpdatedState(aoAvancar)
+    var largura by remember { mutableFloatStateOf(1f) }
+    val rastreador = remember { VelocityTracker() }
+    this
+        .onSizeChanged { largura = it.width.toFloat().coerceAtLeast(1f) }
+        .pointerInput(Unit) {
+            var andado = 0f
+            var feito = false
+            fun disparar() {
+                feito = true
+                if (andado > 0f) voltar() else avancar()
+            }
+            detectHorizontalDragGestures(
+                onDragStart = {
+                    rastreador.resetTracking()
+                    andado = 0f
+                    feito = false
+                },
+                onDragEnd = {
+                    val v = rastreador.calculateVelocity().x
+                    if (!feito && andado != 0f && kotlin.math.abs(v) > VELOCIDADE_DO_DESLIZE && kotlin.math.sign(v) == kotlin.math.sign(andado)) disparar()
+                },
+            ) { mudanca, dx ->
+                mudanca.consume()
+                rastreador.addPosition(mudanca.uptimeMillis, mudanca.position)
+                andado += dx
+                if (!feito && kotlin.math.abs(andado) > largura * FRACAO_DO_DESLIZE) disparar()
+            }
+        }
+}
+
+private const val FRACAO_DO_DESLIZE = 0.25f
+private const val VELOCIDADE_DO_DESLIZE = 1200f
+
+/**
+ * O alto do pop-up: a alça (puxar para baixo fecha), o título e o "?" grande no canto direito. O alto não rola, mas passa
+ * o arrasto para baixo ao puxão que fecha.
+ */
 @Composable
-private fun SeletorDeModalidade(m: Modalidade, aoTrocar: (Modalidade) -> Unit) {
-    val lista = remember { Modalidade.ATIVAS.filter { Calculadora.tem(it) } }
-    val rolagem = rememberLazyListState(initialFirstVisibleItemIndex = (lista.indexOf(m) - 1).coerceAtLeast(0))
-    LazyRow(
-        state = rolagem,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+private fun CabecalhoDaCalculadora(aoAjudar: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .scrollable(rememberScrollableState { 0f }, Orientation.Vertical),
     ) {
-        items(lista, key = { it.name }) { x ->
-            val escolhida = x == m
-            val cor = Color(x.cor)
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(if (escolhida) cor else MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .clickable(role = Role.Tab) { aoTrocar(x) }
-                    .semantics { contentDescription = nomeDaModalidadeNaCalculadora(x); selected = escolhida }
-                    .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SeloModalidade(x, tamanho = 26.dp)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    x.nome,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (escolhida) FontWeight.Bold else FontWeight.Medium,
-                    color = if (escolhida) Color.White else MaterialTheme.colorScheme.onSurface,
-                )
+        Box(
+            Modifier
+                .padding(top = 10.dp)
+                .align(Alignment.CenterHorizontally)
+                .size(width = 40.dp, height = 5.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(MaterialTheme.colorScheme.outlineVariant),
+        )
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(TITULO_CALCULADORA, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            IconButton(onClick = aoAjudar, modifier = Modifier.size(56.dp)) {
+                Icon(Icons.AutoMirrored.Outlined.HelpOutline, AJUDA_DA_CALCULADORA, modifier = Modifier.size(36.dp), tint = MaterialTheme.colorScheme.primary)
             }
         }
     }
 }
+
+/** A etapa 1: a modalidade, na lista com as tarjas (como na tela Jogos); a escolhida com o contorno dourado. */
+@Composable
+private fun EtapaDaModalidade(atual: Modalidade?, aoEscolher: (Modalidade) -> Unit) {
+    val lista = remember { Modalidade.ATIVAS.filter { Calculadora.tem(it) } }
+    ColunaDaEtapa {
+        Pergunta(PERGUNTA_DA_MODALIDADE)
+        lista.forEach { x ->
+            val escolhida = x == atual
+            TarjaModalidade(
+                x,
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp)
+                    .then(if (escolhida) Modifier.border(3.dp, Dourado, RoundedCornerShape(TAMANHO_DA_TARJA * Tarjas.CANTO + 3.dp)).padding(3.dp) else Modifier)
+                    .clip(RoundedCornerShape(TAMANHO_DA_TARJA * Tarjas.CANTO))
+                    .clickable(role = Role.RadioButton) { aoEscolher(x) }
+                    .semantics { contentDescription = nomeDaModalidadeNaCalculadora(x); selected = escolhida },
+                altura = TAMANHO_DA_TARJA,
+            )
+        }
+    }
+}
+
+private val TAMANHO_DA_TARJA = 52.dp
 
 /** O que fica escrito embaixo de cada etapa feita (a escolha dela). */
 private fun escolhaDaEtapa(m: Modalidade, p: Pedido, etapa: Etapa): String? = when (etapa) {
@@ -331,22 +471,31 @@ private fun curto(v: Double): String = when {
 }
 
 /**
- * A barra das etapas: um círculo numerado por etapa (a feita com o visto, a de agora em dourado), o nome e, embaixo, a
- * escolha. Tocar numa etapa feita volta a ela (para mudar a escolha); as de depois esperam. O "?" no fim.
+ * A barra das etapas, embaixo (desde a 0.43; na 0.42, em cima): um círculo por etapa (a modalidade com o selo dela; as
+ * outras feitas com o visto; a de agora em dourado), o nome e, embaixo, a escolha. Tocar numa etapa feita volta a ela
+ * (para mudar a escolha); as de depois esperam. [alcance]: a primeira etapa ainda sem escolha.
  */
 @Composable
-private fun BarraDeEtapas(m: Modalidade, p: Pedido, agora: Int, aoTocar: (Int) -> Unit, aoAjudar: () -> Unit) {
+private fun BarraDeEtapas(m: Modalidade?, p: Pedido, agora: Int, alcance: Int, aoTocar: (Int) -> Unit) {
     val etapas = p.modo?.let { CalculoEmEtapas.etapas(p) }
-    val titulos = listOf(ETAPA_COMO) + (etapas?.map { it.titulo } ?: listOf("Detalhes")) + ETAPA_RESULTADO
-    val alcance = CalculoEmEtapas.etapaAtual(m, p)
-    Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 0.dp, bottom = 6.dp), verticalAlignment = Alignment.Top) {
+    val titulos = listOf(ETAPA_MODALIDADE, ETAPA_COMO) + (etapas?.map { it.titulo } ?: listOf("Detalhes")) + ETAPA_RESULTADO
+    val muitas = titulos.size > 5
+    HorizontalDivider()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .scrollable(rememberScrollableState { 0f }, Orientation.Vertical)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
         titulos.forEachIndexed { i, titulo ->
             val feita = i < alcance && i != agora
             val atual = i == agora
-            val pode = i <= alcance && !atual && (etapas != null || i == 0)
+            val pode = i <= alcance && !atual && (etapas != null || i <= 1)
             val escolha = when {
-                i == 0 -> p.modo?.titulo
-                etapas != null && i in 1..etapas.size -> escolhaDaEtapa(m, p, etapas[i - 1])
+                i == 0 -> m?.nome
+                i == 1 -> p.modo?.titulo
+                m != null && etapas != null && i in 2..etapas.size + 1 -> escolhaDaEtapa(m, p, etapas[i - 2])
                 else -> null
             }
             Column(
@@ -359,7 +508,7 @@ private fun BarraDeEtapas(m: Modalidade, p: Pedido, agora: Int, aoTocar: (Int) -
                         selected = atual
                         if (!pode && !atual) disabled()
                     }
-                    .padding(vertical = 4.dp, horizontal = 2.dp),
+                    .padding(vertical = 4.dp, horizontal = 1.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 val fundo = when {
@@ -367,25 +516,29 @@ private fun BarraDeEtapas(m: Modalidade, p: Pedido, agora: Int, aoTocar: (Int) -
                     feita -> AzulMarinho
                     else -> MaterialTheme.colorScheme.surfaceContainerHighest
                 }
-                Box(Modifier.size(28.dp).clip(CircleShape).background(fundo), contentAlignment = Alignment.Center) {
-                    if (feita && i < titulos.lastIndex) {
-                        Icon(Icons.Outlined.Check, null, tint = Dourado, modifier = Modifier.size(18.dp))
-                    } else {
-                        Text(
-                            "${i + 1}",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = when {
-                                atual -> AzulMarinho
-                                feita -> Color.White
-                                else -> MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
+                if (i == 0 && m != null && !atual) {
+                    SeloModalidade(m, tamanho = 30.dp)
+                } else {
+                    Box(Modifier.size(30.dp).clip(CircleShape).background(fundo), contentAlignment = Alignment.Center) {
+                        if (feita && i < titulos.lastIndex) {
+                            Icon(Icons.Outlined.Check, null, tint = Dourado, modifier = Modifier.size(18.dp))
+                        } else {
+                            Text(
+                                "${i + 1}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = when {
+                                    atual -> AzulMarinho
+                                    feita -> Color.White
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
                     }
                 }
                 Text(
                     titulo,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = if (muitas) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
                     fontWeight = if (atual) FontWeight.Bold else FontWeight.Normal,
                     color = if (atual || feita) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -400,9 +553,6 @@ private fun BarraDeEtapas(m: Modalidade, p: Pedido, agora: Int, aoTocar: (Int) -
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-        IconButton(onClick = aoAjudar, modifier = Modifier.padding(top = 2.dp)) {
-            Icon(Icons.AutoMirrored.Outlined.HelpOutline, AJUDA_DA_CALCULADORA)
         }
     }
 }
@@ -458,31 +608,122 @@ private fun ColunaDaEtapa(conteudo: @Composable () -> Unit) {
     ) { conteudo() }
 }
 
-/** Etapa 1: como calcular. Os 6 jeitos, com a letra, o que faz e um exemplo; os que não valem na modalidade, apagados. */
+/**
+ * A etapa 2: o que calcular (desde a 0.43, pedido do usuário). A pergunta em cima e os 6 botões embaixo, perto da mão (2
+ * por linha), com a palavra inteira: APOSTAS, CHANCE, VALOR, FECHAMENTO, DESDOBRAMENTO, EMPACOTAMENTO. Cada botão tem a
+ * dica (o "i"), que mostra o que ele calcula, logo acima dos botões; os que não valem na modalidade ficam apagados (a dica
+ * diz o porquê). O escolhido antes (ao voltar) fica dourado.
+ */
 @Composable
-private fun EtapaComoCalcular(m: Modalidade, atual: Modo?, aoEscolher: (Modo) -> Unit) {
-    ColunaDaEtapa {
-        Pergunta("Como você quer calcular?", "Escolha o ponto de partida. Dá para voltar e trocar a qualquer momento.")
-        Modo.entries.forEach { modo ->
-            val motivo = CalculoEmEtapas.motivoSemModo(m, modo)
-            val exemplo = exemploDoModo(m, modo)
-            Opcao(escolhida = modo == atual, habilitada = motivo == null, aoTocar = { aoEscolher(modo) }, descricao = "${modo.letra} ${modo.titulo}") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(if (motivo == null) AzulMarinho else MaterialTheme.colorScheme.surfaceContainerHighest),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(modo.letra, color = if (motivo == null) Dourado else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(modo.titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = if (motivo == null) Color.Unspecified else MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(motivo ?: modo.descricao, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (motivo == null) {
-                            Text("Ex.: $exemplo", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 2.dp))
+private fun EtapaOQueCalcular(m: Modalidade, atual: Modo?, aoEscolher: (Modo) -> Unit) {
+    var dica by remember { mutableStateOf<Modo?>(null) }
+    val rolagem = rememberScrollState()
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = maxHeight)
+                .verticalScroll(rolagem)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Pergunta(PERGUNTA_DO_CALCULO)
+            Column {
+                dica?.let { d -> CartaoDaDica(m, d) { dica = null } }
+                Modo.entries.chunked(2).forEach { linha ->
+                    Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        linha.forEach { modo ->
+                            BotaoDoCalculo(
+                                modo,
+                                escolhido = modo == atual,
+                                habilitado = CalculoEmEtapas.motivoSemModo(m, modo) == null,
+                                dicaAberta = dica == modo,
+                                aoTocar = { aoEscolher(modo) },
+                                aoPedirDica = { dica = if (dica == modo) null else modo },
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** Um botão do "O que você quer calcular?": a palavra inteira e, à direita, o "i" da dica. */
+@Composable
+private fun BotaoDoCalculo(
+    modo: Modo,
+    escolhido: Boolean,
+    habilitado: Boolean,
+    dicaAberta: Boolean,
+    aoTocar: () -> Unit,
+    aoPedirDica: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val fundo = when {
+        !habilitado -> MaterialTheme.colorScheme.surfaceContainerHighest
+        escolhido -> Dourado
+        else -> AzulMarinho
+    }
+    val frente = when {
+        !habilitado -> MaterialTheme.colorScheme.onSurfaceVariant
+        escolhido -> AzulMarinho
+        else -> Dourado
+    }
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = fundo,
+        border = if (dicaAberta) BorderStroke(2.dp, if (escolhido) AzulMarinho else Dourado) else null,
+        modifier = modifier
+            .height(64.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = habilitado, role = Role.Button, onClick = aoTocar)
+            .semantics {
+                contentDescription = modo.titulo
+                selected = escolhido
+                if (!habilitado) disabled()
+            },
+    ) {
+        Row(Modifier.padding(start = 12.dp, end = 0.dp), verticalAlignment = Alignment.CenterVertically) {
+            // A palavra inteira sempre (diminui a letra até caber: DESDOBRAMENTO e EMPACOTAMENTO são compridas).
+            TextoQueCabe(
+                modo.titulo.uppercase(),
+                TextStyle(fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, letterSpacing = 0.3.sp),
+                cor = frente,
+                menor = 10.sp,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = aoPedirDica, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Outlined.Info, nomeDaDica(modo), tint = frente.copy(alpha = 0.85f), modifier = Modifier.size(22.dp))
+            }
+        }
+    }
+}
+
+/** A dica de um cálculo, logo acima dos botões: o nome, o que calcula e um exemplo (ou por que não vale na modalidade). */
+@Composable
+private fun CartaoDaDica(m: Modalidade, modo: Modo, aoFechar: () -> Unit) {
+    val motivo = CalculoEmEtapas.motivoSemModo(m, modo)
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        border = BorderStroke(1.dp, Dourado),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+    ) {
+        Row(Modifier.padding(start = 14.dp, top = 10.dp, bottom = 12.dp, end = 2.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(modo.titulo, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(modo.descricao, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 2.dp))
+                Text(
+                    motivo ?: "Ex.: ${exemploDoModo(m, modo)}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (motivo != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            IconButton(onClick = aoFechar, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Outlined.Close, FECHAR_A_DICA, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -565,8 +806,8 @@ private fun jeitoDoNumero(m: Modalidade, p: Pedido): JeitoDoNumero = when (p.mod
         "Os jogos saem desses números, sem repetir ${CalculoEmEtapas.nenhumGrupo(m)}. Todos = os ${CalculoEmEtapas.faixaDeNumeros(m, Modo.COBERTURA)?.last} da ${m.nome}." +
             when (val x = CalculoEmEtapas.maximoMontavel(m)) {
                 null -> ""
-                CalculoEmEtapas.faixaDeNumeros(m, Modo.COBERTURA)?.last -> " A calculadora também monta os jogos (pode levar alguns segundos)."
-                else -> " Até $x números a calculadora também monta os jogos."
+                CalculoEmEtapas.faixaDeNumeros(m, Modo.COBERTURA)?.last -> " A calculadora também conta quantos jogos consegue montar (pode levar alguns segundos)."
+                else -> " Até $x números a calculadora também conta quantos jogos consegue montar."
             },
         null, "números", false,
     )
@@ -795,7 +1036,7 @@ private fun CartaoDaCobertura(m: Modalidade, c: CalculoEmEtapas.InfoDaCobertura)
     Spacer(Modifier.height(8.dp))
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
-            Text("Cobertura", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Text("Empacotamento", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
             Text(
                 "Jogos de ${c.tamanho} números saídos dos seus ${c.numeros}, sem repetir ${CalculoEmEtapas.nenhumGrupo(m)}: " +
                     "cada grupo de ${c.acertos} números aparece em um jogo só.",
@@ -839,8 +1080,9 @@ private fun LinhaDaCobertura(rotulo: String, valor: String) {
 
 /**
  * O resultado: o cartão de cima no azul com o dourado (o preço grande, quantos jogos e de que tipo, o pedido), as chances
- * de cada faixa (a do pedido em destaque), os prêmios de cada faixa (do mínimo ao máximo) quando é uma aposta só, e os
- * jogos do fechamento ou do desdobramento (pela posição dos seus números: 01 = o 1º que você escolher).
+ * de cada faixa (a do pedido em destaque), os prêmios de cada faixa (do mínimo ao máximo) quando é uma aposta só, a
+ * garantia do fechamento ou os limites do empacotamento. Desde a 0.43 só os números (pedido do usuário): os jogos do
+ * fechamento, do desdobramento e do empacotamento não aparecem.
  */
 @Composable
 private fun EtapaDoResultado(m: Modalidade, p: Pedido, preco: Long) {
@@ -852,7 +1094,7 @@ private fun EtapaDoResultado(m: Modalidade, p: Pedido, preco: Long) {
             Text(
                 when {
                     p.modo == Modo.FECHAMENTO && fechamento == null -> "Montando o fechamento…"
-                    p.modo == Modo.COBERTURA && cobertura == null -> "Montando os jogos da cobertura…"
+                    p.modo == Modo.COBERTURA && cobertura == null -> "Contando os jogos do empacotamento…"
                     else -> "Não dá para chegar nesse pedido: volte e mude a escolha."
                 },
                 style = MaterialTheme.typography.bodyLarge,
@@ -900,13 +1142,6 @@ private fun EtapaDoResultado(m: Modalidade, p: Pedido, preco: Long) {
             }
         }
         r.cobertura?.let { CartaoDaCobertura(m, it) }
-        val lista = when (p.modo) {
-            Modo.FECHAMENTO -> fechamento
-            Modo.COBERTURA -> cobertura?.map { it.toList() }
-            Modo.DESDOBRAMENTO -> r.numerosEscolhidos?.let { n -> CalculoEmEtapas.desdobramento((0 until n).toList(), m.qtdAposta, LIMITE_DE_JOGOS_NA_TELA) }
-            else -> null
-        }
-        if (lista != null) ListaDeJogos(m, lista, r.jogos)
         Spacer(Modifier.height(10.dp))
         notasDaCalculadora(m).forEach { n ->
             Text("* $n", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
@@ -922,8 +1157,6 @@ private fun textoDosPremios(m: Modalidade, faixa: Int, pr: LongRange): String {
     return if (pr.first == pr.last) "$quantos se acertar a $nome"
     else "Só a $nome: ${Probabilidades.milhares(pr.first)} · no máximo ${Probabilidades.milhares(pr.last)}"
 }
-
-private const val LIMITE_DE_JOGOS_NA_TELA = 60
 
 /** O cartão de cima do resultado (azul com o dourado, como o visor da 0.41). */
 @Composable
@@ -947,103 +1180,71 @@ private fun CartaoDoResultado(m: Modalidade, r: CalculoEmEtapas.Resultado) {
     }
 }
 
-/** Os jogos do fechamento ou do desdobramento, pela posição dos números escolhidos. */
-@Composable
-private fun ListaDeJogos(m: Modalidade, jogos: List<List<Int>>, total: Long) {
-    Spacer(Modifier.height(12.dp))
-    Text("Os jogos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-    Text(
-        "Pela posição dos seus números: 01 é o 1º que você escolher, 02 o 2º...",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Spacer(Modifier.height(6.dp))
-    jogos.take(LIMITE_DE_JOGOS_NA_TELA).forEachIndexed { i, j ->
-        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${i + 1}".padStart(3), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(34.dp))
-            Text(j.sorted().joinToString("  ") { m.rotulo(it + 1) }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-        }
-    }
-    if (total > LIMITE_DE_JOGOS_NA_TELA) {
-        Text("… e mais ${Probabilidades.milhares(total - LIMITE_DE_JOGOS_NA_TELA)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-// ---------------------------------------------------------------- embaixo
-
-/** Embaixo: voltar (uma etapa) e continuar (nas etapas de número) ou novo cálculo (no resultado). */
+/**
+ * Em cima da barra das etapas: o continuar (nas etapas de número) ou o novo cálculo (no resultado). Sem o "Voltar" desde a
+ * 0.43 (deslizar para a direita volta). Nas etapas de escolher, nada (tocar na opção já avança).
+ */
 @Composable
 private fun RodapeDaCalculadora(
-    m: Modalidade,
+    m: Modalidade?,
     p: Pedido,
     agora: Int,
     ultimo: Int,
-    aoVoltar: () -> Unit,
     aoRecomecar: () -> Unit,
     aoContinuar: () -> Unit,
 ) {
-    val etapa = CalculoEmEtapas.etapas(p).getOrNull(agora - 1)
+    if (m == null || agora < 2) return
+    val etapa = CalculoEmEtapas.etapas(p).getOrNull(agora - 2)
     val deNumero = etapa != null && etapa !in setOf(Etapa.FAIXA, Etapa.TIPO, Etapa.GARANTIA, Etapa.BASE)
-    if (agora == 0 && p.modo == null) return
-    HorizontalDivider()
+    if (agora < ultimo && !deNumero) return
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (agora > 0) {
-            TextButton(onClick = aoVoltar) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Voltar")
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        when {
-            agora >= ultimo -> OutlinedButton(onClick = aoRecomecar) {
+        if (agora >= ultimo) {
+            OutlinedButton(onClick = aoRecomecar, modifier = Modifier.heightIn(min = 48.dp)) {
                 Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(NOVO_CALCULO)
             }
-            deNumero -> {
-                val ok = CalculoEmEtapas.completa(m, p, etapa!!)
-                val vaiAoFim = CalculoEmEtapas.depoisDe(m, p, agora) >= ultimo
-                Button(
-                    onClick = aoContinuar,
-                    enabled = ok,
-                    colors = ButtonDefaults.buttonColors(containerColor = AzulMarinho, contentColor = Dourado),
-                    modifier = Modifier.heightIn(min = 44.dp),
-                ) { Text(if (vaiAoFim) VER_RESULTADO else CONTINUAR, fontWeight = FontWeight.Bold) }
-            }
-            else -> Text("Toque numa opção", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            val ok = CalculoEmEtapas.completa(m, p, etapa!!)
+            val vaiAoFim = CalculoEmEtapas.depoisDe(m, p, agora - 1) + 1 >= ultimo
+            Button(
+                onClick = aoContinuar,
+                enabled = ok,
+                colors = ButtonDefaults.buttonColors(containerColor = AzulMarinho, contentColor = Dourado),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+            ) { Text(if (vaiAoFim) VER_RESULTADO else CONTINUAR, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
         }
     }
 }
 
 /** O "?": como usar a calculadora (as etapas e cada jeito de calcular). */
 @Composable
-private fun AjudaDaCalculadora(m: Modalidade, aoFechar: () -> Unit) {
+private fun AjudaDaCalculadora(aoFechar: () -> Unit) {
     Dialog(onDismissRequest = aoFechar, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth(0.92f).heightIn(max = 620.dp)) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp)) {
                 Text(AJUDA_DA_CALCULADORA, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "A conta é feita em etapas, de cima para baixo: 1, escolha como calcular; 2 e 3, responda as perguntas; no fim, o resultado. " +
-                        "As etapas feitas ficam na barra de cima com a sua escolha: toque numa delas para voltar e mudar. " +
-                        "A modalidade também troca a qualquer momento, na fileira de cima (a ${m.nome} é a de agora).",
+                    "A conta é feita em etapas, mostradas na barra de baixo: 1, a modalidade; 2, o que você quer calcular; depois, as " +
+                        "perguntas de cada cálculo; no fim, o resultado (só os números).",
                     style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "Para voltar uma etapa, deslize o dedo para a direita, ou toque numa etapa da barra de baixo para mudar a escolha dela. " +
+                        "Para fechar a calculadora, puxe para baixo (ou toque fora dela).",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 6.dp),
                 )
                 Spacer(Modifier.height(12.dp))
                 Modo.entries.forEach { modo ->
-                    Row(Modifier.padding(bottom = 10.dp)) {
-                        Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(AzulMarinho), contentAlignment = Alignment.Center) {
-                            Text(modo.letra, color = Dourado, fontWeight = FontWeight.ExtraBold)
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(modo.titulo, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            Text(modo.descricao, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    Column(Modifier.padding(bottom = 10.dp)) {
+                        Text(modo.titulo.uppercase(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                        Text(modo.descricao, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Text(

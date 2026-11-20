@@ -2,16 +2,22 @@ package io.github.marcosfaria94.bolao.ui
 
 import io.github.marcosfaria94.bolao.ui.comum.LIMIAR_DA_PAGINA
 import io.github.marcosfaria94.bolao.ui.caixa.FaseDoDeslize
-import io.github.marcosfaria94.bolao.ui.jogos.TITULO_CALCULADORA
-import io.github.marcosfaria94.bolao.ui.jogos.ROTA_CALCULADORA
-import io.github.marcosfaria94.bolao.ui.jogos.CalculadoraTela
+import io.github.marcosfaria94.bolao.ui.jogos.modalidadeDoPedido
+import io.github.marcosfaria94.bolao.ui.jogos.PREFIXO_DA_CALCULADORA
+import io.github.marcosfaria94.bolao.ui.jogos.BotaoDaCalculadora
+import io.github.marcosfaria94.bolao.ui.jogos.CalculadoraPopup
 import android.Manifest
 import android.content.Context
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
@@ -227,7 +233,7 @@ private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_PAINEL,
 /** Telas sem a seta de voltar na barra de cima (fecham deslizando o dedo, puxando para baixo ou pelo voltar do celular). */
 private val SEM_SETA = setOf(
     "aporte", "rateio", "extrato", "extrato/{mes}", ROTA_FILTRO, "saldo", ROTA_COMPROVANTES, ROTA_PAINEL, ROTA_SECAO_AJUSTES, "integridade",
-    ROTA_INDICES, ROTA_SESSOES, ROTA_FAVORITOS, ROTA_ESTATISTICAS, ROTA_CALCULADORA,
+    ROTA_INDICES, ROTA_SESSOES, ROTA_FAVORITOS, ROTA_ESTATISTICAS,
 )
 
 /** A página do jogo (o volante, a aposta aberta ou os Detalhes): nos Detalhes, o título "← Aposta" também volta. */
@@ -399,10 +405,20 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         nav.navigate(ROTA_PAINEL) { launchSingleTop = true }
     }
 
+    // A calculadora (desde a 0.43, o pop-up por cima de tudo; null = fechada). [modalidadeDaCalculadora]: onde ela abre
+    // (null = começa escolhendo a modalidade).
+    var calculadoraAberta by rememberSaveable { mutableStateOf(false) }
+    var modalidadeDaCalculadora by rememberSaveable { mutableStateOf<String?>(null) }
+    fun abrirCalculadora(m: Modalidade?) {
+        modalidadeDaCalculadora = m?.name
+        calculadoraAberta = true
+    }
+
     // Uma aba (ex.: a pendência "Fazer a aposta de hoje" abre os Jogos) troca de aba; o resto abre por cima.
     fun abrir(r: String) {
         val aba = Aba.entries.firstOrNull { it.rota == r }
         when {
+            r.startsWith(PREFIXO_DA_CALCULADORA) -> abrirCalculadora(modalidadeDoPedido(r))
             aba != null -> irParaAba(aba)
             r in PARA_A_HOME -> irParaAba(Aba.HOME)
             r == "apostar" -> irParaAba(Aba.JOGOS)
@@ -478,7 +494,6 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         "integridade" -> "Verificar integridade"
         ROTA_INDICES -> "Indicadores"
         ROTA_ESTATISTICAS -> TITULO_ESTATISTICAS
-        ROTA_CALCULADORA -> TITULO_CALCULADORA
         else -> ""
     }
 
@@ -519,6 +534,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
 
     CompositionLocalProvider(LocalBarraDaTela provides barra) {
     MaterialTheme(colorScheme = cores) {
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
             Column {
@@ -544,13 +560,15 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     },
                     acoes = {
                         // Nas abas: o "Alternar sessão" (desde a 0.21) e o ícone do Painel de Jogos (com as pendências), à direita do título.
+                        // Desde a 0.43 a calculadora ao lado do "Alternar sessão" (até a 0.42, um ícone nos Detalhes).
                         if (ehAba && !naCaixa) {
                             BotaoDaSessao { nav.navigate(ROTA_SESSOES) { launchSingleTop = true } }
+                            BotaoDaCalculadora { abrirCalculadora(null) }
                             BotaoDoPainel(noContador) { abrirPainel() }
                         }
                         // Na aba da Caixa, nada aqui desde a 0.42 (pedido do usuário): o recarregar saiu e o "Transcrever em
                         // lote" virou o botão flutuante "Efetivar apostas", na página (ao lado do cadeado).
-                        // Os ícones da tela (desde a 0.38: a calculadora e as Estatísticas, nos Detalhes), no canto direito.
+                        // Os ícones da tela (desde a 0.38 as Estatísticas, nos Detalhes; a calculadora saiu de lá na 0.43), no canto direito.
                         acao?.icones?.forEach { i ->
                             IconButton(onClick = i.aoTocar) {
                                 Icon(i.icone, contentDescription = i.descricao, modifier = Modifier.size(28.dp))
@@ -742,15 +760,6 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     }
                 }
             }
-            // A calculadora de probabilidades (desde a 0.38, o ícone ao lado das Estatísticas, nos Detalhes).
-            composable(ROTA_CALCULADORA) { e ->
-                val m = runCatching { Modalidade.valueOf(e.arguments?.getString("nome").orEmpty()) }.getOrNull()
-                TelaDeCima(nav, e) {
-                    Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) {
-                        if (m != null) CalculadoraTela(estado, m)
-                    }
-                }
-            }
             composable("integridade") { e ->
                 TelaDeCima(nav, e) { Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { IntegridadeTela(estado) } }
             }
@@ -842,6 +851,16 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         // Os avisos no alto da tela (desde a 0.29).
         SnackbarHost(LocalAvisos.current, Modifier.align(Alignment.TopCenter))
         }
+    }
+    // A calculadora (desde a 0.43): o pop-up por cima de tudo, também das barras de cima e de baixo.
+    AnimatedVisibility(
+        visible = calculadoraAberta,
+        enter = fadeIn() + slideInVertically { it / 3 },
+        exit = fadeOut() + slideOutVertically { it / 3 },
+    ) {
+        val inicial = modalidadeDaCalculadora?.let { n -> Modalidade.entries.firstOrNull { it.name == n } }
+        CalculadoraPopup(estado, inicial, aoFechar = { calculadoraAberta = false })
+    }
     }
     }
     }

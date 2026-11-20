@@ -49,7 +49,8 @@ class Novidades042Test {
         assertEquals(listOf(Etapa.VALOR, Etapa.TIPO), CalculoEmEtapas.etapas(ModoDeCalcular.ORCAMENTO))
         assertEquals(listOf(Etapa.NUMEROS, Etapa.GARANTIA), CalculoEmEtapas.etapas(ModoDeCalcular.FECHAMENTO))
         assertEquals(listOf(Etapa.BASE, Etapa.NUMEROS), CalculoEmEtapas.etapas(ModoDeCalcular.DESDOBRAMENTO))
-        assertEquals(listOf("P", "J", "D", "$", "F", "C"), ModoDeCalcular.entries.map { it.letra })
+        // Desde a 0.43 os botões com a palavra inteira (e na ordem do pedido do usuário).
+        assertEquals(listOf("Apostas", "Chance", "Valor", "Fechamento", "Desdobramento", "Empacotamento"), ModoDeCalcular.entries.map { it.titulo })
         // A barra de cima: como calcular, as etapas e o resultado.
         assertEquals(4, CalculoEmEtapas.passos(Pedido(modo = ModoDeCalcular.PROBABILIDADE)))
         assertEquals(4, CalculoEmEtapas.passos(Pedido(modo = ModoDeCalcular.DESDOBRAMENTO)))

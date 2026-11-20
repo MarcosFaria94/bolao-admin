@@ -3,7 +3,6 @@ package io.github.marcosfaria94.bolao.ui.jogos
 import androidx.compose.runtime.SideEffect
 import io.github.marcosfaria94.bolao.ui.comum.IconeDaBarra
 import androidx.compose.material.icons.outlined.Insights
-import androidx.compose.material.icons.outlined.Calculate
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -207,12 +206,11 @@ fun ModalidadeTela(
     var especialDosDetalhes by remember { mutableStateOf<Int?>(null) }
     DisposableEffect(nosDetalhes, dono) {
         val acao = if (nosDetalhes) {
-            // Desde a 0.38: as Estatísticas no canto direito da barra (o lado oposto ao "← Aposta") e, ao lado delas, a
-            // calculadora de probabilidades (até a 0.37, as Estatísticas eram um botão no fim dos Detalhes).
+            // Desde a 0.38: as Estatísticas no canto direito da barra (o lado oposto ao "← Aposta"; até a 0.37, um botão no fim
+            // dos Detalhes). A calculadora ficou ao lado delas da 0.38 à 0.42; desde a 0.43 fica ao lado do "Alternar sessão".
             AcaoDaBarra(
                 dono, titulo = "Aposta", aoVoltar = voltarDosDetalhes,
                 icones = listOfNotNull(
-                    IconeDaBarra(Icons.Outlined.Calculate, TITULO_CALCULADORA) { abrir(rotaDaCalculadora(m)) }.takeIf { temCalculadora(m) },
                     IconeDaBarra(Icons.Outlined.Insights, TITULO_ESTATISTICAS) {
                         abrir(rotaDasEstatisticas(m, especialDosDetalhes, concursoDosDetalhes))
                     }.takeIf { temEstatisticas(m) },

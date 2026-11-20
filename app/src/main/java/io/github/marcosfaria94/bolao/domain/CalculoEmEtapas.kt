@@ -14,14 +14,19 @@ import kotlin.math.roundToLong
  */
 object CalculoEmEtapas {
 
-    /** Como calcular (a etapa 1). */
-    enum class Modo(val letra: String, val titulo: String, val descricao: String, val exemplo: String) {
-        PROBABILIDADE("P", "Probabilidade", "Diga a chance que você quer numa faixa: a calculadora monta os jogos mais baratos que chegam lá.", "Sena 1 em 1.000.000"),
-        JOGOS("J", "Jogos", "Diga quantos jogos vai fazer e de que tipo: veja o preço e a chance de cada faixa.", "20 jogos simples"),
-        DESDOBRAMENTO("D", "Desdobramento", "Todos os jogos simples de um grupo de números. Diga quantos números, ou quantos prêmios quer numa faixa se acertar.", "10 números = 210 jogos"),
-        ORCAMENTO("$", "Orçamento", "Diga quanto pode gastar: veja quantos jogos cabem, o troco e as chances.", "R$ 100,00"),
-        FECHAMENTO("F", "Fechamento", "Menos jogos que o desdobramento, com uma garantia: um prêmio, se parte dos sorteados estiver entre os seus números.", "10 números, quadra se sair 5"),
-        COBERTURA("C", "Cobertura", "O máximo de jogos simples sem repetir nenhum grupo da menor faixa (na Mega, nenhuma quadra em dois jogos).", "Mega: até 32.450 jogos"),
+    /**
+     * O que calcular (a etapa depois da modalidade). Desde a 0.43 (pedido do usuário) os botões têm a palavra inteira
+     * ([titulo], na ordem APOSTAS, CHANCE, VALOR, FECHAMENTO, DESDOBRAMENTO, EMPACOTAMENTO; até a 0.42, as letras J, P,
+     * $, F, D) e a [descricao] vai para a dica de cada botão. O [COBERTURA] é o Empacotamento (o número de empacotamento
+     * D(v, k, t)).
+     */
+    enum class Modo(val titulo: String, val descricao: String, val exemplo: String) {
+        JOGOS("Apostas", "Diga quantas apostas vai fazer e de que tipo (6, 7, 8 números…): a calculadora mostra o preço e a chance em cada faixa.", "20 apostas simples"),
+        PROBABILIDADE("Chance", "Diga a chance que você quer numa faixa (1 em X, ou em %): a calculadora monta as apostas mais baratas que chegam lá.", "sena 1 em 1.000.000"),
+        ORCAMENTO("Valor", "Diga quanto quer gastar: a calculadora mostra quantas apostas de cada tipo cabem, o troco e as chances.", "R$ 100,00"),
+        FECHAMENTO("Fechamento", "Menos jogos que o desdobramento, com uma garantia: um prêmio certo se parte dos números sorteados estiver entre os seus.", "10 números, quadra se sair 5"),
+        DESDOBRAMENTO("Desdobramento", "Todos os jogos simples de um grupo de números (o mesmo que uma aposta com mais números): pelos números ou pelos prêmios que você quer numa faixa.", "10 números = 210 jogos"),
+        COBERTURA("Empacotamento", "O máximo de jogos simples sem repetir nenhum grupo da menor faixa (na Mega, nenhuma quadra em dois jogos): os limites e quantos jogos a calculadora consegue montar.", "Mega: até 32.450 jogos"),
     }
 
     /**
@@ -67,7 +72,7 @@ object CalculoEmEtapas {
         Modo.DESDOBRAMENTO ->
             if (Probabilidades.gruposDePremios(m) == null) "A ${m.nome} não tem apostas com mais números." else null
         Modo.FECHAMENTO -> if (limitesDoFechamento(m) == null) "Não há fechamento na ${m.nome} por aqui." else null
-        Modo.COBERTURA -> if (limitesDaCobertura(m) == null) "Não há cobertura na ${m.nome} por aqui." else null
+        Modo.COBERTURA -> if (limitesDaCobertura(m) == null) "Não há empacotamento na ${m.nome} por aqui." else null
         else -> null
     }
 
