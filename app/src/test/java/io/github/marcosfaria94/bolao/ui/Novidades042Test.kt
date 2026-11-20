@@ -7,6 +7,7 @@ import io.github.marcosfaria94.bolao.data.Modo
 import io.github.marcosfaria94.bolao.data.Parametros
 import io.github.marcosfaria94.bolao.domain.Calculadora
 import io.github.marcosfaria94.bolao.domain.CalculoEmEtapas
+import io.github.marcosfaria94.bolao.domain.CalculoEmEtapas.Base
 import io.github.marcosfaria94.bolao.domain.CalculoEmEtapas.Etapa
 import io.github.marcosfaria94.bolao.domain.CalculoEmEtapas.Formato
 import io.github.marcosfaria94.bolao.domain.CalculoEmEtapas.Garantia
@@ -43,15 +44,16 @@ class Novidades042Test {
     fun etapasDeCadaModo() {
         assertEquals(listOf(Etapa.FAIXA, Etapa.CHANCE), CalculoEmEtapas.etapas(ModoDeCalcular.PROBABILIDADE))
         assertEquals(listOf(Etapa.QUANTIDADE, Etapa.TIPO), CalculoEmEtapas.etapas(ModoDeCalcular.JOGOS))
-        assertEquals(listOf(Etapa.FAIXA, Etapa.PREMIOS), CalculoEmEtapas.etapas(ModoDeCalcular.PREMIOS))
+        // Desde a 0.43 a quantidade de prêmios é o desdobramento pelos prêmios.
+        assertEquals(listOf(Etapa.BASE, Etapa.FAIXA, Etapa.PREMIOS), CalculoEmEtapas.etapas(ModoDeCalcular.DESDOBRAMENTO, Base.PREMIOS))
         assertEquals(listOf(Etapa.VALOR, Etapa.TIPO), CalculoEmEtapas.etapas(ModoDeCalcular.ORCAMENTO))
         assertEquals(listOf(Etapa.NUMEROS, Etapa.GARANTIA), CalculoEmEtapas.etapas(ModoDeCalcular.FECHAMENTO))
-        assertEquals(listOf(Etapa.NUMEROS), CalculoEmEtapas.etapas(ModoDeCalcular.DESDOBRAMENTO))
-        assertEquals(listOf("P", "J", "Q", "$", "F", "D"), ModoDeCalcular.entries.map { it.letra })
+        assertEquals(listOf(Etapa.BASE, Etapa.NUMEROS), CalculoEmEtapas.etapas(ModoDeCalcular.DESDOBRAMENTO))
+        assertEquals(listOf("P", "J", "D", "$", "F", "C"), ModoDeCalcular.entries.map { it.letra })
         // A barra de cima: como calcular, as etapas e o resultado.
-        assertEquals(4, CalculoEmEtapas.passos(ModoDeCalcular.PROBABILIDADE))
-        assertEquals(3, CalculoEmEtapas.passos(ModoDeCalcular.DESDOBRAMENTO))
-        assertEquals(3, CalculoEmEtapas.passos(null))
+        assertEquals(4, CalculoEmEtapas.passos(Pedido(modo = ModoDeCalcular.PROBABILIDADE)))
+        assertEquals(4, CalculoEmEtapas.passos(Pedido(modo = ModoDeCalcular.DESDOBRAMENTO)))
+        assertEquals(3, CalculoEmEtapas.passos(Pedido()))
         assertEquals("Etapa 2: Faixa", nomeDoPasso(2, "Faixa"))
         assertEquals("Calcular na Quina", nomeDaModalidadeNaCalculadora(Modalidade.QUINA))
     }
@@ -87,14 +89,14 @@ class Novidades042Test {
         // Sem o mesmo nome e fora da principal: a etapa da faixa pergunta de novo.
         assertNull(CalculoEmEtapas.naModalidade(p.copy(faixa = 1), Modalidade.LOTOFACIL, mega).faixa)
         // A quantidade de quadras não existe na Lotomania: começa de novo.
-        assertEquals(Pedido(), CalculoEmEtapas.naModalidade(Pedido(modo = ModoDeCalcular.PREMIOS, faixa = 2, valor = "10"), mega, Modalidade.LOTOMANIA))
+        assertEquals(Pedido(), CalculoEmEtapas.naModalidade(Pedido(modo = ModoDeCalcular.DESDOBRAMENTO, base = Base.PREMIOS, faixa = 2, valor = "10"), mega, Modalidade.LOTOMANIA))
         // 6 números de jogo na Mega viram nada na Lotofácil (não existe aposta de 6): o tipo sai.
         val j = CalculoEmEtapas.naModalidade(Pedido(modo = ModoDeCalcular.JOGOS, valor = "20", numeros = 6, trevos = 0), mega, Modalidade.LOTOFACIL)
         assertNull(j.numeros)
         assertEquals("20", j.valor)
         // Os números do desdobramento fora do limite da outra modalidade saem.
-        assertEquals("", CalculoEmEtapas.naModalidade(Pedido(modo = ModoDeCalcular.DESDOBRAMENTO, valor = "20"), mega, Modalidade.QUINA).valor)
-        assertNotNull(CalculoEmEtapas.motivoSemModo(Modalidade.LOTOMANIA, ModoDeCalcular.PREMIOS))
+        assertEquals("", CalculoEmEtapas.naModalidade(Pedido(modo = ModoDeCalcular.DESDOBRAMENTO, base = Base.NUMEROS, valor = "20"), mega, Modalidade.QUINA).valor)
+        assertNotNull(CalculoEmEtapas.motivoSemModo(Modalidade.LOTOMANIA, ModoDeCalcular.DESDOBRAMENTO))
         assertNotNull(CalculoEmEtapas.motivoSemModo(Modalidade.SUPER_SETE, ModoDeCalcular.FECHAMENTO))
         assertNull(CalculoEmEtapas.motivoSemModo(mega, ModoDeCalcular.FECHAMENTO))
     }
@@ -113,7 +115,7 @@ class Novidades042Test {
         assertNotNull(erro(Pedido(modo = ModoDeCalcular.FECHAMENTO, valor = "15")))
         assertNull(erro(Pedido(modo = ModoDeCalcular.FECHAMENTO, valor = "14")))
         // Nem com 20 números há 1 milhão de quadras.
-        assertTrue(erro(Pedido(modo = ModoDeCalcular.PREMIOS, faixa = 2, valor = "1000000"))!!.startsWith("Nem com 20 números"))
+        assertTrue(erro(Pedido(modo = ModoDeCalcular.DESDOBRAMENTO, base = Base.PREMIOS, faixa = 2, valor = "1000000"))!!.startsWith("Nem com 20 números"))
     }
 
     @Test
@@ -125,9 +127,9 @@ class Novidades042Test {
         assertNull(CalculoEmEtapas.premiosDaFaixa(Modalidade.LOTOMANIA, 50, 0))
         // 10 quadras pedem 9 números (com 8, só 6).
         assertEquals(9, CalculoEmEtapas.tipoParaPremios(mega, 2, 10))
-        val r = CalculoEmEtapas.resultado(mega, Pedido(modo = ModoDeCalcular.PREMIOS, faixa = 2, valor = "10"), 600)!!
+        val r = CalculoEmEtapas.resultado(mega, Pedido(modo = ModoDeCalcular.DESDOBRAMENTO, base = Base.PREMIOS, faixa = 2, valor = "10"), 600)!!
         assertEquals(84 * 600L, r.custo)
-        assertEquals("1 aposta de 9 números", r.tipo)
+        assertEquals("1 aposta de 9 números = 84 jogos simples", r.tipo)
         assertEquals(10L..45L, r.premios!![2])
         assertEquals(2, r.destaque)
     }
@@ -182,7 +184,7 @@ class Novidades042Test {
 
     @Test
     fun desdobramento() {
-        val r = CalculoEmEtapas.resultado(mega, Pedido(modo = ModoDeCalcular.DESDOBRAMENTO, valor = "10"), 600)!!
+        val r = CalculoEmEtapas.resultado(mega, Pedido(modo = ModoDeCalcular.DESDOBRAMENTO, base = Base.NUMEROS, valor = "10"), 600)!!
         assertEquals(210L, r.jogos)
         assertEquals(210 * 600L, r.custo)
         assertEquals(Volante.combinacoes(10, 6), CalculoEmEtapas.desdobramento((0 until 10).toList(), 6, 1000).size.toLong())

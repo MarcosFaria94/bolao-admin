@@ -100,6 +100,7 @@ import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
 import io.github.marcosfaria94.bolao.ui.tema.AzulMarinho
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
@@ -167,6 +168,7 @@ private val GuardaDoPedido = listSaver<Pedido, String>(
             p.modo?.name.orEmpty(), p.faixa?.toString().orEmpty(), p.formato.name, p.valor,
             p.numeros?.toString().orEmpty(), p.trevos?.toString().orEmpty(),
             p.garantia?.acertos?.toString().orEmpty(), p.garantia?.sorteados?.toString().orEmpty(),
+            p.base?.name.orEmpty(),
         )
     },
     restore = { l ->
@@ -178,6 +180,7 @@ private val GuardaDoPedido = listSaver<Pedido, String>(
             numeros = l[4].toIntOrNull(),
             trevos = l[5].toIntOrNull(),
             garantia = l[6].toIntOrNull()?.let { a -> l[7].toIntOrNull()?.let { s -> Garantia(a, s) } },
+            base = CalculoEmEtapas.Base.entries.firstOrNull { it.name == l.getOrNull(8) },
         )
     },
 )
@@ -202,7 +205,7 @@ fun CalculadoraTela(estado: Estado, inicial: Modalidade) {
     var passo by rememberSaveable { mutableIntStateOf(0) }
     var ajuda by rememberSaveable { mutableStateOf(false) }
     val preco = estado.config.preco(m)
-    val etapas = pedido.modo?.let { CalculoEmEtapas.etapas(it) }.orEmpty()
+    val etapas = CalculoEmEtapas.etapas(pedido)
     val ultimo = etapas.size + 1
     // Nunca além da primeira etapa sem escolha.
     val agora = passo.coerceAtMost(CalculoEmEtapas.etapaAtual(m, pedido))
@@ -240,6 +243,7 @@ fun CalculadoraTela(estado: Estado, inicial: Modalidade) {
             when {
                 i == 0 -> EtapaComoCalcular(m, pedido.modo) { escolher(CalculoEmEtapas.comModo(pedido, it), 0) }
                 i >= ultimo -> EtapaDoResultado(m, pedido, preco)
+                etapa == Etapa.BASE -> EtapaDaBase(pedido.base) { escolher(CalculoEmEtapas.comBase(pedido, it), i) }
                 etapa == Etapa.FAIXA -> EtapaDaFaixa(m, pedido) { escolher(CalculoEmEtapas.comFaixa(m, pedido, it), i) }
                 etapa == Etapa.TIPO -> EtapaDoTipo(m, pedido, preco) { n, t -> escolher(pedido.copy(numeros = n, trevos = t), i) }
                 etapa == Etapa.GARANTIA -> EtapaDaGarantia(m, pedido, preco) { escolher(pedido.copy(garantia = it), i) }
@@ -305,11 +309,13 @@ private fun escolhaDaEtapa(m: Modalidade, p: Pedido, etapa: Etapa): String? = wh
     Etapa.FAIXA -> p.faixa?.let { f -> if (f == Calculadora.QUALQUER_PREMIO) "Qualquer" else Calculadora.faixas(m).getOrNull(f) }
     Etapa.TIPO -> p.numeros?.let { n -> if (p.trevos != null && m.trevos > 0) "$n + ${p.trevos}" else "$n números" }
     Etapa.GARANTIA -> p.garantia?.let { g -> CalculoEmEtapas.nomeDaGarantia(m, g).replace(" · se sair ", " · ") }
+    Etapa.BASE -> p.base?.curto
     else -> CalculoEmEtapas.numero(p.valor)?.takeIf { CalculoEmEtapas.erroDoValor(m, p) == null }?.let { v ->
         when (p.modo) {
             Modo.PROBABILIDADE -> if (p.formato == Formato.PORCENTO) Calculadora.porcentagem(v / 100) else "1 em " + curto(v)
             Modo.ORCAMENTO -> "R$ " + curto(v)
-            Modo.FECHAMENTO, Modo.DESDOBRAMENTO -> "${v.toInt()} números"
+            Modo.FECHAMENTO, Modo.COBERTURA -> "${v.toInt()} números"
+            Modo.DESDOBRAMENTO -> if (CalculoEmEtapas.porPremios(p)) "${v.toInt()} ${CalculoEmEtapas.plural(m, p.faixa ?: 0)}" else "${v.toInt()} números"
             else -> curto(v)
         }
     }
@@ -330,7 +336,7 @@ private fun curto(v: Double): String = when {
  */
 @Composable
 private fun BarraDeEtapas(m: Modalidade, p: Pedido, agora: Int, aoTocar: (Int) -> Unit, aoAjudar: () -> Unit) {
-    val etapas = p.modo?.let { CalculoEmEtapas.etapas(it) }
+    val etapas = p.modo?.let { CalculoEmEtapas.etapas(p) }
     val titulos = listOf(ETAPA_COMO) + (etapas?.map { it.titulo } ?: listOf("Detalhes")) + ETAPA_RESULTADO
     val alcance = CalculoEmEtapas.etapaAtual(m, p)
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 0.dp, bottom = 6.dp), verticalAlignment = Alignment.Top) {
@@ -459,6 +465,7 @@ private fun EtapaComoCalcular(m: Modalidade, atual: Modo?, aoEscolher: (Modo) ->
         Pergunta("Como você quer calcular?", "Escolha o ponto de partida. Dá para voltar e trocar a qualquer momento.")
         Modo.entries.forEach { modo ->
             val motivo = CalculoEmEtapas.motivoSemModo(m, modo)
+            val exemplo = exemploDoModo(m, modo)
             Opcao(escolhida = modo == atual, habilitada = motivo == null, aoTocar = { aoEscolher(modo) }, descricao = "${modo.letra} ${modo.titulo}") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
@@ -472,7 +479,7 @@ private fun EtapaComoCalcular(m: Modalidade, atual: Modo?, aoEscolher: (Modo) ->
                         Text(modo.titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = if (motivo == null) Color.Unspecified else MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(motivo ?: modo.descricao, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (motivo == null) {
-                            Text("Ex.: ${modo.exemplo}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 2.dp))
+                            Text("Ex.: $exemplo", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 2.dp))
                         }
                     }
                 }
@@ -485,14 +492,15 @@ private fun EtapaComoCalcular(m: Modalidade, atual: Modo?, aoEscolher: (Modo) ->
 @Composable
 private fun EtapaDaFaixa(m: Modalidade, p: Pedido, aoEscolher: (Int) -> Unit) {
     val modo = p.modo ?: return
+    val premios = CalculoEmEtapas.porPremios(p)
     val simples = remember(m) { Calculadora.chances(m, ConfigDaCalculadora()) }
     ColunaDaEtapa {
-        if (modo == Modo.PREMIOS) {
+        if (premios) {
             Pergunta("Em que faixa?", "A quantidade de prêmios que você quer receber nela, se acertar.")
         } else {
             Pergunta("Em que faixa?", "A chance que você vai pedir é a de acertar esta faixa pelo menos uma vez.")
         }
-        CalculoEmEtapas.faixasDoModo(m, modo).forEach { (i, nome) ->
+        CalculoEmEtapas.faixasDoModo(m, p).forEach { (i, nome) ->
             val qualquer = i == Calculadora.QUALQUER_PREMIO
             Opcao(escolhida = p.faixa == i, aoTocar = { aoEscolher(i) }, descricao = "Faixa $nome") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -500,7 +508,7 @@ private fun EtapaDaFaixa(m: Modalidade, p: Pedido, aoEscolher: (Int) -> Unit) {
                         Text(nome, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         val sub = when {
                             qualquer -> LEGENDA_QUALQUER
-                            modo == Modo.PREMIOS -> CalculoEmEtapas.premiosDaFaixa(m, m.qtdAposta + 1, i)?.let {
+                            premios -> CalculoEmEtapas.premiosDaFaixa(m, m.qtdAposta + 1, i)?.let {
                                 "Com ${m.qtdAposta + 1} números: ${it.first} se acertar só a ${nome.lowercase()}"
                             }
                             else -> null
@@ -535,20 +543,31 @@ private fun jeitoDoNumero(m: Modalidade, p: Pedido): JeitoDoNumero = when (p.mod
         )
     }
     Modo.JOGOS -> JeitoDoNumero("Quantos jogos?", "Na etapa seguinte, o tipo de jogo (6 números, 7 números...).", null, "jogos", false)
-    Modo.PREMIOS -> JeitoDoNumero(
-        "Quantos ${CalculoEmEtapas.plural(m, p.faixa ?: 0)}?",
-        "Se acertar a ${Calculadora.faixas(m).getOrNull(p.faixa ?: 0)?.lowercase()}, a aposta tem que dar pelo menos esse tanto.",
-        null, null, false,
-    )
     Modo.ORCAMENTO -> JeitoDoNumero("Quanto você quer gastar?", "Na etapa seguinte, o tipo de jogo: a calculadora mostra quantos cabem e o troco.", "R$", null, true)
     Modo.FECHAMENTO -> JeitoDoNumero(
         "Com quantos números?",
         "Os números que você vai escolher (de ${CalculoEmEtapas.faixaDeNumeros(m, Modo.FECHAMENTO)?.first} a ${CalculoEmEtapas.faixaDeNumeros(m, Modo.FECHAMENTO)?.last}). Os jogos do fechamento saem deles.",
         null, "números", false,
     )
-    Modo.DESDOBRAMENTO -> JeitoDoNumero(
+    Modo.DESDOBRAMENTO -> if (CalculoEmEtapas.porPremios(p)) {
+        JeitoDoNumero(
+            "Quantos ${CalculoEmEtapas.plural(m, p.faixa ?: 0)}?",
+            "Se acertar a ${Calculadora.faixas(m).getOrNull(p.faixa ?: 0)?.lowercase()}, o desdobramento tem que dar pelo menos esse tanto.",
+            null, null, false,
+        )
+    } else JeitoDoNumero(
         "Com quantos números?",
         "Todos os jogos de ${m.qtdAposta} números com eles (de ${CalculoEmEtapas.faixaDeNumeros(m, Modo.DESDOBRAMENTO)?.first} a ${CalculoEmEtapas.faixaDeNumeros(m, Modo.DESDOBRAMENTO)?.last}).",
+        null, "números", false,
+    )
+    Modo.COBERTURA -> JeitoDoNumero(
+        "Com quantos números?",
+        "Os jogos saem desses números, sem repetir ${CalculoEmEtapas.nenhumGrupo(m)}. Todos = os ${CalculoEmEtapas.faixaDeNumeros(m, Modo.COBERTURA)?.last} da ${m.nome}." +
+            when (val x = CalculoEmEtapas.maximoMontavel(m)) {
+                null -> ""
+                CalculoEmEtapas.faixaDeNumeros(m, Modo.COBERTURA)?.last -> " A calculadora também monta os jogos (pode levar alguns segundos)."
+                else -> " Até $x números a calculadora também monta os jogos."
+            },
         null, "números", false,
     )
     null -> JeitoDoNumero("", null, null, null, false)
@@ -610,8 +629,8 @@ private fun EtapaDoNumero(m: Modalidade, p: Pedido, etapa: Etapa, aoMudar: (Pedi
 private fun dicaDoCampo(m: Modalidade, p: Pedido): String = when (p.modo) {
     Modo.PROBABILIDADE -> if (p.formato == Formato.UM_EM) "Ex.: 1000000 para 1 em 1 milhão" else "Ex.: 5 para 5%"
     Modo.JOGOS -> "De 1 em diante"
-    Modo.PREMIOS -> "Ex.: 10"
     Modo.ORCAMENTO -> "Aposta simples: ${m.nome} a partir de ${Dinheiro.rs(m.precoPadrao)}"
+    Modo.DESDOBRAMENTO -> if (CalculoEmEtapas.porPremios(p)) "Ex.: 10" else CalculoEmEtapas.faixaDeNumeros(m, Modo.DESDOBRAMENTO)?.let { "De ${it.first} a ${it.last}" } ?: ""
     else -> CalculoEmEtapas.faixaDeNumeros(m, p.modo!!)?.let { "De ${it.first} a ${it.last}" } ?: ""
 }
 
@@ -726,6 +745,98 @@ private fun jogosDoFechamento(m: Modalidade, p: Pedido): List<List<Int>>? {
     return r
 }
 
+/** Os jogos da cobertura do pedido (fora da linha da tela; null enquanto monta ou quando a conta é grande demais). */
+@Composable
+private fun jogosDaCobertura(m: Modalidade, p: Pedido): List<IntArray>? {
+    val n = CalculoEmEtapas.numero(p.valor)?.toInt()
+    val r by produceState<List<IntArray>?>(null, m, n, p.modo) {
+        value = if (p.modo != Modo.COBERTURA || n == null || !CalculoEmEtapas.podeMontarCobertura(m, n)) {
+            null
+        } else {
+            val t = CalculoEmEtapas.acertosDaCobertura(m) ?: return@produceState
+            withContext(Dispatchers.Default) {
+                val trabalho = coroutineContext
+                CalculoEmEtapas.cobertura(n, m.qtdAposta, t) { trabalho.isActive }
+            }
+        }
+    }
+    return r
+}
+
+/** O exemplo de cada jeito de calcular na etapa 1 (o da cobertura com o limite da modalidade). */
+private fun exemploDoModo(m: Modalidade, modo: Modo): String = when (modo) {
+    Modo.COBERTURA -> CalculoEmEtapas.limitesDaCobertura(m)?.let { r ->
+        val t = CalculoEmEtapas.acertosDaCobertura(m) ?: return modo.exemplo
+        "${r.last} números, até ${Probabilidades.milhares(CalculoEmEtapas.limiteDeJohnson(r.last, m.qtdAposta, t))} jogos"
+    } ?: modo.exemplo
+    else -> modo.exemplo
+}
+
+/** A etapa da base do desdobramento: pelos números ou pelos prêmios. */
+@Composable
+private fun EtapaDaBase(atual: CalculoEmEtapas.Base?, aoEscolher: (CalculoEmEtapas.Base) -> Unit) {
+    ColunaDaEtapa {
+        Pergunta("Desdobrar a partir de quê?", "Os dois dão todos os jogos simples de um grupo de números (o mesmo preço e os mesmos prêmios de uma aposta com eles).")
+        CalculoEmEtapas.Base.entries.forEach { b ->
+            Opcao(escolhida = b == atual, aoTocar = { aoEscolher(b) }, descricao = "Base ${b.titulo}") {
+                Column {
+                    Text(b.titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(b.descricao, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Ex.: ${b.exemplo}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
+        }
+    }
+}
+
+/** O cartão da cobertura no resultado: os limites e quantos jogos a calculadora montou. */
+@Composable
+private fun CartaoDaCobertura(m: Modalidade, c: CalculoEmEtapas.InfoDaCobertura) {
+    Spacer(Modifier.height(8.dp))
+    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Text("Cobertura", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Text(
+                "Jogos de ${c.tamanho} números saídos dos seus ${c.numeros}, sem repetir ${CalculoEmEtapas.nenhumGrupo(m)}: " +
+                    "cada grupo de ${c.acertos} números aparece em um jogo só.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.height(6.dp))
+            LinhaDaCobertura("Limite de Johnson (o máximo nunca passa disso)", "${Probabilidades.milhares(c.johnson)} jogos")
+            LinhaDaCobertura(
+                "Contando só os grupos: C(${c.numeros}, ${c.acertos}) ÷ C(${c.tamanho}, ${c.acertos})",
+                "${Probabilidades.milhares(c.grupos)} jogos",
+            )
+            if (c.montados != null) {
+                LinhaDaCobertura("Montados pela calculadora", "${Probabilidades.milhares(c.montados.toLong())} jogos")
+            } else {
+                Text(
+                    "Com ${c.numeros} números a conta de montar os jogos é grande demais para o celular" +
+                        (CalculoEmEtapas.maximoMontavel(m)?.let { " (ela monta até $it números)" } ?: "") +
+                        ". O preço e as chances são os do limite de Johnson.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            Text(
+                "O máximo exato (o número de empacotamento D(${c.numeros}, ${c.tamanho}, ${c.acertos})) só é conhecido em casos pequenos.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LinhaDaCobertura(rotulo: String, valor: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(rotulo, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(8.dp))
+        Text(valor, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+    }
+}
+
 /**
  * O resultado: o cartão de cima no azul com o dourado (o preço grande, quantos jogos e de que tipo, o pedido), as chances
  * de cada faixa (a do pedido em destaque), os prêmios de cada faixa (do mínimo ao máximo) quando é uma aposta só, e os
@@ -734,11 +845,16 @@ private fun jogosDoFechamento(m: Modalidade, p: Pedido): List<List<Int>>? {
 @Composable
 private fun EtapaDoResultado(m: Modalidade, p: Pedido, preco: Long) {
     val fechamento = jogosDoFechamento(m, p)
-    val r = remember(m, p, preco, fechamento?.size) { CalculoEmEtapas.resultado(m, p, preco, fechamento?.size) }
+    val cobertura = jogosDaCobertura(m, p)
+    val r = remember(m, p, preco, fechamento?.size, cobertura?.size) { CalculoEmEtapas.resultado(m, p, preco, fechamento?.size, cobertura?.size) }
     ColunaDaEtapa {
         if (r == null) {
             Text(
-                if (p.modo == Modo.FECHAMENTO && fechamento == null) "Montando o fechamento…" else "Não dá para chegar nesse pedido: volte e mude a escolha.",
+                when {
+                    p.modo == Modo.FECHAMENTO && fechamento == null -> "Montando o fechamento…"
+                    p.modo == Modo.COBERTURA && cobertura == null -> "Montando os jogos da cobertura…"
+                    else -> "Não dá para chegar nesse pedido: volte e mude a escolha."
+                },
                 style = MaterialTheme.typography.bodyLarge,
             )
             return@ColunaDaEtapa
@@ -783,8 +899,10 @@ private fun EtapaDoResultado(m: Modalidade, p: Pedido, preco: Long) {
                 }
             }
         }
+        r.cobertura?.let { CartaoDaCobertura(m, it) }
         val lista = when (p.modo) {
             Modo.FECHAMENTO -> fechamento
+            Modo.COBERTURA -> cobertura?.map { it.toList() }
             Modo.DESDOBRAMENTO -> r.numerosEscolhidos?.let { n -> CalculoEmEtapas.desdobramento((0 until n).toList(), m.qtdAposta, LIMITE_DE_JOGOS_NA_TELA) }
             else -> null
         }
@@ -864,8 +982,8 @@ private fun RodapeDaCalculadora(
     aoRecomecar: () -> Unit,
     aoContinuar: () -> Unit,
 ) {
-    val etapa = p.modo?.let { CalculoEmEtapas.etapas(it) }?.getOrNull(agora - 1)
-    val deNumero = etapa != null && etapa !in setOf(Etapa.FAIXA, Etapa.TIPO, Etapa.GARANTIA)
+    val etapa = CalculoEmEtapas.etapas(p).getOrNull(agora - 1)
+    val deNumero = etapa != null && etapa !in setOf(Etapa.FAIXA, Etapa.TIPO, Etapa.GARANTIA, Etapa.BASE)
     if (agora == 0 && p.modo == null) return
     HorizontalDivider()
     Row(
