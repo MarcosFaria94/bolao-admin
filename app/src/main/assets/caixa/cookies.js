@@ -5,7 +5,7 @@
 // cookie/consentimento contam mais. Achado no canto de baixo à esquerda, o script tenta passá-lo para a direita (com a
 // mesma margem); se não der (o site o prende de outro jeito), o app espelha o cadeado do outro lado.
 // window.__bolaoCookie = JSON {x, topo, largura, altura, direita, cor, opacidade, cadeado} (frações da tela; cor "rgba(...)";
-// cadeado = o cadeado foi posto na própria página, desde a 0.41), ou null.
+// cadeado = o cadeado foi posto na própria página, desde a 0.41, e com ele o "Efetivar apostas", desde a 0.42), ou null.
 (function () {
   if (window.__bolaoCookies) { window.__bolaoCookies(); return 'ok'; }
   var NOMES = /cookie|lgpd|consent|privac|onetrust|ot-sdk|ot-floating|cookiebot|usercentrics|didomi|termly|iubenda|klaro|cmplz|cky-|cc-revoke|cc-btn|adopt/i;
@@ -46,7 +46,7 @@
     var melhor = null, nota = -1, els = todos(document, []);
     for (var i = 0; i < els.length; i++) {
       var el = els[i], cs = estilo(el);
-      if (el.id === CADEADO || !cs || cs.position !== 'fixed' || !visivel(el, cs)) continue;
+      if (el.id === CADEADO || el.id === EFETIVAR || !cs || cs.position !== 'fixed' || !visivel(el, cs)) continue;
       var r = el.getBoundingClientRect();
       if (r.width < 20 || r.height < 20 || r.width > 120 || r.height > 120) continue;
       var razao = r.width / r.height;
@@ -186,8 +186,92 @@
     };
     for (var k in props) s.setProperty(k, props[k], 'important');
     if (c.getAttribute('data-tinta') !== tinta || !c.firstChild) { c.setAttribute('data-tinta', tinta); icone(c); }
+    // O "Efetivar apostas" (desde a 0.42) logo acima do cadeado (ou ao lado, sem lugar em cima), com o mesmo disco.
+    var topoE = topo <= r.top ? topo - r.height - VAO : topo + r.height + VAO, esquerdaE = esquerda;
+    if (topoE < 4) { topoE = topo; esquerdaE = esquerda - r.width - VAO; }
+    try { colocarEfetivar(props, esquerdaE, topoE, r.width, r.height, tinta); } catch (e) {}
     return { cadeado: true, direita: direita };
   }
+
+  // ---------- o "Efetivar apostas" dentro da página (desde a 0.42) ----------
+  // Pedido do usuário: "o 'Transcrever em lote' agora é 'Efetivar aposta' e, em vez de ficar em cima, vira um botão com
+  // transparência igual à dos cookies e do cadeado, porém chama atenção se houver pelo menos 1 aposta para efetivar". O
+  // disco copia o dos cookies (a mesma transparência); com apostas esperando, o número num selo vermelho e um anel dourado
+  // que pulsa ficam por cima, sem a transparência. Tocar chama o app (window.BolaoCadeado.efetivar()); o app avisa quantas
+  // esperam com window.__bolaoEfetivarEstado(n).
+  var EFETIVAR = 'bolao-efetivar';
+  var CARRINHO = '<path d="M4 19a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M15 19a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/>' +
+    '<path d="M17 17h-11v-14h-2"/><path d="M6 5l7 .5"/><path d="M20 13l-.5 2h-13.5"/><path d="M16 6h6"/><path d="M19 3v6"/>';
+  function pendentes() {
+    if (typeof window.__bolaoEfetivarN === 'number') return window.__bolaoEfetivarN;
+    try { return Number(window.BolaoCadeado.pendentes()) || 0; } catch (e) { return 0; }
+  }
+  function estiloDoEfetivar() {
+    if (document.getElementById('bolao-efetivar-estilo')) return;
+    var st = document.createElement('style');
+    st.id = 'bolao-efetivar-estilo';
+    st.textContent = '@keyframes bolaoPulsa{0%{transform:scale(1);opacity:.85}100%{transform:scale(1.35);opacity:0}}' +
+      '#bolao-efetivar>.bolao-disco{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;box-sizing:border-box}' +
+      '#bolao-efetivar>.bolao-anel,#bolao-efetivar>.bolao-borda{position:absolute;inset:0;border-radius:inherit;border:2px solid #F2B630;pointer-events:none;box-sizing:border-box}' +
+      '#bolao-efetivar>.bolao-anel{animation:bolaoPulsa 1.1s linear infinite}' +
+      '#bolao-efetivar>.bolao-selo{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;' +
+      'border-radius:10px;background:#E53935;color:#fff;font:700 12px/17px sans-serif;text-align:center;border:1.5px solid #fff;pointer-events:none}';
+    (document.head || document.documentElement).appendChild(st);
+  }
+  function efetivar() {
+    var c = document.getElementById(EFETIVAR);
+    if (c) return c;
+    estiloDoEfetivar();
+    c = document.createElement('div');
+    c.id = EFETIVAR;
+    c.setAttribute('role', 'button');
+    c.setAttribute('data-bolao', 'efetivar');
+    var tocar = function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      if (ev.type !== 'click') return;
+      try { window.BolaoCadeado.efetivar(); } catch (e) {}
+    };
+    c.addEventListener('click', tocar, true);
+    c.addEventListener('mousedown', tocar, true);
+    c.addEventListener('touchstart', function (ev) { ev.stopPropagation(); }, { capture: true, passive: true });
+    (document.body || document.documentElement).appendChild(c);
+    return c;
+  }
+  // Põe o botão em ([esquerda], [topo]), do tamanho do disco, com o disco copiado do cadeado ([props]).
+  function colocarEfetivar(props, esquerda, topo, largura, altura, tinta) {
+    var c = efetivar(), n = pendentes();
+    var fora = {
+      position: 'fixed', left: esquerda + 'px', top: topo + 'px', right: 'auto', bottom: 'auto', width: largura + 'px', height: altura + 'px',
+      margin: '0', padding: '0', 'box-sizing': 'border-box', 'border-top-left-radius': props['border-top-left-radius'],
+      'border-top-right-radius': props['border-top-right-radius'], 'border-bottom-left-radius': props['border-bottom-left-radius'],
+      'border-bottom-right-radius': props['border-bottom-right-radius'], background: 'transparent', opacity: '1', cursor: 'pointer',
+      'z-index': '2147483647', transform: 'none', 'touch-action': 'manipulation', '-webkit-tap-highlight-color': 'transparent',
+      visibility: 'visible', 'pointer-events': 'auto', display: 'block'
+    };
+    for (var k in fora) c.style.setProperty(k, fora[k], 'important');
+    var chave = n + '|' + tinta + '|' + Math.round(largura);
+    if (c.getAttribute('data-chave') !== chave) {
+      c.setAttribute('data-chave', chave);
+      c.setAttribute('aria-label', n > 0 ? 'Efetivar apostas: ' + n + ' para efetivar' : 'Efetivar apostas');
+      var tam = Math.round(Math.min(largura, altura) * 0.5) || 22;
+      c.innerHTML = (n > 0 ? '<div class="bolao-anel"></div>' : '') +
+        '<div class="bolao-disco"><svg xmlns="http://www.w3.org/2000/svg" width="' + tam + '" height="' + tam + '" viewBox="0 0 24 24" fill="none" ' +
+        'stroke="' + tinta + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;display:block">' +
+        CARRINHO + '</svg></div>' + (n > 0 ? '<div class="bolao-borda"></div><div class="bolao-selo">' + (n > 99 ? '99+' : n) + '</div>' : '');
+    }
+    var d = c.querySelector('.bolao-disco');
+    if (d) {
+      ['border-top-left-radius', 'border-top-right-radius', 'border-bottom-left-radius', 'border-bottom-right-radius', 'background-color',
+        'background-image', 'border', 'box-shadow', 'opacity'].forEach(function (p) { d.style.setProperty(p, props[p], 'important'); });
+    }
+  }
+  window.__bolaoEfetivarEstado = function (n) {
+    window.__bolaoEfetivarN = Number(n) || 0;
+    var c = document.getElementById(EFETIVAR);
+    if (c) c.removeAttribute('data-chave');
+    if (achado && achado.isConnected) { try { desenhar(achado); } catch (e) {} }
+    return 'ok';
+  };
   window.__bolaoCadeadoEstado = function (a) {
     window.__bolaoCadeadoAberto = !!a;
     var c = document.getElementById(CADEADO);

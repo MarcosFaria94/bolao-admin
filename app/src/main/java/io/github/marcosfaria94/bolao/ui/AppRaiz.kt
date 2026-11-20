@@ -1,7 +1,5 @@
 package io.github.marcosfaria94.bolao.ui
 
-import io.github.marcosfaria94.bolao.ui.caixa.TRANSCREVER_EM_LOTE
-import androidx.compose.material.icons.outlined.AddShoppingCart
 import io.github.marcosfaria94.bolao.ui.comum.LIMIAR_DA_PAGINA
 import io.github.marcosfaria94.bolao.ui.caixa.FaseDoDeslize
 import io.github.marcosfaria94.bolao.ui.jogos.TITULO_CALCULADORA
@@ -137,7 +135,6 @@ import io.github.marcosfaria94.bolao.ui.caixa.ROTA_CAIXA
 import io.github.marcosfaria94.bolao.ui.caixa.ROTULO_CAIXA
 import io.github.marcosfaria94.bolao.ui.caixa.TITULO_CAIXA
 import io.github.marcosfaria94.bolao.ui.caixa.tecladoAberto
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.runtime.DisposableEffect
 import io.github.marcosfaria94.bolao.ui.comprovantes.ComprovantesTela
 import io.github.marcosfaria94.bolao.ui.comum.BarraTitulo
@@ -551,15 +548,8 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                             BotaoDaSessao { nav.navigate(ROTA_SESSOES) { launchSingleTop = true } }
                             BotaoDoPainel(noContador) { abrirPainel() }
                         }
-                        // Na aba da Caixa: o "Transcrever em lote" (desde a 0.38) e recarregar a página.
-                        if (naCaixa) {
-                            IconButton(onClick = { caixa.pedirLote = true }) {
-                                Icon(Icons.Outlined.AddShoppingCart, contentDescription = TRANSCREVER_EM_LOTE, modifier = Modifier.size(28.dp))
-                            }
-                            IconButton(onClick = { caixa.recarregar() }) {
-                                Icon(Icons.Outlined.Refresh, contentDescription = "Recarregar a página", modifier = Modifier.size(28.dp))
-                            }
-                        }
+                        // Na aba da Caixa, nada aqui desde a 0.42 (pedido do usuário): o recarregar saiu e o "Transcrever em
+                        // lote" virou o botão flutuante "Efetivar apostas", na página (ao lado do cadeado).
                         // Os ícones da tela (desde a 0.38: a calculadora e as Estatísticas, nos Detalhes), no canto direito.
                         acao?.icones?.forEach { i ->
                             IconButton(onClick = i.aoTocar) {
@@ -645,8 +635,13 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     if (abaAtual != Aba.CAIXA || !caixa.voltar()) escopo.launch { mostrar(Aba.HOME) }
                 }
                 // Puxar qualquer aba para baixo (do alto da lista) abre o Painel de Jogos (até a 0.16, as
-                // Notificações). Para os lados, as abas giram (da Home para a direita, os Ajustes).
-                val puxaoVertical = rememberPuxaoAlemDaBorda(vertical = true, noInicio = { abrirPainel() })
+                // Notificações). Para os lados, as abas giram (da Home para a direita, os Ajustes). Desde a 0.42, menos
+                // na Caixa (pedido do usuário: "ao arrastar a página das Loterias Caixa para baixo abre o Painel de
+                // Jogos"): lá, puxar para baixo é do site.
+                val puxaoVertical = rememberPuxaoAlemDaBorda(
+                    vertical = true,
+                    noInicio = { abrirPainel() }.takeIf { abaDa(paginas.settledPage) != Aba.CAIXA && abaAtual != Aba.CAIXA },
+                )
                 Box(Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxSize().nestedScroll(puxaoVertical)) {
                     HorizontalPager(

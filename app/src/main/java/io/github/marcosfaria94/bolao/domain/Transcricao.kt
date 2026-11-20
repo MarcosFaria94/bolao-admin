@@ -323,6 +323,8 @@ object Transcricao {
         val noCarrinho: Boolean = false,
         val parcial: Boolean = false,
         val semEspelho: Boolean = false,
+        /** A sessão do site expirou (desde a 0.42): o lote para, e as outras apostas não vão para o limbo. */
+        val sessao: Boolean = false,
         val mensagem: String = "",
     )
 

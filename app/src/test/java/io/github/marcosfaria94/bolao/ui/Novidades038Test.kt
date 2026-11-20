@@ -28,7 +28,6 @@ import io.github.marcosfaria94.bolao.ui.ajustes.tituloDoGrupoDoBolao
 import io.github.marcosfaria94.bolao.ui.ajustes.valorCurto
 import io.github.marcosfaria94.bolao.ui.caixa.ehParaOsLados
 import io.github.marcosfaria94.bolao.ui.caixa.lerCookie
-import io.github.marcosfaria94.bolao.ui.caixa.textoDoLote
 import io.github.marcosfaria94.bolao.ui.jogos.TECLAS_INOCUAS
 import io.github.marcosfaria94.bolao.ui.jogos.proximaOrdem
 import io.github.marcosfaria94.bolao.ui.jogos.proximoIntervalo
@@ -301,6 +300,5 @@ class Novidades038Test {
                 assertEquals("$p", p, volta)
             }
         }
-        assertEquals("Nenhuma aposta para transcrever agora.", textoDoLote(emptyList()))
     }
 }

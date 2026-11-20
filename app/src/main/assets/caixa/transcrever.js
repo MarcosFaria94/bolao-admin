@@ -5,8 +5,9 @@
 // clica em "Colocar no Carrinho". NUNCA vai para o pagamento: o usuário confere o carrinho e paga sozinho.
 //
 // A resposta fica em window.__bolaoTranscricao.fim (o app pergunta de tempos em tempos):
-//   { ok, noCarrinho, parcial, semEspelho, mensagem }
+//   { ok, noCarrinho, parcial, semEspelho, sessao, mensagem }
 // parcial = o volante ficou marcado, mas parou antes do carrinho para o usuário conferir (o que faltou vai na mensagem).
+// sessao = a sessão do site expirou (desde a 0.42): o app para o lote (as outras apostas não vão para o limbo).
 //
 // O que se sabe do site (levantado por quem já automatizou o volante; a Caixa muda o site de vez em quando):
 // - números em a#n01... (na Lotomania o 00 é a#n00), a marcada com a classe "selected"; acima da aposta simples, um
@@ -132,12 +133,12 @@
       qs(SEL.fechar, m);
     if (botao) clicar(botao);
     if (!(await esperaAte(function () { return !modalAberto(); }, 4000))) {
-      throw new Parar('O site abriu um aviso que não consegui fechar. Feche o aviso e toque em Transcrever de novo.');
+      throw new Parar('O site abriu um aviso que não consegui fechar. Feche o aviso e efetive de novo.');
     }
   }
   function semAvisoAberto() {
     var m = modalAberto();
-    if (m) throw new Parar('O site está com um aviso aberto: "' + textoDoModal(m) + '". Feche o aviso e toque em Transcrever de novo.');
+    if (m) throw new Parar('O site está com um aviso aberto: "' + textoDoModal(m) + '". Feche o aviso e efetive de novo.');
   }
 
   // ---------- o carrinho e o valor ----------
@@ -159,7 +160,7 @@
     // Sem o botão (ou ele não limpou tudo): desmarca um por um.
     marcados().forEach(function (el) { if (el && el.click) clicar(el); });
     if (await esperaAte(function () { return marcados().length === 0; }, 2000)) return;
-    throw new Parar('Não consegui limpar o volante do site. Toque em "Limpar Volante" e depois em Transcrever de novo.');
+    throw new Parar('Não consegui limpar o volante do site. Toque em "Limpar Volante" e depois efetive de novo.');
   }
 
   async function conferirValor() {
@@ -203,17 +204,33 @@
     }
   }
 
-  // Clica em "Colocar no Carrinho" e espera o site aceitar (o volante limpa, o contador sobe) ou avisar.
+  // Um aviso do site sobre a sessão (expirou, faça o login de novo): desde a 0.42 para o lote inteiro (sessao = true).
+  var SESSAO = /sess[aã]o (expirou|expirada|encerrada|finalizada)|fa[cç]a (o )?login|efetue (o )?login|entre novamente|acesse novamente|n[aã]o autenticad|identifique-se|acesse sua conta|entre na sua conta/i;
+  function Sessao(mensagem) {
+    this.mensagem = mensagem || 'A sessão do site expirou (ou a conta não está aberta): entre na sua conta e efetive de novo. Nada foi para o carrinho.';
+    this.parcial = false;
+    this.sessao = true;
+  }
+  Sessao.prototype = Object.create(Parar.prototype);
+
+  // Clica em "Colocar no Carrinho" e espera o site aceitar (o contador do carrinho sobe) ou avisar. Desde a 0.42 (pedido do
+  // usuário: com a sessão expirada, a aposta aparecia como se estivesse no carrinho, mas não estava) a aposta só conta como
+  // no carrinho quando o contador sobe: o volante limpo sozinho não basta (o site limpa o volante também quando a sessão
+  // caiu). Sem o contador na página (o site mudou), a página ainda tem de mostrar a conta aberta.
   async function carrinho(marcados) {
     var botao = qs(SEL.carrinho);
     if (!botao) throw new Parar('O volante ficou marcado, mas não achei o botão "Colocar no Carrinho": toque nele.', true);
     var antes = itensNoCarrinho();
-    function entrou() { return antes !== null && itensNoCarrinho() === antes + 1; }
+    function entrou() { var n = itensNoCarrinho(); return antes !== null && n !== null && n > antes; }
     clicar(botao);
-    var resolvido = await esperaAte(function () { return marcados().length === 0 || !!modalAberto() || entrou(); }, 8000);
+    var resolvido = await esperaAte(function () { return !!modalAberto() || entrou() || (antes === null && marcados().length === 0); }, 8000);
     var m = modalAberto();
     if (m) {
       var t = textoDoModal(m);
+      if (SESSAO.test(t)) {
+        await fecharModal(m).catch(function () {});
+        throw new Sessao();
+      }
       if (/id[eê]ntica/i.test(t)) {
         await fecharModal(m);
         await limpar(marcados).catch(function () {});
@@ -226,10 +243,34 @@
         throw new Parar('O site não aceitou ' + plano.titulo + ': "' + t + '"');
       }
     } else if (!resolvido) {
+      if (antes !== null && marcados().length === 0) {
+        // O volante limpou e o carrinho não mudou: o que acontece com a sessão expirada.
+        throw new Sessao('O site limpou o volante, mas o carrinho não mudou: a sessão do site pode ter expirado. Entre na sua conta e efetive de novo.');
+      }
       throw new Parar('O site não pôs a aposta no carrinho e não deu nenhuma mensagem. O volante ficou marcado: confira e toque em "Colocar no Carrinho".', true);
     }
-    if (antes !== null) await esperaAte(entrou, 3000);
+    if (antes === null) {
+      // Sem o contador do carrinho: só com a conta aberta na página.
+      var conta = sessaoNaPagina();
+      if (conta === 'deslogado') throw new Sessao();
+      if (conta !== 'logado') {
+        throw new Parar('O volante foi para o site, mas não consegui conferir o carrinho (o contador não apareceu). Confira o carrinho do site: se ' +
+          plano.titulo + ' não estiver lá, efetive de novo.');
+      }
+    }
     return { noCarrinho: true, mensagem: plano.titulo + ' da ' + plano.modalidade + ' está no carrinho.' };
+  }
+
+  // A conta aberta na página? (o mesmo que assets/caixa/sessao.js, que o app roda antes do lote).
+  function sessaoNaPagina() {
+    function vis(el) { var cs = getComputedStyle(el), r = el.getBoundingClientRect(); return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0; }
+    var cl = qsa('a, button, [role="button"]').filter(vis);
+    function tem(re) { return cl.some(function (el) { return re.test(textoDe(el)); }); }
+    var href = qsa('a[href]').filter(vis).map(function (a) { return a.getAttribute('href') || ''; }).join(' ');
+    if (tem(/^(sair|logout|encerrar sess[aã]o|minha conta|meus dados|minhas apostas)$/i) || /logout|\/sair\b|encerrarsessao/i.test(href) ||
+      /\bol[aá],\s+\S+/i.test(textoDe(document.body).slice(0, 4000))) return 'logado';
+    if (qsa('input[type="password"]').filter(vis).length || tem(/^(entrar|acessar|acesse|login|fazer login|acessar conta|acesse sua conta|entre na sua conta|identifique-se)$/i)) return 'deslogado';
+    return 'desconhecido';
   }
 
   // ---------- volantes de números ----------
@@ -396,7 +437,7 @@
   async function dezenas() {
     var pronta = await esperaAte(function () { return id(plano.primeiro) && id(plano.ultimo); }, 6000);
     if (!pronta) {
-      throw new Parar('O volante da ' + plano.modalidade + ' não apareceu na página. Espere a página carregar (e entre na sua conta, se o site pedir) e toque em Transcrever de novo.');
+      throw new Parar('O volante da ' + plano.modalidade + ' não apareceu na página. Espere a página carregar (e entre na sua conta, se o site pedir) e efetive de novo.');
     }
     semAvisoAberto();
     await limpar(elementosMarcados);
@@ -422,7 +463,7 @@
       }
       var obtidos = numerosMarcados().length;
       await limpar(elementosMarcados).catch(function () {});
-      throw new Parar('O volante do site ficou com ' + obtidos + ' números marcados em vez de ' + plano.numeros.length + '. Toque em Transcrever de novo.');
+      throw new Parar('O volante do site ficou com ' + obtidos + ' números marcados em vez de ' + plano.numeros.length + '. Efetive de novo.');
     }
     if (plano.trevos && plano.trevos.length) await trevos();
     if (plano.time) await time();
@@ -437,7 +478,7 @@
 
   async function loteca() {
     if (!(await esperaAte(function () { return qsa(SEL.palpites).length === 42; }, 6000))) {
-      throw new Parar('O volante da Loteca não apareceu na página. Espere a página carregar (e entre na sua conta, se o site pedir) e toque em Transcrever de novo.');
+      throw new Parar('O volante da Loteca não apareceu na página. Espere a página carregar (e entre na sua conta, se o site pedir) e efetive de novo.');
     }
     semAvisoAberto();
     function indices() {
@@ -466,7 +507,7 @@
         throw new Parar('O site avisou: "' + t + '"');
       }
       await limpar(elementos).catch(function () {});
-      throw new Parar('O volante da Loteca não ficou igual à aposta. Toque em Transcrever de novo.');
+      throw new Parar('O volante da Loteca não ficou igual à aposta. Efetive de novo.');
     }
     await conferirValor();
     return carrinho(elementos);
@@ -553,7 +594,7 @@
       else r = await dezenas();
       r.ok = true;
     } catch (e) {
-      if (e instanceof Parar) r = { ok: false, noCarrinho: false, parcial: e.parcial, mensagem: e.mensagem };
+      if (e instanceof Parar) r = { ok: false, noCarrinho: false, parcial: e.parcial, sessao: !!e.sessao, mensagem: e.mensagem };
       else r = { ok: false, noCarrinho: false, parcial: false, mensagem: 'Algo deu errado no site: ' + (e && e.message ? e.message : String(e)) };
     }
     r.semEspelho = semEspelho;

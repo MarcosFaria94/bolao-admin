@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.jogos
 
+import android.os.SystemClock
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -32,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -39,19 +41,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -82,29 +89,55 @@ fun BoxScope.NavegacaoFlutuante(
     aoIr: (Int) -> Unit,
 ) {
     val foco = LocalFocusManager.current
-    var texto by remember(numero) { mutableStateOf(numero.toString()) }
+    val teclado = LocalSoftwareKeyboardController.current
+    val campo = remember { FocusRequester() }
     var digitando by remember { mutableStateOf(false) }
+    // Desde a 0.42: digitando, o número que chega pelas setas vem todo selecionado (o que se digitar troca ele).
+    var texto by remember(numero) {
+        val t = numero.toString()
+        mutableStateOf(TextFieldValue(t, if (digitando) TextRange(0, t.length) else TextRange(t.length)))
+    }
+    // Quando o campo perdeu o foco digitando (0 = não perdeu): a seta logo depois continua a digitação.
+    var perdeuOFocoEm by remember { mutableLongStateOf(0L) }
     val numeroAgora by rememberUpdatedState(numero)
     val irAgora by rememberUpdatedState(aoIr)
+
+    /**
+     * As setas com o campo em digitação (desde a 0.42, pedido do usuário: "ao clicar no seletor de concurso para editar e
+     * em seguida clicar para mudar de concurso, isso fecha o teclado"): o concurso muda e a digitação continua, com o
+     * teclado aberto e o número novo selecionado.
+     */
+    fun seta(ir: () -> Unit) {
+        val continuar = digitando || (perdeuOFocoEm > 0 && SystemClock.uptimeMillis() - perdeuOFocoEm < SEGURA_A_DIGITACAO)
+        ir()
+        if (continuar) {
+            digitando = true
+            perdeuOFocoEm = 0L
+            runCatching { campo.requestFocus() }
+            teclado?.show()
+        }
+    }
 
     /**
      * Sai da digitação e volta ao seletor (aberto): com um número digitado (diferente do da tela), vai ao concurso da
      * trilha mais perto dele; sem nada digitado, o campo volta ao concurso da tela.
      */
-    fun confirmar(digitado: String = texto) {
+    fun confirmar(digitado: String = texto.text) {
         val n = digitado.toIntOrNull()?.takeIf { it > 0 }
         val destino = n?.let { trilha.maisPerto(it) }
         digitando = false
+        perdeuOFocoEm = 0L
         foco.clearFocus()
-        texto = numeroAgora.toString()
+        texto = TextFieldValue(numeroAgora.toString())
         if (destino != null && destino != numeroAgora) irAgora(destino)
     }
 
     /** O X: fecha o seletor (o que estava sendo digitado não vale). */
     fun fechar() {
         digitando = false
+        perdeuOFocoEm = 0L
         foco.clearFocus()
-        texto = numeroAgora.toString()
+        texto = TextFieldValue(numeroAgora.toString())
         aoAbrir(false)
     }
 
@@ -133,16 +166,18 @@ fun BoxScope.NavegacaoFlutuante(
                         val anterior = trilha.anterior(numero)
                         val proximo = trilha.proximo(numero)
                         BotaoQueRepete(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, RETROCEDER, anterior != null) {
-                            trilha.anterior(numeroAgora)?.let(irAgora)
+                            seta { trilha.anterior(numeroAgora)?.let(irAgora) }
                         }
                         CampoDoConcurso(
                             texto = texto,
+                            campo = campo,
                             aoMudar = { novo ->
                                 // As teclas que sobram no teclado de números ("," "." espaço "-") vão ao digitado e ficam no seletor.
-                                if (novo.any { it in TECLAS_INOCUAS }) {
-                                    confirmar(novo.takeWhile { it.isDigit() })
+                                if (novo.text.any { it in TECLAS_INOCUAS }) {
+                                    confirmar(novo.text.takeWhile { it.isDigit() })
                                 } else {
-                                    texto = novo.filter(Char::isDigit).take(6)
+                                    val t = novo.text.filter(Char::isDigit).take(6)
+                                    texto = if (t == novo.text) novo else TextFieldValue(t, TextRange(t.length))
                                 }
                             },
                             aoConcluir = { confirmar() },
@@ -150,16 +185,18 @@ fun BoxScope.NavegacaoFlutuante(
                                 if (focado && !digitando) {
                                     // Ao tocar no campo: limpa o número para digitar outro.
                                     digitando = true
-                                    texto = ""
+                                    perdeuOFocoEm = 0L
+                                    texto = TextFieldValue("")
                                 } else if (!focado && digitando) {
-                                    // Saiu do campo sem concluir: o número da tela volta.
+                                    // Saiu do campo sem concluir: o número da tela volta (uma seta logo depois volta a digitar).
                                     digitando = false
-                                    texto = numeroAgora.toString()
+                                    perdeuOFocoEm = SystemClock.uptimeMillis().coerceAtLeast(1L)
+                                    texto = TextFieldValue(numeroAgora.toString())
                                 }
                             },
                         )
                         BotaoQueRepete(Icons.AutoMirrored.Outlined.KeyboardArrowRight, AVANCAR, proximo != null) {
-                            trilha.proximo(numeroAgora)?.let(irAgora)
+                            seta { trilha.proximo(numeroAgora)?.let(irAgora) }
                         }
                         BotaoQueRepete(Icons.AutoMirrored.Outlined.LastPage, ULTIMO_CONCURSO, numero != trilha.ultimo, repete = false) {
                             foco.clearFocus()
@@ -195,7 +232,7 @@ fun BoxScope.NavegacaoFlutuante(
 
 /** O campo "Nº Concurso" do seletor (desde a 0.38 pequeno, sem a borda alta do OutlinedTextField). */
 @Composable
-private fun CampoDoConcurso(texto: String, aoMudar: (String) -> Unit, aoConcluir: () -> Unit, aoFocar: (Boolean) -> Unit) {
+private fun CampoDoConcurso(texto: TextFieldValue, campo: FocusRequester, aoMudar: (TextFieldValue) -> Unit, aoConcluir: () -> Unit, aoFocar: (Boolean) -> Unit) {
     val cor = MaterialTheme.colorScheme.onSurface
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -215,6 +252,7 @@ private fun CampoDoConcurso(texto: String, aoMudar: (String) -> Unit, aoConcluir
             keyboardActions = KeyboardActions(onDone = { aoConcluir() }, onGo = { aoConcluir() }),
             modifier = Modifier
                 .width(88.dp)
+                .focusRequester(campo)
                 .onFocusChanged { aoFocar(it.isFocused) }
                 .semantics { contentDescription = CAMPO_DO_CONCURSO },
         )
@@ -291,6 +329,9 @@ fun proximoIntervalo(atual: Long): Long = maxOf(MENOR_INTERVALO, (atual * 0.88).
 val TECLAS_INOCUAS = setOf(',', '.', ' ', '-')
 
 private val TAMANHO_DO_BOTAO = 44.dp
+
+/** Quanto tempo depois de o campo perder o foco uma seta ainda continua a digitação (desde a 0.42). */
+private const val SEGURA_A_DIGITACAO = 800L
 
 /** A lupa quase opaca (desde a 0.40; era 60% e sumia no fundo). */
 const val ALFA_DA_LUPA = 0.92f

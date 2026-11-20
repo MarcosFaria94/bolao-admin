@@ -16,7 +16,6 @@ import io.github.marcosfaria94.bolao.ui.caixa.corDoCss
 import io.github.marcosfaria94.bolao.ui.caixa.corDoIconeDoCadeado
 import io.github.marcosfaria94.bolao.ui.caixa.lerCookie
 import io.github.marcosfaria94.bolao.ui.caixa.lugarDoCadeado
-import io.github.marcosfaria94.bolao.ui.caixa.textoDoLote
 import io.github.marcosfaria94.bolao.ui.caixa.tituloDoCarrinho
 import io.github.marcosfaria94.bolao.ui.jogos.TECLAS_INOCUAS
 import org.junit.Assert.assertEquals
@@ -86,9 +85,6 @@ class Novidades039Test {
     fun soOLote() {
         assertEquals("1 aposta no carrinho", tituloDoCarrinho(1))
         assertEquals("3 apostas no carrinho", tituloDoCarrinho(3))
-        assertEquals("Nenhuma aposta para transcrever agora.", textoDoLote(emptyList()))
-        assertEquals("A aposta já está no carrinho do site. Se alguma saiu de lá, transcreva de novo.", textoDoLote(emptyList(), jaNoCarrinho = 1))
-        assertEquals("As 2 apostas já estão no carrinho do site. Se alguma saiu de lá, transcreva de novo.", textoDoLote(emptyList(), jaNoCarrinho = 2))
     }
 
     @Test

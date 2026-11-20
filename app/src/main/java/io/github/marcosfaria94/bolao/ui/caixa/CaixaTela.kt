@@ -1,7 +1,5 @@
 package io.github.marcosfaria94.bolao.ui.caixa
 
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Surface
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Lock
@@ -56,7 +54,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -71,6 +68,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -92,6 +90,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.github.marcosfaria94.bolao.data.Downloads
 import io.github.marcosfaria94.bolao.data.Estado
+import io.github.marcosfaria94.bolao.domain.Efetivacao
 import io.github.marcosfaria94.bolao.domain.Especiais
 import io.github.marcosfaria94.bolao.domain.Transcricao
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
@@ -128,8 +127,6 @@ const val TITULO_CAIXA = "Loterias Caixa"
 /** O nome do botão da barra de baixo. */
 const val ROTULO_CAIXA = "Caixa"
 
-/** O botão que transcreve a aposta no volante do site. */
-const val TRANSCREVER = "Transcrever"
 
 /** Quantas vezes o app pergunta ao script se ele terminou (de 300 em 300 ms: 45 segundos). */
 private const val PERGUNTAS = 150
@@ -169,6 +166,16 @@ private const val LER_RESPOSTA =
  * reserva o lugar ([medida]) e a camada anda junto com as abas.
  */
 class NavegadorDaCaixa(private val contexto: Context) {
+
+    init {
+        ultimo = java.lang.ref.WeakReference(this)
+    }
+
+    internal companion object {
+        /** O navegador de agora (só para os testes das telas mostrarem as situações da área de efetivar). */
+        @Volatile
+        internal var ultimo: java.lang.ref.WeakReference<NavegadorDaCaixa>? = null
+    }
 
     /** O lugar da página na aba da Caixa (o alto e o tamanho, px na raiz), medido pela aba; null = a aba nunca abriu. */
     var medida by mutableStateOf<MedidaDaPagina?>(null)
@@ -226,6 +233,16 @@ class NavegadorDaCaixa(private val contexto: Context) {
             principal.post { if (destravada != novo) alternarCadeado() }
             return novo
         }
+
+        /** O botão "Efetivar apostas" da página (desde a 0.42) foi tocado: a tela abre a área. */
+        @android.webkit.JavascriptInterface
+        fun efetivar() {
+            principal.post { pedirEfetivar = true }
+        }
+
+        /** Quantas apostas esperam (o número no botão da página). */
+        @android.webkit.JavascriptInterface
+        fun pendentes(): Int = pendentesNaPagina
     }
 
     private val principal = android.os.Handler(android.os.Looper.getMainLooper())
@@ -271,6 +288,9 @@ class NavegadorDaCaixa(private val contexto: Context) {
 
     /** O script do "Transcrever" (assets/caixa/transcrever.js). */
     private val script: String by lazy { contexto.assets.open("caixa/transcrever.js").bufferedReader().use { it.readText() } }
+
+    /** O script que lê se a conta está aberta no site (assets/caixa/sessao.js; desde a 0.42). */
+    private val scriptDaSessao: String by lazy { contexto.assets.open("caixa/sessao.js").bufferedReader().use { it.readText() } }
 
     /** O WebView da tela (criado na primeira vez, com a tela de agora; nas outras, o mesmo, já com a página). */
     fun webView(tela: Context): WebView {
@@ -489,45 +509,95 @@ class NavegadorDaCaixa(private val contexto: Context) {
         suspendCancellableCoroutine { c -> w.evaluateJavascript(js) { if (c.isActive) c.resume(it) } }
     }
 
-    /** O "Transcrever em lote" da barra de cima foi tocado (desde a 0.38): a tela da Caixa abre a janela. */
-    var pedirLote by mutableStateOf(false)
+    /**
+     * O botão "Efetivar apostas" (desde a 0.42, no lugar do "Transcrever em lote" da barra de cima; na página, junto do
+     * cadeado) foi tocado: a tela da Caixa abre a área.
+     */
+    var pedirEfetivar by mutableStateOf(false)
 
-    /** O lote em andamento: o que está sendo transcrito agora ("2 de 5 · Quina Nº4"); null = nenhum. */
-    var andamentoDoLote by mutableStateOf<String?>(null)
+    /** O lote está rodando (a área não fecha: o site está sendo usado). */
+    var efetivando by mutableStateOf(false)
         private set
 
-    /** Uma aposta do lote e como foi: no carrinho ou o porquê de não ter ido. */
-    data class FeitoNoLote(val pagina: Transcricao.Pagina, val item: Transcricao.Item, val resposta: Transcricao.Resposta)
+    /** Como está cada aposta da área (pela chave da linha), no lote de agora e nos de antes (nesta abertura do app). */
+    val situacoes = mutableStateMapOf<String, Efetivacao.Situacao>()
+
+    /** A sessão do site, lida na última vez (ao abrir a área, antes do lote e a cada página). */
+    var sessao by mutableStateOf(Efetivacao.Sessao.VERIFICANDO)
+        internal set
+
+    /** Quantas apostas esperam (o número que o botão da página mostra; a ponte lê daqui). */
+    @Volatile
+    private var pendentesNaPagina = 0
+
+    /** Quantas apostas esperam, para o botão do app (quando o da página não aparece). */
+    var pendentes by mutableIntStateOf(0)
+        private set
+
+    /** Avisa a página de quantas apostas esperam (o botão chama atenção com uma ou mais). */
+    fun mostrarPendentes(n: Int) {
+        pendentesNaPagina = n
+        pendentes = n
+        web?.evaluateJavascript("window.__bolaoEfetivarEstado&&window.__bolaoEfetivarEstado($n)", null)
+    }
+
+    /** Lê se a conta está aberta no site (até 3 s; sem resposta, desconhecida). */
+    suspend fun verificarSessao(): Efetivacao.Sessao {
+        // Sem a página (nos testes das telas), fica a que estava.
+        val w = web ?: return sessao.takeIf { it != Efetivacao.Sessao.VERIFICANDO } ?: Efetivacao.Sessao.DESCONHECIDA.also { sessao = it }
+        sessao = Efetivacao.Sessao.VERIFICANDO
+        val lido = runCatching { withTimeoutOrNull(3_000) { avaliar(w, scriptDaSessao) } }.getOrNull()
+        return Efetivacao.sessao(Transcricao.textoDoJavascript(lido)).also { sessao = it }
+    }
 
     /**
-     * O "Transcrever em lote" (desde a 0.38, pedido do usuário): para cada página com apostas ([grupos]), o app muda a
-     * página do site (só a parte depois do "#": a conta continua aberta), espera o volante e transcreve uma aposta depois
-     * da outra (desde a 0.39 é o único jeito de pôr apostas no carrinho). O login e o pagamento continuam no site. Devolve como foi cada aposta.
+     * Efetiva as [linhas] (desde a 0.42; o "Transcrever em lote" da 0.38): antes de tudo, confere a sessão do site (com a
+     * conta fechada, nada vai); depois, página por página (a sessão de novo a cada página), marca cada aposta no volante e
+     * põe no carrinho. Uma aposta só conta como no carrinho quando o contador do site sobe; se a sessão cair no meio, o
+     * lote para e as que faltam ficam "não enviadas" (nada vai para o limbo). O login e o pagamento continuam no site.
      */
-    suspend fun transcreverEmLote(grupos: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>): List<FeitoNoLote> {
-        val w = web ?: return emptyList()
-        val feitos = mutableListOf<FeitoNoLote>()
-        val total = grupos.sumOf { it.second.size }
-        var n = 0
+    suspend fun efetivar(linhas: List<Efetivacao.Linha>) {
+        if (efetivando || linhas.isEmpty()) return
+        val w = web ?: return
+        efetivando = true
         try {
-            for ((pagina, itens) in grupos) {
+            linhas.forEach { situacoes[it.chave] = Efetivacao.Situacao.NaFila }
+            if (verificarSessao() == Efetivacao.Sessao.DESLOGADA) {
+                linhas.forEach { situacoes[it.chave] = Efetivacao.Situacao.NaoEnviada }
+                return
+            }
+            var parou = false
+            for ((pagina, daPagina) in linhas.groupBy { it.pagina }) {
+                if (parou) break
                 val chegou = irParaAPagina(w, pagina)
-                for (item in itens) {
-                    n++
-                    andamentoDoLote = "$n de $total · ${nomeDaPagina(pagina)} · ${item.titulo}"
+                if (chegou && verificarSessao() == Efetivacao.Sessao.DESLOGADA) {
+                    parou = true
+                    break
+                }
+                for (l in daPagina) {
+                    situacoes[l.chave] = Efetivacao.Situacao.Indo
+                    // Mandada de novo (estava no carrinho): só volta ao carrinho se o site aceitar agora.
+                    transcritas.removeAll(l.item.ids)
                     val r = if (!chegou) {
-                        Transcricao.Resposta(mensagem = "Não consegui abrir a página da ${nomeDaPagina(pagina)} no site. Tente o $TRANSCREVER_EM_LOTE de novo.")
+                        Transcricao.Resposta(mensagem = "Não consegui abrir a página da ${nomeDaPagina(pagina)} no site. Tente de novo.")
                     } else {
-                        transcrever(item)
+                        transcrever(l.item)
                     }
-                    transcritas.addAll(Transcricao.transcritas(item, r).filter { it !in transcritas })
-                    feitos += FeitoNoLote(pagina, item, r)
+                    transcritas.addAll(Transcricao.transcritas(l.item, r).filter { it !in transcritas })
+                    situacoes[l.chave] = if (r.noCarrinho) Efetivacao.Situacao.NoCarrinho else Efetivacao.Situacao.Falhou(r.mensagem, r.sessao, r.parcial)
+                    if (r.sessao) {
+                        sessao = Efetivacao.Sessao.DESLOGADA
+                        parou = true
+                        break
+                    }
                 }
             }
+            if (parou) {
+                linhas.filter { situacoes[it.chave] == Efetivacao.Situacao.NaFila }.forEach { situacoes[it.chave] = Efetivacao.Situacao.NaoEnviada }
+            }
         } finally {
-            andamentoDoLote = null
+            efetivando = false
         }
-        return feitos
     }
 
     /** Muda a página do site para a [pagina] e espera o endereço chegar (até 10 s) e o volante aparecer. */
@@ -555,8 +625,8 @@ class NavegadorDaCaixa(private val contexto: Context) {
         transcrevendo = true
         try {
             val inicio = Transcricao.textoDoJavascript(avaliar(w, "(" + script + ")(" + Transcricao.json(item.plano) + ")"))
-            if (inicio == "ocupado") return Transcricao.Resposta(mensagem = "O $TRANSCREVER ainda está trabalhando na página. Espere um pouco.")
-            if (inicio != "iniciado") return Transcricao.Resposta(mensagem = "A página da Caixa não deixou o $TRANSCREVER rodar. Recarregue e tente de novo.")
+            if (inicio == "ocupado") return Transcricao.Resposta(mensagem = "O app ainda está marcando outra aposta na página. Espere um pouco.")
+            if (inicio != "iniciado") return Transcricao.Resposta(mensagem = "A página da Caixa não deixou o app marcar o volante. Espere a página abrir e efetive de novo.")
             repeat(PERGUNTAS) {
                 delay(300)
                 Transcricao.resposta(Transcricao.textoDoJavascript(avaliar(w, LER_RESPOSTA)))?.let { return it }
@@ -759,29 +829,12 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
     val pendentes = remember(estado) { Transcricao.emLote(estado, LocalDate.now(), emptyList()).flatMap { it.second } }
     val transcritas: List<String> = navegador.transcritas
     val noCarrinho = pendentes.filter { i -> i.ids.isNotEmpty() && i.ids.all { it in transcritas } }
-    // O "Transcrever em lote" (desde a 0.38): a janela com o que vai, o andamento e, no fim, como foi cada aposta.
-    var resultadoDoLote by remember { mutableStateOf<List<NavegadorDaCaixa.FeitoNoLote>?>(null) }
-    if (navegador.pedirLote) {
-        val lote = remember(estado, navegador.transcritas.size) { Transcricao.emLote(estado, LocalDate.now(), navegador.transcritas) }
-        JanelaDoLote(
-            lote,
-            jaNoCarrinho = noCarrinho.sumOf { it.ids.size },
-            aoTranscrever = {
-                navegador.pedirLote = false
-                escopo.launch { resultadoDoLote = navegador.transcreverEmLote(lote) }
-            },
-            // Desde a 0.39: as que já foram (uma saiu do carrinho do site) vão de novo, todas.
-            aoTranscreverDeNovo = {
-                navegador.pedirLote = false
-                navegador.transcritas.removeAll(noCarrinho.flatMap { it.ids })
-                val todas = Transcricao.emLote(estado, LocalDate.now(), emptyList())
-                escopo.launch { resultadoDoLote = navegador.transcreverEmLote(todas) }
-            },
-            aoFechar = { navegador.pedirLote = false },
-        )
+    // O botão "Efetivar apostas" (desde a 0.42) chama atenção com uma aposta ou mais por efetivar: a página fica sabendo.
+    val porEfetivar = pendentes.size - noCarrinho.size
+    LaunchedEffect(porEfetivar) { navegador.mostrarPendentes(porEfetivar) }
+    if (navegador.pedirEfetivar) {
+        AreaDeEfetivar(estado, navegador, aoFechar = { navegador.pedirEfetivar = false })
     }
-    navegador.andamentoDoLote?.let { AndamentoDoLote(it) }
-    resultadoDoLote?.let { feitos -> ResultadoDoLote(feitos, confirmar = !estado.individual, aoFechar = { resultadoDoLote = null }) }
 
     Column(Modifier.fillMaxSize().imePadding()) {
         // O lugar da página (desde a 0.33 a página mesmo fica na camada fixa por cima das abas, PaginaFixaDaCaixa).
@@ -832,97 +885,6 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
     }
 }
 
-/** O nome do botão da barra de cima da Caixa (desde a 0.38) e o título da janela. */
-const val TRANSCREVER_EM_LOTE = "Transcrever em lote"
-
-/**
- * "5 apostas: Mega-Sena (2), Quina (2) e Lotofácil (1). ..." Sem nenhuma por transcrever: "Nenhuma aposta para transcrever
- * agora." ou, com [jaNoCarrinho] (desde a 0.39), que elas já estão no carrinho do site.
- */
-fun textoDoLote(lote: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>, jaNoCarrinho: Int = 0): String {
-    val total = lote.sumOf { it.second.size }
-    if (total == 0 && jaNoCarrinho > 0) {
-        val quantas = if (jaNoCarrinho == 1) "A aposta já está" else "As $jaNoCarrinho apostas já estão"
-        return "$quantas no carrinho do site. Se alguma saiu de lá, transcreva de novo."
-    }
-    if (total == 0) return "Nenhuma aposta para transcrever agora."
-    val partes = lote.map { (p, i) -> "${nomeDaPagina(p)} (${i.size})" }
-    val lista = if (partes.size == 1) partes[0] else partes.dropLast(1).joinToString(", ") + " e " + partes.last()
-    val apostas = if (total == 1) "1 aposta" else "$total apostas"
-    return "$apostas: $lista. O app abre a página de cada modalidade no site e põe as apostas no carrinho, uma depois da outra. " +
-        "Entre na sua conta antes; o pagamento continua no site."
-}
-
-/**
- * A janela do "Transcrever em lote": o que vai e o botão. Sem nenhuma por transcrever, mas com apostas já no carrinho
- * (desde a 0.39), o botão "Transcrever de novo" manda todas outra vez (para quando uma saiu do carrinho do site).
- */
-@Composable
-private fun JanelaDoLote(
-    lote: List<Pair<Transcricao.Pagina, List<Transcricao.Item>>>,
-    jaNoCarrinho: Int,
-    aoTranscrever: () -> Unit,
-    aoTranscreverDeNovo: () -> Unit,
-    aoFechar: () -> Unit,
-) {
-    val deNovo = lote.isEmpty() && jaNoCarrinho > 0
-    AlertDialog(
-        onDismissRequest = aoFechar,
-        title = { Text(TRANSCREVER_EM_LOTE) },
-        text = { Text(textoDoLote(lote, jaNoCarrinho)) },
-        confirmButton = {
-            if (deNovo) {
-                TextButton(onClick = aoTranscreverDeNovo) { Text(TRANSCREVER_DE_NOVO) }
-            } else {
-                TextButton(onClick = aoTranscrever, enabled = lote.isNotEmpty()) { Text(TRANSCREVER) }
-            }
-        },
-        dismissButton = { TextButton(onClick = aoFechar) { Text("Cancelar") } },
-    )
-}
-
-/** O andamento do lote (não fecha: o site está sendo usado). */
-@Composable
-private fun AndamentoDoLote(texto: String) {
-    AlertDialog(
-        onDismissRequest = {},
-        title = { Text(TRANSCREVER_EM_LOTE) },
-        text = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                Spacer(Modifier.width(12.dp))
-                Text(texto)
-            }
-        },
-        confirmButton = {},
-    )
-}
-
-/** Como foi o lote: quantas foram para o carrinho e o porquê das que não foram. */
-@Composable
-private fun ResultadoDoLote(feitos: List<NavegadorDaCaixa.FeitoNoLote>, confirmar: Boolean, aoFechar: () -> Unit) {
-    val ok = feitos.count { it.resposta.ok && it.resposta.noCarrinho }
-    AlertDialog(
-        onDismissRequest = aoFechar,
-        title = { Text(if (ok == feitos.size) "No carrinho" else "No carrinho: $ok de ${feitos.size}") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    when {
-                        ok == 0 -> "Nenhuma foi para o carrinho."
-                        confirmar -> "Pague no site e depois confirme as apostas aqui (a faixa embaixo da página ou os Comprovantes)."
-                        else -> "Pague no site."
-                    },
-                )
-                feitos.filter { !(it.resposta.ok && it.resposta.noCarrinho) }.forEach { f ->
-                    Text("${nomeDaPagina(f.pagina)} · ${f.item.titulo}: ${f.resposta.mensagem}", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = aoFechar) { Text("OK") } },
-    )
-}
-
 /** O alto (px, na raiz) e o tamanho do lugar da página na aba da Caixa (desde a 0.33). */
 data class MedidaDaPagina(val topo: Float, val largura: Int, val altura: Int)
 
@@ -963,7 +925,10 @@ fun PaginaFixaDaCaixa(navegador: NavegadorDaCaixa, posicao: () -> Float?) {
                 )
             }
             navegador.erro?.let { ErroDaPagina(it, aoTentar = { navegador.recarregar() }, aoIrAoInicio = { navegador.paginaInicial() }) }
-            if (navegador.erro == null) BotaoDoCadeado(navegador, medida)
+            if (navegador.erro == null) {
+                BotaoDoCadeado(navegador, medida)
+                BotaoDeEfetivar(navegador, medida, navegador.pendentes)
+            }
         }
     }
 }
@@ -1057,8 +1022,6 @@ fun tituloDoCarrinho(apostas: Int): String = if (apostas == 1) "1 aposta no carr
 /** O lembrete da faixa do carrinho (desde a 0.39). */
 const val LEMBRETE_DO_CARRINHO = "Pague no site da Caixa e confirme aqui."
 
-/** O botão da janela do lote que manda de novo as que já foram para o carrinho (quando uma saiu de lá). */
-const val TRANSCREVER_DE_NOVO = "Transcrever de novo"
 
 /**
  * A faixa do carrinho (desde a 0.39, no lugar da faixa do "Transcrever" de cada página): no bolão, com apostas que o
