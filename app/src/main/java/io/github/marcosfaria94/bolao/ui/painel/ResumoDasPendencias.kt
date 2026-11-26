@@ -7,10 +7,16 @@ import io.github.marcosfaria94.bolao.data.Pendencias
 
 /** Os tipos de pendência do resumo do Painel de Jogos, na ordem em que aparecem. */
 enum class TipoDoResumo(val rotulo: String) {
-    /** Desde a 0.30, "Apostas não registradas" (até a 0.29, "Falta registrar"). */
-    REGISTRAR("Apostas não registradas"),
-    /** Desde a 0.36: as apostas registradas que falta confirmar (até a 0.35 contavam em "Sem comprovante"). */
-    CONFIRMAR("A confirmar"),
+    /**
+     * Desde a 0.44, "Rascunhos" (pedido do usuário; de 0.30 a 0.43, "Apostas não registradas"; até a 0.29, "Falta
+     * registrar"): abre a tela dos rascunhos ([ROTA_RASCUNHOS]), com o "Registrar em lote".
+     */
+    REGISTRAR("Rascunhos"),
+    /**
+     * As apostas registradas que falta efetivar no site (desde a 0.44, "Apostas não efetivadas", pedido do usuário; de 0.36
+     * a 0.43, "A confirmar"; até a 0.35 contavam em "Sem comprovante").
+     */
+    CONFIRMAR("Apostas não efetivadas"),
     /** Desde a 0.36, só os rateios esperando os Pix. */
     SEM_COMPROVANTE("Sem comprovante"),
     CONFERIR("A conferir"),
@@ -41,7 +47,7 @@ fun resumoDasPendencias(e: Estado, pendencias: List<Pendencia>): List<ItemDoResu
     val conferir = if (e.individual) 0 else Operacoes.apostasParaConferir(e).size + Operacoes.rateiosParaConferir(e).size
     val envios = porTipo[Pendencia.Tipo.ENVIO].orEmpty()
     return listOfNotNull(
-        primeira(Pendencia.Tipo.RASCUNHO)?.let { ItemDoResumo(TipoDoResumo.REGISTRAR, quantas(Pendencia.Tipo.RASCUNHO), it) },
+        primeira(Pendencia.Tipo.RASCUNHO)?.let { ItemDoResumo(TipoDoResumo.REGISTRAR, quantas(Pendencia.Tipo.RASCUNHO), ROTA_RASCUNHOS) },
         ItemDoResumo(TipoDoResumo.CONFIRMAR, aConfirmar, comprovantes).takeIf { aConfirmar > 0 },
         ItemDoResumo(TipoDoResumo.SEM_COMPROVANTE, semComprovante, comprovantes).takeIf { semComprovante > 0 },
         ItemDoResumo(TipoDoResumo.CONFERIR, conferir, comprovantes).takeIf { conferir > 0 },

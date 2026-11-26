@@ -94,14 +94,11 @@ import io.github.marcosfaria94.bolao.domain.Efetivacao
 import io.github.marcosfaria94.bolao.domain.Especiais
 import io.github.marcosfaria94.bolao.domain.Transcricao
 import io.github.marcosfaria94.bolao.ui.comum.LocalAvisos
+import io.github.marcosfaria94.bolao.ui.comum.Icones
+import io.github.marcosfaria94.bolao.ui.comum.IndicadorDoPuxao
+import io.github.marcosfaria94.bolao.ui.comum.PuxaoAlemDaBorda
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.ui.platform.LocalContext
-import io.github.marcosfaria94.bolao.ui.comum.CONFIRMAR
-import io.github.marcosfaria94.bolao.ui.comum.DialogoConfirmar
-import io.github.marcosfaria94.bolao.ui.comum.confirmarApostas
-import io.github.marcosfaria94.bolao.ui.comum.mensagemDaConfirmacao
-import io.github.marcosfaria94.bolao.ui.comum.textoDaConfirmacao
-import io.github.marcosfaria94.bolao.ui.comum.tituloDaConfirmacao
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -121,11 +118,14 @@ import kotlin.coroutines.resume
  */
 const val ROTA_CAIXA = "caixa"
 
-/** O título da tela da Caixa. */
-const val TITULO_CAIXA = "Loterias Caixa"
+/** O título da tela da Caixa (desde a 0.44 "Loteria", pedido do usuário: "troque o nome Caixa por Loteria"; até a 0.43, "Loterias Caixa"). */
+const val TITULO_CAIXA = "Loteria"
 
-/** O nome do botão da barra de baixo. */
-const val ROTULO_CAIXA = "Caixa"
+/** O nome do botão da barra de baixo (desde a 0.44; até a 0.43, "Caixa"). */
+const val ROTULO_CAIXA = "Loteria"
+
+/** O botão de recarregar da barra de cima (de volta desde a 0.44; saiu na 0.42). */
+const val RECARREGAR_A_PAGINA = "Recarregar a página"
 
 
 /** Quantas vezes o app pergunta ao script se ele terminou (de 300 em 300 ms: 45 segundos). */
@@ -219,6 +219,17 @@ class NavegadorDaCaixa(private val contexto: Context) {
     }
 
     /**
+     * Abre o cadeado sem aviso (desde a 0.44, pedido do usuário: "permita que o cadeado se abra ao trocar de tela clicando
+     * no botão de outra tela"): sair da Caixa pela barra de baixo deixa o cadeado aberto para a volta.
+     */
+    fun abrirCadeado() {
+        if (destravada) return
+        destravada = true
+        prefs.edit().putBoolean(CADEADO_FECHADO, false).apply()
+        web?.evaluateJavascript("window.__bolaoCadeadoEstado&&window.__bolaoCadeadoEstado(true)", null)
+    }
+
+    /**
      * A ponte do cadeado que fica dentro da página (desde a 0.41; assets/caixa/cookies.js): o toque nele chama
      * [alternar] (na linha da ponte; a troca vai para a linha das telas) e o desenho pergunta se está [aberto]. A página só
      * consegue abrir e fechar o cadeado (nada mais do app passa por aqui).
@@ -243,7 +254,37 @@ class NavegadorDaCaixa(private val contexto: Context) {
         /** Quantas apostas esperam (o número no botão da página). */
         @android.webkit.JavascriptInterface
         fun pendentes(): Int = pendentesNaPagina
+
+        /**
+         * O dedo encostou na página (desde a 0.44): [noTopo] = a página (e a parte rolável em que o dedo está) já está no
+         * alto. Só assim puxar para baixo abre o Painel de Jogos (no meio da página, puxar para baixo rola o site).
+         */
+        @android.webkit.JavascriptInterface
+        fun toque(noTopo: Boolean) {
+            toqueNoTopo = noTopo
+            toqueEm = android.os.SystemClock.uptimeMillis()
+        }
     }
+
+    @Volatile
+    private var toqueNoTopo = true
+
+    @Volatile
+    private var toqueEm = 0L
+
+    /** Quem acompanha o puxão para baixo no alto da página (a raiz, que abre o Painel de Jogos; desde a 0.44); null = ninguém. */
+    var aoPuxar: ((FaseDoDeslize, Float) -> Unit)? = null
+
+    /** A página passa o puxão para baixo (no alto dela) para a raiz. */
+    fun puxar(fase: FaseDoDeslize, valor: Float) {
+        aoPuxar?.invoke(fase, valor)
+    }
+
+    /**
+     * Puxar para baixo pode abrir o Painel de Jogos no toque que começou em [tocouEm]: alguém acompanha e a página disse que
+     * está no alto (sem resposta da página para este toque, vale o que o WebView sabe da rolagem).
+     */
+    fun podePuxar(tocouEm: Long): Boolean = aoPuxar != null && (toqueEm < tocouEm - 50 || toqueNoTopo)
 
     private val principal = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -273,7 +314,10 @@ class NavegadorDaCaixa(private val contexto: Context) {
                 delay(espera)
                 runCatching { withTimeoutOrNull(2_000) { avaliar(w, scriptDosCookies) } }
                 val lido = runCatching { withTimeoutOrNull(2_000) { avaliar(w, "window.__bolaoCookie||null") } }.getOrNull()
-                cookie = Transcricao.textoDoJavascript(lido)?.let(::lerCookie) ?: cookie
+                // Desde a 0.44 o que a página diz vale sempre: sem os botões na página (null), o app desenha os dele. Até a
+                // 0.43 ficava a leitura de antes, e os botões sumiam quando o site redesenhava a página (nem os da página
+                // nem os do app apareciam).
+                cookie = Transcricao.textoDoJavascript(lido)?.let(::lerCookie)
             }
         }
     }
@@ -409,6 +453,8 @@ class NavegadorDaCaixa(private val contexto: Context) {
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             erro = null
             endereco = url
+            // Página nova (não só o "#"): os botões da página saem junto; até o script pôr os novos, o app mostra os dele.
+            cookie = null
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
@@ -569,7 +615,8 @@ class NavegadorDaCaixa(private val contexto: Context) {
             var parou = false
             for ((pagina, daPagina) in linhas.groupBy { it.pagina }) {
                 if (parou) break
-                val chegou = irParaAPagina(w, pagina)
+                val chegada = irParaAPagina(w, pagina)
+                val chegou = chegada != Chegada.NAO
                 if (chegou && verificarSessao() == Efetivacao.Sessao.DESLOGADA) {
                     parou = true
                     break
@@ -579,9 +626,10 @@ class NavegadorDaCaixa(private val contexto: Context) {
                     // Mandada de novo (estava no carrinho): só volta ao carrinho se o site aceitar agora.
                     transcritas.removeAll(l.item.ids)
                     val r = if (!chegou) {
-                        Transcricao.Resposta(mensagem = "Não consegui abrir a página da ${nomeDaPagina(pagina)} no site. Tente de novo.")
+                        Transcricao.Resposta(mensagem = mensagemDaPaginaQueNaoAbriu(nomeDaPagina(pagina), ondeFicou))
                     } else {
-                        transcrever(l.item)
+                        // Na outra página da modalidade (a normal no lugar da do especial, ou o contrário), o script confere o concurso.
+                        transcrever(l.item, conferirConcurso = chegada == Chegada.OUTRA)
                     }
                     transcritas.addAll(Transcricao.transcritas(l.item, r).filter { it !in transcritas })
                     situacoes[l.chave] = if (r.noCarrinho) Efetivacao.Situacao.NoCarrinho else Efetivacao.Situacao.Falhou(r.mensagem, r.sessao, r.parcial)
@@ -600,31 +648,55 @@ class NavegadorDaCaixa(private val contexto: Context) {
         }
     }
 
-    /** Muda a página do site para a [pagina] e espera o endereço chegar (até 10 s) e o volante aparecer. */
-    private suspend fun irParaAPagina(w: WebView, pagina: Transcricao.Pagina): Boolean {
-        if (Transcricao.pagina(endereco) == pagina) return true
-        val fragmento = Transcricao.fragmento(pagina) ?: return false
-        avaliar(w, "(function(){location.hash=" + Transcricao.textoParaJavascript(fragmento) + ";return 'ok'})()")
-        repeat(40) {
+    /** Como o lote chegou à página de uma modalidade: não chegou, a própria página ou a outra da mesma modalidade. */
+    private enum class Chegada { NAO, EXATA, OUTRA }
+
+    /** Onde o site ficou na última página que não abriu (a parte do "#"), para a mensagem; null = não se sabe. */
+    private var ondeFicou: String? = null
+
+    /**
+     * Muda a página do site para a [pagina] (desde a 0.44, com mais caminhos): primeiro o endereço dela e, se o site não
+     * abrir, o da outra página da mesma modalidade (na Quina Friday, 2026, a Caixa vendeu a Quina só para o concurso
+     * especial e o "#/quina" não abria); por último, o link da modalidade na própria página. Vale chegar a qualquer página
+     * da modalidade (o site pode levar de uma para a outra sozinho): fora da página certa, o script confere o concurso.
+     */
+    private suspend fun irParaAPagina(w: WebView, pagina: Transcricao.Pagina): Chegada {
+        ondeFicou = null
+        if (Transcricao.pagina(endereco) == pagina) return Chegada.EXATA
+        for (fragmento in Transcricao.fragmentos(pagina)) {
+            avaliar(w, "(function(){location.hash=" + Transcricao.textoParaJavascript(fragmento) + ";return 'ok'})()")
+            esperarAPagina(pagina, vezes = 24)?.let { return it }
+        }
+        val tocou = runCatching { Transcricao.textoDoJavascript(avaliar(w, Transcricao.scriptDoLink(pagina))) }.getOrNull()
+        if (tocou == "ok") esperarAPagina(pagina, vezes = 32)?.let { return it }
+        ondeFicou = endereco?.substringAfter('#', "")?.substringBefore('?')?.takeIf { it.isNotBlank() }?.let { "#$it" }
+        return Chegada.NAO
+    }
+
+    /** Espera (de 250 em 250 ms, [vezes] vezes) o endereço chegar a uma página da modalidade da [pagina] e o volante aparecer. */
+    private suspend fun esperarAPagina(pagina: Transcricao.Pagina, vezes: Int): Chegada? {
+        repeat(vezes) {
             delay(250)
-            if (Transcricao.pagina(endereco) == pagina) {
+            val agora = Transcricao.pagina(endereco)
+            if (agora?.modalidade == pagina.modalidade) {
                 // O volante da página nova (o script ainda espera por ele, se demorar).
                 delay(1_200)
-                return true
+                return if (agora == pagina) Chegada.EXATA else Chegada.OUTRA
             }
         }
-        return false
+        return null
     }
 
     /**
      * Transcreve o [item] na página de agora: o script marca o volante do site, confere e põe no carrinho. O app
      * pergunta de tempos em tempos se terminou.
      */
-    suspend fun transcrever(item: Transcricao.Item): Transcricao.Resposta {
+    suspend fun transcrever(item: Transcricao.Item, conferirConcurso: Boolean = false): Transcricao.Resposta {
         val w = web ?: return Transcricao.Resposta(mensagem = "A página da Caixa não está aberta.")
         transcrevendo = true
         try {
-            val inicio = Transcricao.textoDoJavascript(avaliar(w, "(" + script + ")(" + Transcricao.json(item.plano) + ")"))
+            val plano = if (conferirConcurso) item.plano.copy(conferirConcurso = true) else item.plano
+            val inicio = Transcricao.textoDoJavascript(avaliar(w, "(" + script + ")(" + Transcricao.json(plano) + ")"))
             if (inicio == "ocupado") return Transcricao.Resposta(mensagem = "O app ainda está marcando outra aposta na página. Espere um pouco.")
             if (inicio != "iniciado") return Transcricao.Resposta(mensagem = "A página da Caixa não deixou o app marcar o volante. Espere a página abrir e efetive de novo.")
             repeat(PERGUNTAS) {
@@ -639,10 +711,12 @@ class NavegadorDaCaixa(private val contexto: Context) {
 }
 
 /**
- * A página do site. Com o cadeado fechado, ela fica com o dedo todo (como na 0.36 e na 0.37): rolar, tocar e ampliar são
- * do site. Com o cadeado aberto (desde a 0.38, o padrão), o arrasto para os lados ([ehParaOsLados]) deixa de ser do site
- * e vai para as abas ([NavegadorDaCaixa.deslizar]): a tela passa para a vizinha; o arrasto para cima e para baixo, o
- * toque e os dois dedos continuam do site.
+ * A página do site. Com o cadeado fechado, o arrasto para os lados fica com o site (como na 0.36 e na 0.37): rolar, tocar e
+ * ampliar são do site. Com o cadeado aberto (desde a 0.38, o padrão), o arrasto para os lados ([ehParaOsLados]) deixa de ser
+ * do site e vai para as abas ([NavegadorDaCaixa.deslizar]): a tela passa para a vizinha. Desde a 0.44 (pedido do usuário:
+ * "faça abrir o Painel de Jogos ao empurrar a tela da Caixa pra baixo"), puxar para baixo com a página no alto
+ * ([ehParaBaixo]) vai para a raiz ([NavegadorDaCaixa.puxar]), que abre o Painel de Jogos como nas outras abas; no meio da
+ * página, puxar para baixo continua rolando o site. O toque e os dois dedos continuam do site.
  */
 @SuppressLint("ViewConstructor", "ClickableViewAccessibility")
 private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorDaCaixa) : WebView(contexto) {
@@ -650,9 +724,21 @@ private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorD
     private var x0 = 0f
     private var y0 = 0f
     private var ultimoX = 0f
+    private var ultimoY = 0f
     private var decidido = false
     private var trocando = false
+    private var puxando = false
+    private var noTopoAoTocar = false
+    private var tocouEm = 0L
     private var rastreador: VelocityTracker? = null
+
+    /** O site para de acompanhar este dedo (o arrasto passou para o app). */
+    private fun soltarDoSite(e: MotionEvent) {
+        val cancelar = MotionEvent.obtain(e)
+        cancelar.action = MotionEvent.ACTION_CANCEL
+        super.onTouchEvent(cancelar)
+        cancelar.recycle()
+    }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
@@ -661,13 +747,17 @@ private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorD
                 x0 = e.rawX
                 y0 = e.rawY
                 ultimoX = e.rawX
+                ultimoY = e.rawY
                 decidido = false
                 trocando = false
+                puxando = false
+                noTopoAoTocar = !runCatching { canScrollVertically(-1) }.getOrDefault(true)
+                tocouEm = e.eventTime
                 rastreador?.recycle()
                 rastreador = VelocityTracker.obtain()
             }
             // Dois dedos (ampliar): do site.
-            MotionEvent.ACTION_POINTER_DOWN -> if (!trocando) decidido = true
+            MotionEvent.ACTION_POINTER_DOWN -> if (!trocando && !puxando) decidido = true
         }
         rastreador?.let { r ->
             val bruto = MotionEvent.obtain(e)
@@ -689,21 +779,40 @@ private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorD
             }
             return true
         }
-        if (!decidido && e.actionMasked == MotionEvent.ACTION_MOVE && navegador.destravada) {
+        if (puxando) {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    navegador.puxar(FaseDoDeslize.ARRASTO, e.rawY - ultimoY)
+                    ultimoY = e.rawY
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val v = if (e.actionMasked == MotionEvent.ACTION_UP) rastreador?.let { it.computeCurrentVelocity(1000); it.yVelocity } ?: 0f else 0f
+                    puxando = false
+                    navegador.puxar(FaseDoDeslize.FIM, v)
+                }
+            }
+            return true
+        }
+        if (!decidido && e.actionMasked == MotionEvent.ACTION_MOVE) {
             val dx = e.rawX - x0
             val dy = e.rawY - y0
             if (hypot(dx, dy) > folga) {
                 decidido = true
-                if (ehParaOsLados(dx, dy)) {
+                if (navegador.destravada && ehParaOsLados(dx, dy)) {
                     trocando = true
-                    // O site para de acompanhar este dedo.
-                    val cancelar = MotionEvent.obtain(e)
-                    cancelar.action = MotionEvent.ACTION_CANCEL
-                    super.onTouchEvent(cancelar)
-                    cancelar.recycle()
+                    soltarDoSite(e)
                     ultimoX = e.rawX
                     navegador.deslizar(FaseDoDeslize.COMECO, 0f)
                     navegador.deslizar(FaseDoDeslize.ARRASTO, dx)
+                    return true
+                }
+                val noTopo = noTopoAoTocar && !runCatching { canScrollVertically(-1) }.getOrDefault(true)
+                if (ehParaBaixo(dx, dy) && noTopo && navegador.podePuxar(tocouEm)) {
+                    puxando = true
+                    soltarDoSite(e)
+                    ultimoY = e.rawY
+                    navegador.puxar(FaseDoDeslize.COMECO, 0f)
+                    navegador.puxar(FaseDoDeslize.ARRASTO, dy)
                     return true
                 }
             }
@@ -712,6 +821,16 @@ private class PaginaDaCaixa(contexto: Context, private val navegador: NavegadorD
         return usado || e.actionMasked == MotionEvent.ACTION_DOWN
     }
 }
+
+/** O arrasto ([dx], [dy]) é para baixo: bem mais para baixo que para os lados (desde a 0.44, o puxão do Painel de Jogos). */
+fun ehParaBaixo(dx: Float, dy: Float): Boolean = dy > 0f && dy > 1.5f * abs(dx)
+
+/**
+ * A mensagem da aposta cuja página não abriu no site (desde a 0.44 diz onde o site ficou, para dar para saber o porquê):
+ * "Não consegui abrir a página da Quina no site (ele ficou em #/home). Tente de novo."
+ */
+fun mensagemDaPaginaQueNaoAbriu(nome: String, ondeFicou: String?): String =
+    "Não consegui abrir a página da $nome no site" + (ondeFicou?.let { " (ele ficou em $it)" } ?: "") + ". Tente de novo."
 
 /** O arrasto ([dx], [dy]) é para os lados: bem mais para os lados que para cima ou para baixo (desde a 0.38). */
 fun ehParaOsLados(dx: Float, dy: Float): Boolean = abs(dx) > 1.5f * abs(dy)
@@ -750,27 +869,25 @@ data class LugarDoCadeado(val tamanho: Float, val direita: Float, val baixo: Flo
 
 /**
  * Onde fica o cadeado (desde a 0.39, pedido do usuário: "se não der para os dois ficarem do lado direito, espelha eles,
- * com o mesmo alinhamento, tamanho e transparência"). Com o ícone dos cookies [c] à direita (o script conseguiu passá-lo),
- * o cadeado fica logo acima dele, no mesmo eixo; com o ícone à esquerda, espelhado: a mesma distância da borda (a direita
- * no lugar da esquerda), a mesma altura e o mesmo tamanho. Sem achar o ícone, o espelho do que se viu no site da Caixa
- * (47dp, a 27dp da borda e de baixo). [largura] e [altura]: o tamanho da página (px); [dp]: px por dp.
+ * com o mesmo alinhamento, tamanho e transparência"). Desde a 0.44 (pedido do usuário: "jogue o cookie pra esquerda... e
+ * alinhe ele na mesma altura") o ícone dos cookies fica onde o site põe (à esquerda) e o cadeado fica sempre na mesma
+ * altura dele, com o mesmo tamanho: com o ícone à esquerda, espelhado (a mesma distância da borda, do lado direito); com
+ * o ícone à direita (outro site), logo à esquerda dele. Sem achar o ícone, o espelho do que se viu no site da Caixa (47dp,
+ * a 27dp da borda e de baixo). [largura] e [altura]: o tamanho da página (px); [dp]: px por dp.
  */
 fun lugarDoCadeado(c: PosicaoDoCookie?, largura: Float, altura: Float, dp: Float): LugarDoCadeado {
-    if (c == null) return LugarDoCadeado(TAMANHO_DO_COOKIE * dp, MARGEM_DO_COOKIE * dp, MARGEM_DO_COOKIE * dp)
+    if (c == null || c.largura <= 0f) return LugarDoCadeado(TAMANHO_DO_COOKIE * dp, MARGEM_DO_COOKIE * dp, MARGEM_DO_COOKIE * dp)
     val larguraDoCookie = c.largura * largura
     val alturaDoCookie = if (c.altura > 0f) c.altura * altura else larguraDoCookie
     val tamanho = larguraDoCookie.coerceIn(32 * dp, 64 * dp)
     val baixoDoCookie = altura - (c.topo * altura + alturaDoCookie)
+    val baixo = (baixoDoCookie + (alturaDoCookie - tamanho) / 2).coerceAtLeast(4 * dp)
     return if (c.direita) {
-        val meio = (1f - c.x) * largura
-        LugarDoCadeado(tamanho, (meio - tamanho / 2).coerceAtLeast(4 * dp), baixoDoCookie + alturaDoCookie + 8 * dp)
+        val esquerdaDoCookie = c.x * largura - larguraDoCookie / 2
+        LugarDoCadeado(tamanho, (largura - esquerdaDoCookie + 8 * dp).coerceAtLeast(4 * dp), baixo)
     } else {
         val esquerdaDoCookie = c.x * largura - larguraDoCookie / 2
-        LugarDoCadeado(
-            tamanho,
-            (esquerdaDoCookie + (larguraDoCookie - tamanho) / 2).coerceAtLeast(4 * dp),
-            (baixoDoCookie + (alturaDoCookie - tamanho) / 2).coerceAtLeast(4 * dp),
-        )
+        LugarDoCadeado(tamanho, (esquerdaDoCookie + (larguraDoCookie - tamanho) / 2).coerceAtLeast(4 * dp), baixo)
     }
 }
 
@@ -802,21 +919,14 @@ fun enderecoSeguro(url: String?): String? =
 private const val LIMITE_DE_TROCAS = 5
 
 /**
- * A tela da Caixa: a página do site, a barra de carregamento em cima e, no bolão, com apostas no carrinho do site, a
- * faixa do carrinho embaixo ([FaixaDoCarrinho]: pagar no site e confirmar aqui). Desde a 0.39 (pedido do usuário: "permita
- * apenas transcrever em lote") as apostas vão para o carrinho só pelo "Transcrever em lote" da barra de cima: a faixa
- * de cada página de modalidade, com o "Transcrever" de uma aposta de cada vez (de 0.31 a 0.38), saiu. Com o teclado
- * aberto (a conta, a busca do time), a faixa some e a página sobe junto.
+ * A tela da Caixa: a página do site e a barra de carregamento em cima. Desde a 0.39 as apostas vão para o carrinho só em
+ * lote (desde a 0.42, o "Efetivar apostas"). Desde a 0.44 a faixa do carrinho, com o "Confirmar", saiu (pedido do usuário:
+ * "extinga o botão Confirmar aposta, ele só passa a aparecer se a efetivação falhar"): a aposta que entra no carrinho do
+ * site já é confirmada pela área de efetivar. Com o teclado aberto (a conta, a busca do time), a página sobe junto.
  */
 @Composable
 fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
-    val ctx = LocalContext.current
     val avisos = LocalAvisos.current
-    val escopo = rememberCoroutineScope()
-    // As apostas do carrinho esperando a confirmação na janela (desde a 0.36); null = fechada.
-    var aConfirmar by remember { mutableStateOf<List<Transcricao.Item>?>(null) }
-    var confirmando by remember { mutableStateOf(false) }
-    val teclado = tecladoAberto()
 
     LaunchedEffect(navegador.aviso) {
         navegador.aviso?.let {
@@ -847,41 +957,6 @@ fun CaixaTela(estado: Estado, navegador: NavegadorDaCaixa) {
                     if (navegador.medida != nova) navegador.medida = nova
                 },
         )
-        // No bolão (desde a 0.36), as do carrinho se confirmam aqui depois de pagas; no Individual não há o que confirmar.
-        if (!estado.individual && noCarrinho.isNotEmpty() && !teclado) {
-            FaixaDoCarrinho(
-                apostas = noCarrinho.sumOf { it.ids.size },
-                confirmando = confirmando,
-                ocupado = navegador.transcrevendo,
-                aoConfirmar = { aConfirmar = noCarrinho },
-            )
-        }
-    }
-
-    aConfirmar?.let { feitos ->
-        val ids = feitos.flatMap { it.ids }
-        val numeros = estado.apostas.filter { it.id in ids }.map { it.numero }.sorted()
-        DialogoConfirmar(
-            titulo = tituloDaConfirmacao(numeros),
-            texto = textoDaConfirmacao(numeros.size, estado),
-            confirmar = CONFIRMAR,
-            aoConfirmar = {
-                aConfirmar = null
-                confirmando = true
-                escopo.launch {
-                    try {
-                        val feitas = confirmarApostas(ctx, ids)
-                        navegador.transcritas.removeAll(ids)
-                        avisos.showSnackbar(mensagemDaConfirmacao(feitas, estado))
-                    } catch (t: Throwable) {
-                        avisos.showSnackbar("Não foi possível confirmar: ${t.message}")
-                    } finally {
-                        confirmando = false
-                    }
-                }
-            },
-            aoFechar = { aConfirmar = null },
-        )
     }
 }
 
@@ -898,7 +973,7 @@ const val DESCRICAO_DA_PAGINA = "Página das Loterias Caixa"
  * Fora da tela a página continua presa e do mesmo tamanho, só que de lado: não se redesenha nem recarrega ao voltar.
  */
 @Composable
-fun PaginaFixaDaCaixa(navegador: NavegadorDaCaixa, posicao: () -> Float?) {
+fun PaginaFixaDaCaixa(navegador: NavegadorDaCaixa, puxao: PuxaoAlemDaBorda? = null, posicao: () -> Float?) {
     val medida = navegador.medida ?: return
     val densidade = LocalDensity.current
     var origem by remember { mutableStateOf(Offset.Zero) }
@@ -909,7 +984,9 @@ fun PaginaFixaDaCaixa(navegador: NavegadorDaCaixa, posicao: () -> Float?) {
                 .offset {
                     val d = posicao()
                     val x = if (d == null) 2 * maxOf(largura, medida.largura) + 100 else (d * medida.largura).roundToInt()
-                    IntOffset(x, (medida.topo - origem.y).roundToInt())
+                    // Puxando para baixo no alto da página (desde a 0.44), a página desce junto com o dedo.
+                    val desce = if (d == null) 0f else puxao?.deslocamento?.coerceAtLeast(0f) ?: 0f
+                    IntOffset(x, (medida.topo - origem.y + desce).roundToInt())
                 }
                 .size(with(densidade) { medida.largura.toDp() }, with(densidade) { medida.altura.toDp() }),
         ) {
@@ -929,6 +1006,16 @@ fun PaginaFixaDaCaixa(navegador: NavegadorDaCaixa, posicao: () -> Float?) {
                 BotaoDoCadeado(navegador, medida)
                 BotaoDeEfetivar(navegador, medida, navegador.pendentes)
             }
+        }
+        // O aviso do puxão (desde a 0.44): por cima da página, que fica numa camada acima das abas.
+        if (puxao != null) {
+            IndicadorDoPuxao(
+                puxao, puxando = "Painel de Jogos", pronto = "Painel de Jogos", icone = Icones.Painel,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset { IntOffset(0, (medida.topo - origem.y).roundToInt()) }
+                    .padding(top = 14.dp),
+            )
         }
     }
 }
@@ -1015,53 +1102,3 @@ const val PAGINA_INICIAL = "Página inicial"
 /** O nome do concurso da página: o especial ("Mega da Virada") ou a modalidade. */
 fun nomeDaPagina(p: Transcricao.Pagina): String =
     if (p.especial) Especiais.CONHECIDOS.firstOrNull { it.modalidade == p.modalidade }?.nome ?: p.modalidade.nome else p.modalidade.nome
-
-/** O título da faixa do carrinho (desde a 0.39): "1 aposta no carrinho", "3 apostas no carrinho". */
-fun tituloDoCarrinho(apostas: Int): String = if (apostas == 1) "1 aposta no carrinho" else "$apostas apostas no carrinho"
-
-/** O lembrete da faixa do carrinho (desde a 0.39). */
-const val LEMBRETE_DO_CARRINHO = "Pague no site da Caixa e confirme aqui."
-
-
-/**
- * A faixa do carrinho (desde a 0.39, no lugar da faixa do "Transcrever" de cada página): no bolão, com apostas que o
- * "Transcrever em lote" já pôs no carrinho do site, o ícone do carrinho, quantas são, o lembrete de pagar e o botão
- * "Confirmar" (todas de uma vez, de todas as modalidades). Fica em qualquer página do site.
- */
-@Composable
-fun FaixaDoCarrinho(apostas: Int, confirmando: Boolean, ocupado: Boolean, aoConfirmar: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-        HorizontalDivider()
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
-        ) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.size(40.dp)) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Outlined.ShoppingCart, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(22.dp))
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(tituloDoCarrinho(apostas), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(
-                    LEMBRETE_DO_CARRINHO,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-            Button(onClick = aoConfirmar, enabled = !confirmando && !ocupado) {
-                if (confirmando) {
-                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                } else {
-                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(CONFIRMAR, maxLines = 1)
-            }
-        }
-    }
-}

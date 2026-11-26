@@ -80,6 +80,8 @@ import kotlinx.coroutines.launch
 const val PARAMETRO_SEM_CONFIRMACAO = "Registrar sem confirmação"
 const val PARAMETRO_MAIS_NUMEROS = "Apostas com mais números"
 const val PARAMETRO_TEIMOSINHA = "Teimosinha"
+/** Desde a 0.44 (pedido do usuário: "crie parâmetro que permita excluir rascunho automaticamente quando o concurso vira"). */
+const val PARAMETRO_EXCLUIR_RASCUNHOS = "Excluir rascunho quando o concurso vira"
 const val PARAMETRO_STOP_LOSS = "Stop loss"
 const val PARAMETRO_SALDO = "Não jogar sem saldo"
 const val PARAMETRO_APORTE = "Aporte mensal"
@@ -113,6 +115,7 @@ object AjudaDosParametros {
     const val SEM_CONFIRMACAO = "Registra a aposta direto, sem a mensagem \"Deseja registrar aposta?\"."
     const val MAIS_NUMEROS = "Deixa marcar mais números que a aposta simples. O preço acompanha a quantidade."
     const val TEIMOSINHA = "Mostra no volante a opção de repetir a mesma aposta em vários concursos seguidos (menos nos concursos especiais)."
+    const val EXCLUIR_RASCUNHOS = "Quando o concurso de um rascunho é sorteado, o rascunho é excluído sozinho. Desligado (o padrão), ele passa para o próximo concurso."
     const val STOP_LOSS = "Um limite por mês: em número de apostas ou em dinheiro gasto. Passado o limite, o app não registra mais apostas até o mês virar. Sem limite é o padrão."
     const val SALDO = "Não deixa registrar a aposta que custa mais que o saldo do bolão. Desligado, a aposta é registrada mesmo com o saldo baixo (o padrão)."
     const val CALENDARIO = "Os dias do mês com aposta: a Home mostra a próxima aposta e, no dia, o \"Apostar\" pulsa. Sem dias marcados, fica \"Sem dia definido\"."
@@ -206,6 +209,10 @@ internal fun ParametrosDaSessao(estado: Estado) {
         ChaveDoParametro(PARAMETRO_MAIS_NUMEROS, AjudaDosParametros.MAIS_NUMEROS, p.maisNumeros) { v -> mudar { it.copy(maisNumeros = v) } }
         Divisor()
         ChaveDoParametro(PARAMETRO_TEIMOSINHA, AjudaDosParametros.TEIMOSINHA, p.teimosinha) { v -> mudar { it.copy(teimosinha = v) } }
+        Divisor()
+        ChaveDoParametro(PARAMETRO_EXCLUIR_RASCUNHOS, AjudaDosParametros.EXCLUIR_RASCUNHOS, p.excluirRascunhosVencidos) { v ->
+            mudar { it.copy(excluirRascunhosVencidos = v) }
+        }
         Divisor()
         LinhaDoParametro(PARAMETRO_STOP_LOSS, AjudaDosParametros.STOP_LOSS, aoTocar = { editandoStop = true }) {
             ValorDoParametro(Limites.resumo(p.limiteMensal), comSeta = true)

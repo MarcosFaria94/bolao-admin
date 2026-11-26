@@ -137,8 +137,8 @@ object Pendencias {
             val desde = instante(registro, fuso)
             lista += Pendencia(
                 "anexo-${a.id}", Pendencia.Tipo.ANEXO,
-                "Confirmar a aposta",
-                "Aposta ${nome(a)}: faça a aposta no site da Caixa e confirme; sem a confirmação, ela não vale para o bolão.",
+                "Efetivar a aposta",
+                "Aposta ${nome(a)}: efetive na aba Loteria (\"Efetivar apostas\"); sem isso, ela não vale para o bolão.",
                 desde, desde.plusMinutes(MINUTOS_ANEXO), ABA_COMPROVANTES,
                 modalidade = a.modalidade, concurso = a.concurso,
             )

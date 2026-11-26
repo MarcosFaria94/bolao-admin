@@ -108,6 +108,7 @@ import io.github.marcosfaria94.bolao.ui.aposta.AvisoDoComprovante
 import io.github.marcosfaria94.bolao.ui.caixa.ROTA_CAIXA
 import io.github.marcosfaria94.bolao.ui.aposta.SecaoApostaRegistrada
 import io.github.marcosfaria94.bolao.ui.aposta.SecaoVolante
+import io.github.marcosfaria94.bolao.ui.aposta.AVISO_NOVO_RASCUNHO
 import io.github.marcosfaria94.bolao.ui.aposta.novaAposta
 import io.github.marcosfaria94.bolao.ui.aposta.proximaAposta
 import io.github.marcosfaria94.bolao.ui.aposta.rascunhoDa
@@ -376,6 +377,11 @@ fun ModalidadeTela(
                         // Desde a 0.25: o volante continua na página, vazio e no mesmo concurso, para a próxima aposta.
                         // Desde a 0.27 a página não sobe mais para o alto (pedido do usuário).
                         v.recomecar(proximaAposta(estado, feita, LocalDate.now(), System.currentTimeMillis()), feitas)
+                    },
+                    // Vários rascunhos da mesma modalidade (desde a 0.44): este fica guardado e o volante recomeça.
+                    aoNovoRascunho = {
+                        v.novoRascunho(proximaAposta(estado, v.aposta, LocalDate.now(), System.currentTimeMillis()))
+                        app.repo.avisar(AVISO_NOVO_RASCUNHO)
                     },
                 )
             }

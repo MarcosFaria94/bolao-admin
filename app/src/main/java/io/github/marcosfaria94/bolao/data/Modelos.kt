@@ -80,6 +80,11 @@ data class Parametros(
     /** Avisar quando algum prêmio estimado passar de [premioMinimo] (centavos; desde a 0.38; desligado por padrão). */
     val avisarPremio: Boolean = false,
     val premioMinimo: Long = PREMIO_MINIMO_PADRAO,
+    /**
+     * Excluir sozinho o rascunho quando o concurso dele vira (desde a 0.44, pedido do usuário; desligado por padrão: o
+     * rascunho passa para o próximo concurso, como antes).
+     */
+    val excluirRascunhosVencidos: Boolean = false,
 ) {
     companion object {
         /** O k1 do aviso quando ele é ligado pela primeira vez. */
@@ -223,6 +228,12 @@ data class Aposta(
      * na conferência, devolve a aposta a isto. Some na aprovação.
      */
     val antesDoAnexo: JogoDaAposta? = null,
+    /**
+     * O porquê de a aposta não ter ido para o carrinho do site no último "Efetivar apostas" (desde a 0.44; null = não
+     * tentou ou foi). Só com ele a página da aposta e os Comprovantes mostram o "Confirmar" (pedido do usuário: "ele só
+     * passa a aparecer se a efetivação falhar"); quando a aposta entra no carrinho, o app já confirma sozinho.
+     */
+    val falhaNaEfetivacao: String? = null,
 ) {
     /** Faz parte de uma teimosinha já registrada. */
     val ehTeimosinha: Boolean get() = teimosinhaDe != null && teimosinha > 1

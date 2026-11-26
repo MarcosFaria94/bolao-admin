@@ -139,6 +139,14 @@ import io.github.marcosfaria94.bolao.ui.caixa.NavegadorDaCaixa
 import io.github.marcosfaria94.bolao.ui.caixa.PaginaFixaDaCaixa
 import io.github.marcosfaria94.bolao.ui.caixa.ROTA_CAIXA
 import io.github.marcosfaria94.bolao.ui.caixa.ROTULO_CAIXA
+import io.github.marcosfaria94.bolao.ui.caixa.RECARREGAR_A_PAGINA
+import io.github.marcosfaria94.bolao.ui.painel.ROTA_RASCUNHOS
+import io.github.marcosfaria94.bolao.ui.painel.RascunhosTela
+import io.github.marcosfaria94.bolao.ui.painel.TITULO_RASCUNHOS
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.unit.Velocity
 import io.github.marcosfaria94.bolao.ui.caixa.TITULO_CAIXA
 import io.github.marcosfaria94.bolao.ui.caixa.tecladoAberto
 import androidx.compose.runtime.DisposableEffect
@@ -228,12 +236,12 @@ internal fun paginaAoSoltar(comeco: Int, agora: Float, velocidade: Float): Int {
 private const val VELOCIDADE_DA_TROCA = 900f
 
 /** Telas que não limpam o filtro do Histórico: o próprio "Filtrar", os Comprovantes e o Painel de Jogos. */
-private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_PAINEL, ROTA_FAVORITOS)
+private val MANTEM_O_FILTRO = setOf(ROTA_FILTRO, ROTA_COMPROVANTES, ROTA_PAINEL, ROTA_FAVORITOS, ROTA_RASCUNHOS)
 
 /** Telas sem a seta de voltar na barra de cima (fecham deslizando o dedo, puxando para baixo ou pelo voltar do celular). */
 private val SEM_SETA = setOf(
     "aporte", "rateio", "extrato", "extrato/{mes}", ROTA_FILTRO, "saldo", ROTA_COMPROVANTES, ROTA_PAINEL, ROTA_SECAO_AJUSTES, "integridade",
-    ROTA_INDICES, ROTA_SESSOES, ROTA_FAVORITOS, ROTA_ESTATISTICAS,
+    ROTA_INDICES, ROTA_SESSOES, ROTA_FAVORITOS, ROTA_ESTATISTICAS, ROTA_RASCUNHOS,
 )
 
 /** A página do jogo (o volante, a aposta aberta ou os Detalhes): nos Detalhes, o título "← Aposta" também volta. */
@@ -392,6 +400,27 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         }
         onDispose { caixa.aoDeslizar = null }
     }
+    // Puxar a página da Caixa para baixo, com ela no alto (desde a 0.44, pedido do usuário: "faça abrir o Painel de Jogos
+    // ao empurrar a tela da Caixa pra baixo"): a página passa o puxão para cá, que abre o Painel como nas outras abas. É um
+    // puxão à parte do das abas (o das abas continua desligado na Caixa desde a 0.42: no meio da página, puxar rola o site).
+    val puxaoDaCaixa = rememberPuxaoAlemDaBorda(vertical = true, noInicio = { nav.navigate(ROTA_PAINEL) { launchSingleTop = true } })
+    DisposableEffect(caixa, puxaoDaCaixa) {
+        caixa.aoPuxar = { fase, valor ->
+            when (fase) {
+                FaseDoDeslize.COMECO -> Unit
+                FaseDoDeslize.ARRASTO -> {
+                    val usado = puxaoDaCaixa.onPreScroll(Offset(0f, valor), NestedScrollSource.UserInput).y
+                    val resto = valor - usado
+                    if (resto != 0f) puxaoDaCaixa.onPostScroll(Offset.Zero, Offset(0f, resto), NestedScrollSource.UserInput)
+                }
+                FaseDoDeslize.FIM -> escopo.launch {
+                    puxaoDaCaixa.onPreFling(Velocity(0f, valor))
+                    puxaoDaCaixa.onPostFling(Velocity.Zero, Velocity.Zero)
+                }
+            }
+        }
+        onDispose { caixa.aoPuxar = null }
+    }
     // Tocar na aba em que já se está: a lista dela volta ao começo (um contador por aba).
     val toques = remember { mutableStateListOf(*Array(Aba.entries.size) { 0 }) }
     /** Vai para a aba [aba], fechando o que estiver aberto por cima. */
@@ -481,6 +510,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         ROTA_COMPROVANTES -> "Comprovantes"
         ROTA_PAINEL -> "Painel de Jogos"
         ROTA_FAVORITOS -> TITULO_FAVORITOS
+        ROTA_RASCUNHOS -> TITULO_RASCUNHOS
         ROTA_SESSOES -> TITULO_SESSOES
         ROTA_SECAO_AJUSTES -> SecaoAjuste.de(e?.arguments?.getString("secao"))?.titulo(estado.individual) ?: "Ajustes"
         "aporte" -> "Aporte"
@@ -541,7 +571,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                 BarraTitulo(
                     titulo,
                     // Com mais de uma sessão, o nome da sessão em uso embaixo do título das abas (desde a 0.21).
-                    subtitulo = nomeDaSessao.takeIf { ehAba && !naCaixa && variasSessoes && !teste },
+                    subtitulo = nomeDaSessao.takeIf { ehAba && variasSessoes && !teste },
                     tituloVolta = rota in ROTAS_DO_JOGO,
                     corTitulo = if (doPainel) MaterialTheme.colorScheme.primary else Color.Unspecified,
                     antesDoTitulo = if (rota == ROTA_PAINEL) {
@@ -560,14 +590,20 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     },
                     acoes = {
                         // Nas abas: o "Alternar sessão" (desde a 0.21) e o ícone do Painel de Jogos (com as pendências), à direita do título.
-                        // Desde a 0.43 a calculadora ao lado do "Alternar sessão" (até a 0.42, um ícone nos Detalhes).
-                        if (ehAba && !naCaixa) {
+                        // Desde a 0.43 a calculadora ao lado do "Alternar sessão" (até a 0.42, um ícone nos Detalhes); desde a 0.44
+                        // só na aba Jogos (pedido do usuário: "ela só deve existir na página de Jogos").
+                        // Na aba da Loteria (desde a 0.44, pedido do usuário): o recarregar de volta (saiu na 0.42), antes da sessão
+                        // e do Painel, que também voltaram (de 0.31 a 0.43 a Caixa não tinha os dois).
+                        if (ehAba) {
+                            if (naCaixa) {
+                                IconButton(onClick = { caixa.recarregar() }) {
+                                    Icon(Icons.Outlined.Refresh, contentDescription = RECARREGAR_A_PAGINA, modifier = Modifier.size(28.dp))
+                                }
+                            }
                             BotaoDaSessao { nav.navigate(ROTA_SESSOES) { launchSingleTop = true } }
-                            BotaoDaCalculadora { abrirCalculadora(null) }
+                            if (abaAtual == Aba.JOGOS) BotaoDaCalculadora { abrirCalculadora(null) }
                             BotaoDoPainel(noContador) { abrirPainel() }
                         }
-                        // Na aba da Caixa, nada aqui desde a 0.42 (pedido do usuário): o recarregar saiu e o "Transcrever em
-                        // lote" virou o botão flutuante "Efetivar apostas", na página (ao lado do cadeado).
                         // Os ícones da tela (desde a 0.38 as Estatísticas, nos Detalhes; a calculadora saiu de lá na 0.43), no canto direito.
                         acao?.icones?.forEach { i ->
                             IconButton(onClick = i.aoTocar) {
@@ -609,7 +645,11 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                                     abaAtual == aba && aba == Aba.CAIXA -> caixa.paraOTopo()
                                     // Já nesta aba: a lista volta ao começo.
                                     abaAtual == aba -> toques[i]++
-                                    else -> escopo.launch { mostrar(aba) }
+                                    else -> {
+                                        // Saindo da Caixa pelo botão de outra tela, o cadeado se abre (desde a 0.44, pedido do usuário).
+                                        if (abaAtual == Aba.CAIXA) caixa.abrirCadeado()
+                                        escopo.launch { mostrar(aba) }
+                                    }
                                 }
                             },
                             // Poucos botões: os ícones maiores, para ficarem mais visíveis.
@@ -718,6 +758,13 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
                     Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) {
                         PainelDeJogosTela(estado, resumo, abrir = ::abrir, apostar = { irParaAba(Aba.JOGOS) })
                     }
+                }
+            }
+            // Os rascunhos (desde a 0.44, a linha "Rascunhos" do Painel; até a 0.43, "Apostas não registradas", que abria o
+            // primeiro deles): a lista, com o "Registrar em lote". Fecham como o Painel.
+            composable(ROTA_RASCUNHOS) { e ->
+                TelaDeCima(nav, e) {
+                    Box(Modifier.fillMaxSize().deslizarParaFechar { fechar(nav, e) }) { RascunhosTela(estado, abrir = ::abrir) }
                 }
             }
             // Os jogos favoritos (desde a 0.29, o botão embaixo de "MEUS JOGOS" no Painel): fecham como o Painel.
@@ -838,7 +885,7 @@ private fun Principal(estado: Estado, atualizacao: AtualizacaoViewModel, teste: 
         }
         // A página da Caixa congelada (desde a 0.33): o site numa camada por cima das abas, presa à janela (a tela da Caixa
         // só reserva o lugar); com a Caixa fechada, ou com outra tela por cima, fica de lado.
-        PaginaFixaDaCaixa(caixa) {
+        PaginaFixaDaCaixa(caixa, puxaoDaCaixa) {
             // Onde a página da Caixa está agora, em páginas (0 = na tela; 1 = uma tela à direita); longe, null.
             if (!ehAba) {
                 null
@@ -889,16 +936,32 @@ private suspend fun atualizarConcursos(ctx: Context, itens: Map<Modalidade, Indi
     if (proximos.isEmpty()) return
     val repo = ctx.bolao.repo
     var mudadas: List<Pair<Aposta, Aposta>> = emptyList()
+    var excluidos: List<Aposta> = emptyList()
     runCatching {
         repo.atualizar { e ->
-            val (novo, lista) = Operacoes.atualizarConcursos(e, proximos)
+            // Com o parâmetro "Excluir rascunho ao virar o concurso" (desde a 0.44), o rascunho vencido sai antes.
+            val (semVencidos, fora) = Operacoes.excluirRascunhosVencidos(e, proximos)
+            excluidos = fora
+            val (novo, lista) = Operacoes.atualizarConcursos(semVencidos, proximos)
             mudadas = lista
-            novo
+            // O preço do concurso novo (desde a 0.44: a Quina Friday teve outro preço).
+            Operacoes.corrigirPrecos(novo)
         }
     }
+    if (excluidos.isNotEmpty()) repo.avisar(avisoDosRascunhosExcluidos(excluidos))
     mudadas.firstOrNull()?.let { (antes, depois) ->
         val outras = if (mudadas.size > 1) " (e mais ${mudadas.size - 1})" else ""
         repo.avisar("O concurso ${antes.concurso} da ${antes.modalidade.nome} já foi sorteado: a aposta passou para o ${depois.concurso}$outras.")
+    }
+}
+
+/** O aviso dos rascunhos excluídos sozinhos (desde a 0.44): "Rascunho da Quina excluído: o concurso 7172 já foi sorteado." */
+fun avisoDosRascunhosExcluidos(excluidos: List<Aposta>): String {
+    val a = excluidos.first()
+    return if (excluidos.size == 1) {
+        "Rascunho da ${a.modalidade.nome} excluído: o concurso ${a.concurso} já foi sorteado."
+    } else {
+        "${excluidos.size} rascunhos excluídos: os concursos deles já foram sorteados."
     }
 }
 

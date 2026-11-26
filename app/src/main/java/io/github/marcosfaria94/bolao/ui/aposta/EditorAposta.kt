@@ -1,5 +1,6 @@
 package io.github.marcosfaria94.bolao.ui.aposta
 
+import androidx.compose.material.icons.outlined.NoteAdd
 import io.github.marcosfaria94.bolao.domain.Limites
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.ui.text.AnnotatedString
@@ -352,6 +353,7 @@ fun SecaoVolante(
     atualizando: Boolean = false,
     aoAtualizar: () -> Unit = {},
     aoRegistrar: (registrada: Aposta, feitas: List<Aposta>) -> Unit = { _, _ -> },
+    aoNovoRascunho: (() -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val repo = remember { ctx.bolao.repo }
@@ -368,7 +370,8 @@ fun SecaoVolante(
     // Nas respostas que chegam depois (Caixa, arquivo escolhido), vale a aposta como está agora.
     val atual by rememberUpdatedState(r)
     val mudarAtual by rememberUpdatedState(mudar)
-    val precoSimples = estado.config.preco(m)
+    // O preço de Ajustes ou, num concurso com outro preço (desde a 0.44, ex.: a Quina Friday), o dele.
+    val precoSimples = if (federal) estado.config.preco(m) else Operacoes.precoSimples(estado, m, r.concurso)
     fun mudarPalpite(p: Palpite) {
         // Com mais (ou menos) números, o preço acompanha as apostas simples que cabem no palpite.
         val antes = Volante.apostasSimples(m, atual.numeros.size, atual.trevos.size)
@@ -625,6 +628,19 @@ fun SecaoVolante(
                         ) { Text("Limpar") }
                     }
                 }
+                // Desde a 0.44 (pedido do usuário: "permita que a mesma modalidade possa fazer vários rascunhos"): com o volante
+                // completo, o "Novo rascunho" guarda este e começa outro, vazio, no mesmo concurso.
+                if (aoNovoRascunho != null && ficaEmAndamento(r)) {
+                    OutlinedButton(
+                        onClick = aoNovoRascunho,
+                        enabled = !registrando && !conferindo,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Outlined.NoteAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(NOVO_RASCUNHO, maxLines = 1)
+                    }
+                }
                 // Desde a 0.28: o jogo favorito (a estrelinha do Painel de Jogos) preenche o volante. Com um só, ele
                 // vai direto; com mais, a lista para escolher.
                 if (favoritos.isNotEmpty()) {
@@ -705,11 +721,11 @@ fun SecaoVolante(
         val explicacao = if (individual) {
             "Desconta ${Dinheiro.rs(total)} do saldo. Dá para excluir " + (if (varias) "as apostas" else "a aposta") + " depois."
         } else if (varias) {
-            "Desconta ${Dinheiro.rs(total)} do saldo. Depois, faça as apostas no site da Caixa (botão Caixa, \"Transcrever em lote\") " +
-                "e confirme: até a confirmação, elas ainda podem ser descartadas."
+            "Desconta ${Dinheiro.rs(total)} do saldo. Depois, efetive as apostas na aba Loteria (botão \"Efetivar apostas\"): " +
+                "até lá, elas ainda podem ser descartadas."
         } else {
-            "Desconta ${Dinheiro.rs(r.valor)} do saldo. Depois, faça a aposta no site da Caixa (botão Caixa, \"Transcrever em lote\") " +
-                "e confirme: até a confirmação, ela ainda pode ser descartada."
+            "Desconta ${Dinheiro.rs(r.valor)} do saldo. Depois, efetive a aposta na aba Loteria (botão \"Efetivar apostas\"): " +
+                "até lá, ela ainda pode ser descartada."
         }
         DialogoSimNao(
             titulo = if (varias) "Deseja registrar as apostas?" else "Deseja registrar aposta?",
@@ -747,20 +763,26 @@ fun AvisoDoComprovante(apostas: List<Aposta>, aoIrParaACaixa: () -> Unit) {
 fun textoFaltaComprovante(numeros: List<Int>): String {
     val lista = numeros.sorted().map { "Nº$it" }
     val quais = if (lista.size == 1) "a aposta ${lista[0]}" else "as apostas " + lista.dropLast(1).joinToString(", ") + " e " + lista.last()
-    val fazer = if (lista.size == 1) "faça a aposta" else "faça as apostas"
-    return "Falta confirmar $quais: $fazer no site da Caixa (\"Transcrever em lote\") e confirme depois de pagar."
+    val ela = if (lista.size == 1) "ela entra" else "elas entram"
+    return "Falta efetivar $quais: efetive na aba Loteria (botão \"Efetivar apostas\"). Quando $ela no carrinho do site, o app confirma sozinho."
 }
 
 /** O aviso do volante pronto, no bolão: registrar, fazer o jogo no site da Caixa e confirmar (desde a 0.36). */
 fun textoDoVolantePronto(apostas: Int, comEspelho: Boolean, concursos: Int): String =
     if (apostas > 1) {
-        "Registre as apostas e faça o jogo no site da Caixa (botão Caixa, \"Transcrever em lote\")" +
+        "Registre as apostas e efetive na aba Loteria (botão \"Efetivar apostas\")" +
             (if (comEspelho) ", com a Aposta espelho" else "") +
             (if (concursos > 1) ", com a teimosinha de $concursos concursos" else "") +
-            ". Depois de pagar, confirme."
+            ": quando elas entram no carrinho do site, o app confirma sozinho."
     } else {
-        "Registre a aposta e faça o jogo no site da Caixa (botão Caixa, \"Transcrever em lote\"). Depois de pagar, confirme."
+        "Registre a aposta e efetive na aba Loteria (botão \"Efetivar apostas\"): quando ela entra no carrinho do site, o app confirma sozinho."
     }
+
+/** O botão que guarda o volante completo como rascunho e começa outro (desde a 0.44). */
+const val NOVO_RASCUNHO = "Novo rascunho"
+
+/** O aviso do "Novo rascunho" (desde a 0.44). */
+const val AVISO_NOVO_RASCUNHO = "Rascunho guardado: ele fica em Rascunhos, no Painel de Jogos."
 
 /** O botão do volante pronto: "Registrar aposta" ou, com a espelho ou a teimosinha, "Registrar 4 apostas". */
 fun textoRegistrar(apostas: Int): String = if (apostas > 1) "Registrar $apostas apostas" else "Registrar aposta"
@@ -853,8 +875,7 @@ fun mensagemDoRegistro(feitas: List<Aposta>, individual: Boolean): String {
     // Desde a 0.36, o lembrete de fazer o jogo na Caixa e confirmar (até a 0.35, anexar o comprovante da Caixa).
     val lembrete = when {
         individual -> ""
-        feitas.size == 1 -> " Faça a aposta na Caixa e confirme."
-        else -> " Faça as apostas na Caixa e confirme."
+        else -> " Efetive na aba Loteria."
     }
     return texto + lembrete
 }

@@ -209,4 +209,27 @@ object Icones {
             }
         }.build()
     }
+
+    /**
+     * A prancheta com o visto do botão "Efetivar apostas" (desde a 0.44, no lugar do carrinho; pedido do usuário: "troque o
+     * ícone de carrinho por algum outro", e entre as opções mostradas ele escolheu a 13, a prancheta): o "clipboard-check"
+     * dos Tabler Icons (MIT, (c) Paweł Kuna), em traço de 2 numa grade de 24.
+     */
+    val Prancheta: ImageVector by lazy {
+        ImageVector.Builder("Prancheta", 24.dp, 24.dp, 24f, 24f).apply {
+            listOf(
+                "M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2",
+                "M9 5a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2",
+                "M9 14l2 2l4 -4",
+            ).forEach { d ->
+                addPath(
+                    pathData = addPathNodes(d),
+                    stroke = SolidColor(Color.Black),
+                    strokeLineWidth = 2f,
+                    strokeLineCap = StrokeCap.Round,
+                    strokeLineJoin = StrokeJoin.Round,
+                )
+            }
+        }.build()
+    }
 }

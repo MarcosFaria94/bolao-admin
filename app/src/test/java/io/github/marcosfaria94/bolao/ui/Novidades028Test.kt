@@ -188,7 +188,8 @@ class Novidades028Test {
         val texto = textoDosFavoritos(apostas, individual = false)
         assertTrue(texto, texto.startsWith("As 2 apostas vão para os próximos concursos (Quina 7149 e Dia de Sorte 1126), e R$"))
         // Desde a 0.36: fazer os jogos no site da Caixa e confirmar (até a 0.35, anexar os comprovantes).
-        assertTrue(texto, texto.endsWith("Depois, faça os jogos no site da Caixa (botão Caixa, \"Transcrever em lote\") e confirme."))
+        // Desde a 0.44: efetivar na aba Loteria.
+        assertTrue(texto, texto.endsWith("Depois, efetive na aba Loteria (botão \"Efetivar apostas\")."))
         assertEquals(
             "A aposta da Quina vai para o concurso 7149, e ${io.github.marcosfaria94.bolao.domain.Dinheiro.rs(apostas[0].valor)} sai do saldo.",
             textoDosFavoritos(apostas.take(1), individual = true),
@@ -200,7 +201,7 @@ class Novidades028Test {
         assertEquals(e.saldo - apostas.sumOf { it.valor }, depois.saldo)
         // Os favoritos continuam lá (guardam os números para a próxima vez).
         assertEquals(2, depois.favoritos.size)
-        assertEquals("2 apostas registradas (Nº1 a Nº2). Faça as apostas na Caixa e confirme.", mensagemDosFavoritos(feitas, individual = false))
+        assertEquals("2 apostas registradas (Nº1 a Nº2). Efetive na aba Loteria.", mensagemDosFavoritos(feitas, individual = false))
         assertEquals("Aposta Nº1 registrada.", mensagemDosFavoritos(feitas.take(1), individual = true))
         // O palpite do favorito (o volante) traz o mês.
         assertEquals("MARÇO", e.favoritos[1].palpite.extra)

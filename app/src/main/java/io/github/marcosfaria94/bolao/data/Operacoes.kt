@@ -14,6 +14,7 @@ import io.github.marcosfaria94.bolao.domain.LeituraComprovante
 import io.github.marcosfaria94.bolao.domain.Mensagens
 import io.github.marcosfaria94.bolao.domain.Modalidade
 import io.github.marcosfaria94.bolao.domain.Palpite
+import io.github.marcosfaria94.bolao.domain.PrecosDosConcursos
 import io.github.marcosfaria94.bolao.domain.Volante
 import io.github.marcosfaria94.bolao.domain.indices.ResultadoK
 import java.time.LocalDate
@@ -504,6 +505,28 @@ object Operacoes {
     /** Quantas apostas o registro de [a] vai fazer: uma por concurso da teimosinha, vezes 2 com a aposta espelho. */
     fun apostasDoRegistro(a: Aposta): Int = concursosDaTeimosinha(a) * (if (a.espelho && Volante.temEspelho(a.modalidade)) 2 else 1)
 
+    /** O rascunho como ele vai ser registrado: com a teimosinha desligada nos Parâmetros, só no concurso dele. */
+    fun comoVaiSerRegistrado(e: Estado, a: Aposta): Aposta = if (e.parametros.teimosinha && aceitaTeimosinha(a)) a else a.copy(teimosinha = 0)
+
+    /**
+     * Registra de uma vez os rascunhos [ids] (desde a 0.44, o "Registrar em lote" da tela dos Rascunhos), na ordem dada,
+     * cada um como o "Registrar aposta" do volante (com a espelho e os concursos da teimosinha; com a teimosinha desligada
+     * nos Parâmetros, só no concurso dele). Os que já foram registrados ou não existem mais ficam de fora. Devolve o estado
+     * e as apostas registradas, em ordem.
+     */
+    fun registrarEmLote(e: Estado, ids: List<String>, hoje: LocalDate, agora: Long): Pair<Estado, List<Aposta>> {
+        var est = e
+        val feitas = mutableListOf<Aposta>()
+        ids.forEachIndexed { i, id ->
+            val a = est.apostas.firstOrNull { it.id == id && !it.registrada } ?: return@forEachIndexed
+            val final = comoVaiSerRegistrado(est, a)
+            val (x, lista) = registrarTudo(salvarRascunho(est, final), final.id, hoje, agora + i * 100L)
+            est = x
+            feitas += lista
+        }
+        return est to feitas
+    }
+
     /**
      * Registra a aposta [id] com tudo o que ela pede (desde a 0.22): a aposta espelho da Lotomania e a
      * teimosinha, que vira uma aposta por concurso (o da aposta e os seguintes), cada uma com o seu
@@ -637,7 +660,7 @@ object Operacoes {
         val a = e.apostas.first { it.id == id }
         require(a.registrada) { "Registre a aposta antes." }
         require(a.pendenteDeAnexo) { "Esta aposta já foi confirmada." }
-        val conferida = a.copy(pendenteDeAnexo = false, notasDoAnexo = emptyList(), antesDoAnexo = null)
+        val conferida = a.copy(pendenteDeAnexo = false, notasDoAnexo = emptyList(), antesDoAnexo = null, falhaNaEfetivacao = null)
         val texto = blocoAposta(e, conferida, a.dataAposta, saldoAntesDe(e, id, TipoLancamento.APOSTA))
         val c = novoComprovante(
             e, TipoComprovante.APOSTA, Mensagens.tituloAposta(a.numero, a.dataAposta), texto, a.dataAposta, agora,
@@ -784,6 +807,81 @@ object Operacoes {
         }
         return (if (mudadas.isEmpty() && !completou) e else e.copy(apostas = apostas)) to mudadas
     }
+
+    /**
+     * O parâmetro "Excluir rascunho ao virar o concurso" (desde a 0.44, pedido do usuário): com ele ligado, o rascunho
+     * cujo concurso já passou ([concursoDesatualizado]) sai do app, em vez de passar para o próximo concurso. Devolve o
+     * estado e os rascunhos excluídos (desligado, nada muda).
+     */
+    fun excluirRascunhosVencidos(e: Estado, proximos: Map<Modalidade, ProximoConcurso>): Pair<Estado, List<Aposta>> {
+        if (!e.parametros.excluirRascunhosVencidos) return e to emptyList()
+        val vencidos = e.apostas.filter { a -> !a.registrada && proximos[a.modalidade]?.let { concursoDesatualizado(a, it.numero) } == true }
+        if (vencidos.isEmpty()) return e to emptyList()
+        val ids = vencidos.map { it.id }.toSet()
+        return e.copy(apostas = e.apostas.filterNot { it.id in ids }) to vencidos
+    }
+
+    // ---------- o preço dos concursos com preço diferente (desde a 0.44) ----------
+
+    /** O preço da aposta simples da [m] no [concurso]: o do concurso ([PrecosDosConcursos], ex.: a Quina Friday) ou o de Ajustes. */
+    fun precoSimples(e: Estado, m: Modalidade, concurso: Int): Long = PrecosDosConcursos.simples(m, concurso) ?: e.config.preco(m)
+
+    /** O que a aposta [a] deve valer com o preço do concurso dela (só as de números; null = nada a corrigir). */
+    private fun valorCorrigido(e: Estado, a: Aposta): Long? {
+        if (a.modalidade.formato != Formato.NUMEROS || a.numeros.isEmpty()) return null
+        val combinacoes = Volante.apostasSimples(a.modalidade, a.numeros.size, a.trevos.size)
+        val doConcurso = PrecosDosConcursos.simples(a.modalidade, a.concurso)
+        return when {
+            doConcurso != null -> (doConcurso * combinacoes).takeIf { it != a.valor }
+            // O rascunho que saiu de um concurso com preço diferente (passou para o próximo): volta ao preço de Ajustes.
+            !a.registrada && PrecosDosConcursos.daModalidade(a.modalidade).any { a.valor == it.simples * combinacoes } ->
+                (e.config.preco(a.modalidade) * combinacoes).takeIf { it != a.valor && it > 0 }
+            else -> null
+        }
+    }
+
+    /**
+     * Acerta o valor das apostas que ainda não valem (os rascunhos e as registradas que falta efetivar, sem o comprovante
+     * do bolão) num concurso com o preço diferente: a aposta e o lançamento dela (o saldo) passam a ter o preço do concurso.
+     * As já confirmadas não mudam. Sem nada a corrigir, devolve o mesmo estado.
+     */
+    fun corrigirPrecos(e: Estado): Estado {
+        val novos = e.apostas.mapNotNull { a ->
+            if (a.registrada && !aguardandoComprovante(a)) return@mapNotNull null
+            valorCorrigido(e, a)?.let { a.id to it }
+        }.toMap()
+        if (novos.isEmpty()) return e
+        return e.copy(
+            apostas = e.apostas.map { a -> novos[a.id]?.let { a.copy(valor = it) } ?: a },
+            lancamentos = e.lancamentos.map { l ->
+                val v = l.apostaId?.let { novos[it] }
+                if (v != null && l.tipo == TipoLancamento.APOSTA) l.copy(valor = -v) else l
+            },
+        )
+    }
+
+    // ---------- o "Efetivar apostas" (desde a 0.44) ----------
+
+    /**
+     * Guarda o resultado do "Efetivar apostas": as [falhas] (id -> o porquê) ganham a nota que faz aparecer o "Confirmar";
+     * as que foram para o carrinho ([foram]) perdem a nota de uma vez de antes.
+     */
+    fun guardarEfetivacao(e: Estado, falhas: Map<String, String>, foram: Collection<String>): Estado {
+        if (falhas.isEmpty() && e.apostas.none { it.id in foram && it.falhaNaEfetivacao != null }) return e
+        return e.copy(
+            apostas = e.apostas.map { a ->
+                when {
+                    !a.registrada -> a
+                    a.id in falhas -> a.copy(falhaNaEfetivacao = falhas.getValue(a.id).ifBlank { "A efetivação não deu certo." })
+                    a.id in foram -> a.copy(falhaNaEfetivacao = null)
+                    else -> a
+                }
+            },
+        )
+    }
+
+    /** As apostas que falta efetivar e cuja efetivação falhou (as que mostram o "Confirmar"). */
+    fun apostasComFalhaNaEfetivacao(e: Estado): List<Aposta> = apostasSemComprovante(e).filter { it.falhaNaEfetivacao != null }
 
     // ---------- apuração ----------
 

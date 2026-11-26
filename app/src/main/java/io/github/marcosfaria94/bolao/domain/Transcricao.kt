@@ -49,6 +49,8 @@ object Transcricao {
         "saojoao" to Modalidade.QUINA,
         "independencia" to Modalidade.LOTOFACIL,
         "pascoa" to Modalidade.DUPLA_SENA,
+        // A Quina Friday (desde a 0.44; concurso 7173, de novembro de 2026), se o site usar o nome no endereço.
+        "friday" to Modalidade.QUINA,
     )
 
     private fun soLetras(t: String): String =
@@ -94,6 +96,40 @@ object Transcricao {
             Modalidade.FEDERAL -> return null
         }
         return "/" + nome + if (p.especial) "/especial" else ""
+    }
+
+    /**
+     * Os endereços a tentar para chegar à página [p] (desde a 0.44): o dela e, se o site não abrir, o da outra página da
+     * mesma modalidade (o normal no lugar do especial, ou o contrário). Na Quina Friday (concurso 7173) a Caixa vendeu a
+     * Quina só para o concurso especial, e o "#/quina" não abria: o "Efetivar apostas" dizia "Não consegui abrir a página
+     * da Quina no site".
+     */
+    fun fragmentos(p: Pagina): List<String> =
+        listOfNotNull(fragmento(p), fragmento(p.copy(especial = !p.especial))).distinct()
+
+    /** Os nomes da modalidade nos endereços e nos botões do site, sem acento e sem traço ("megasena", "milionaria"). */
+    fun nomesNoSite(m: Modalidade): List<String> = NOS_ENDERECOS.filter { it.second == m }.map { it.first }
+
+    /**
+     * O script que procura na página de agora um link ou botão da modalidade da página [p] (a página inicial do site tem
+     * um para cada jogo) e toca nele: o último recurso para chegar à página quando mudar o endereço não deu. Devolve
+     * "ok" (tocou) ou "nada".
+     */
+    fun scriptDoLink(p: Pagina): String {
+        val nomes = nomesNoSite(p.modalidade).joinToString(",") { textoParaJavascript(it) }
+        return "(function(nomes,especial){" +
+            "function n(t){return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'')}" +
+            "var els=Array.prototype.slice.call(document.querySelectorAll('a[href],[ng-click],[ui-sref],button,[role=\"button\"]'));" +
+            "var melhor=null,nota=0;" +
+            "els.forEach(function(el){var r=el.getBoundingClientRect();if(!(r.width>0&&r.height>0))return;" +
+            "var h=n(el.getAttribute('href'))+' '+n(el.getAttribute('ui-sref'))+' '+n(el.getAttribute('ng-click'));" +
+            "var t=n(el.innerText||el.textContent);if(t.length>40)t='';var p=0;" +
+            "nomes.forEach(function(x){if(h.indexOf(x)>=0)p=Math.max(p,3);if(t&&t.indexOf(x)>=0)p=Math.max(p,2)});" +
+            "if(!p)return;if(/resultado|regra|probabilidade|como/.test(h+t))p-=2;" +
+            "if(especial&&/especial|friday|virada|joao|independencia|pascoa/.test(h+t))p+=1;" +
+            "if(p>nota){nota=p;melhor=el}});" +
+            "if(!melhor||nota<1)return 'nada';melhor.click();return 'ok'" +
+            "})([" + nomes + "]," + p.especial + ")"
     }
 
     /**
@@ -246,6 +282,11 @@ object Transcricao {
         val concurso: Int = 0,
         /** O texto da aposta nas mensagens ("Aposta Nº3"). */
         val titulo: String = "",
+        /**
+         * Conferir o número do concurso na página (desde a 0.44): quando o app chegou à outra página da modalidade (a
+         * normal no lugar da do especial, ou o contrário), a aposta só vai se a página não mostrar só outro concurso.
+         */
+        val conferirConcurso: Boolean = false,
     )
 
     private val json = Json { encodeDefaults = true }

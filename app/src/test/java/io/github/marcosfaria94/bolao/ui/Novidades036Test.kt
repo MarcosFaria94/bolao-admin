@@ -120,10 +120,12 @@ class Novidades036Test {
         // As apostas a confirmar contam à parte; "Sem comprovante" ficou só para os Pix.
         assertEquals(2, resumo.first { it.tipo == TipoDoResumo.CONFIRMAR }.quantidade)
         assertEquals(1, resumo.first { it.tipo == TipoDoResumo.SEM_COMPROVANTE }.quantidade)
-        assertEquals("A confirmar", TipoDoResumo.CONFIRMAR.rotulo)
+        // Desde a 0.44, "Apostas não efetivadas" (era "A confirmar").
+        assertEquals("Apostas não efetivadas", TipoDoResumo.CONFIRMAR.rotulo)
         val p = Pendencias.de(e, hoje.atTime(12, 0)).first { it.chave == "anexo-a" }
-        assertEquals("Confirmar a aposta", p.titulo)
-        assertTrue(p.texto, p.texto.contains("site da Caixa") && p.texto.contains("confirme"))
+        // Desde a 0.44, "Efetivar a aposta" (era "Confirmar a aposta").
+        assertEquals("Efetivar a aposta", p.titulo)
+        assertTrue(p.texto, p.texto.contains("aba Loteria") && p.texto.contains("Efetivar apostas"))
         assertEquals(Pendencias.ABA_COMPROVANTES, p.destino)
         // No Individual não há o que confirmar.
         assertTrue(resumoDasPendencias(e.copy(modo = Modo.INDIVIDUAL), emptyList()).none { it.tipo == TipoDoResumo.CONFIRMAR })
@@ -143,19 +145,21 @@ class Novidades036Test {
         assertTrue(textoDaConfirmacao(2, informal).contains("os comprovantes do bolão são criados e ficam guardados no app"))
         assertEquals("Aposta confirmada: o comprovante está pronto para enviar ao grupo.", mensagemDaConfirmacao(1, formal))
         assertEquals("2 apostas confirmadas: os comprovantes do bolão ficaram guardados no app.", mensagemDaConfirmacao(2, informal))
-        assertEquals("Confirmar a aposta", textoConfirmarTodas(1))
-        assertEquals("Confirmar todas (4)", textoConfirmarTodas(4))
+        // Desde a 0.44 só as que a efetivação não pôs no carrinho.
+        assertEquals("Confirmar a que falhou", textoConfirmarTodas(1))
+        assertEquals("Confirmar as que falharam (4)", textoConfirmarTodas(4))
         assertEquals("Confirmar aposta", textoConfirmarAposta(1))
         assertEquals("Confirmar as 4 apostas", textoConfirmarAposta(4))
         // A faixa da Caixa: desde a 0.39 é a do carrinho (Novidades039Test); a do "Transcrever" de cada página saiu.
         // O aviso do volante pronto.
+        // Desde a 0.44: efetivar na aba Loteria (o app confirma sozinho).
         assertEquals(
-            "Registre a aposta e faça o jogo no site da Caixa (botão Caixa, \"Transcrever em lote\"). Depois de pagar, confirme.",
+            "Registre a aposta e efetive na aba Loteria (botão \"Efetivar apostas\"): quando ela entra no carrinho do site, o app confirma sozinho.",
             textoDoVolantePronto(1, comEspelho = false, concursos = 1),
         )
         assertEquals(
-            "Registre as apostas e faça o jogo no site da Caixa (botão Caixa, \"Transcrever em lote\"), com a Aposta espelho, com a " +
-                "teimosinha de 3 concursos. Depois de pagar, confirme.",
+            "Registre as apostas e efetive na aba Loteria (botão \"Efetivar apostas\"), com a Aposta espelho, com a " +
+                "teimosinha de 3 concursos: quando elas entram no carrinho do site, o app confirma sozinho.",
             textoDoVolantePronto(6, comEspelho = true, concursos = 3),
         )
     }

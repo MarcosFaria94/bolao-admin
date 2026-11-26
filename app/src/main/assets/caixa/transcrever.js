@@ -273,6 +273,18 @@
     return 'desconhecido';
   }
 
+  // Desde a 0.44: quando o app chegou à outra página da modalidade (a normal no lugar da do especial, ou o contrário; ex.:
+  // a Quina Friday, que a Caixa vendeu numa página só), a aposta só vai se a página não mostrar só outro concurso.
+  function conferirConcurso() {
+    if (!plano.conferirConcurso || !(plano.concurso > 0)) return;
+    var t = textoDe(document.body).slice(0, 30000);
+    var re = /concurso\s*(?:n[º°o.]*\s*)?(\d{3,5})/gi, m, achados = [];
+    while ((m = re.exec(t))) achados.push(parseInt(m[1], 10));
+    if (!achados.length || achados.indexOf(plano.concurso) >= 0) return;
+    throw new Parar('A página do site é do concurso ' + achados[0] + ' e ' + plano.titulo + ' é do concurso ' + plano.concurso +
+      ': nada foi para o carrinho. Abra a página do concurso ' + plano.concurso + ' no site e efetive de novo.');
+  }
+
   // ---------- volantes de números ----------
 
   function numerosMarcados() {
@@ -440,6 +452,7 @@
       throw new Parar('O volante da ' + plano.modalidade + ' não apareceu na página. Espere a página carregar (e entre na sua conta, se o site pedir) e efetive de novo.');
     }
     semAvisoAberto();
+    conferirConcurso();
     await limpar(elementosMarcados);
     var caixaEspelho = id('apostaEspelho');
     if (caixaEspelho && caixaEspelho.checked && !plano.espelho) { clicar(caixaEspelho); await esperaAte(function () { return !caixaEspelho.checked; }, 1500); }
@@ -481,6 +494,7 @@
       throw new Parar('O volante da Loteca não apareceu na página. Espere a página carregar (e entre na sua conta, se o site pedir) e efetive de novo.');
     }
     semAvisoAberto();
+    conferirConcurso();
     function indices() {
       var r = [];
       qsa(SEL.palpites).forEach(function (a, i) {
@@ -563,6 +577,7 @@
       throw new Parar(plano.titulo + ' não tem um número em cada uma das 7 colunas.');
     }
     semAvisoAberto();
+    conferirConcurso();
     var todos = [].concat.apply([], grade);
     await limpar(function () { return todos.filter(marcado); });
     var base = todos.map(classeDe);

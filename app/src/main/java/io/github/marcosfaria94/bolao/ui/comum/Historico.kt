@@ -224,7 +224,8 @@ fun etiquetaDoMovimento(e: Estado, mv: Movimento, hoje: LocalDate): Etiqueta? {
             val a = l.apostaId?.let { id -> e.apostas.firstOrNull { it.id == id } } ?: return null
             when {
                 // Desde a 0.36, "A confirmar" (até a 0.35, "Sem comprovante").
-                Operacoes.aguardandoComprovante(a) -> Etiqueta("A confirmar", TomEtiqueta.VERMELHO)
+                // Desde a 0.44 "Não efetivada" (de 0.36 a 0.43, "A confirmar").
+                Operacoes.aguardandoComprovante(a) -> Etiqueta("Não efetivada", TomEtiqueta.VERMELHO)
                 Operacoes.aguardandoConferencia(a) -> Etiqueta("A conferir", TomEtiqueta.ROXO)
                 else -> {
                     val s = situacaoDe(a, hoje)

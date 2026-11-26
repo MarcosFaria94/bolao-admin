@@ -125,7 +125,8 @@ class Novidades030Test {
 
     @Test
     fun textosDoPainel() {
-        assertEquals("Apostas não registradas", TipoDoResumo.REGISTRAR.rotulo)
+        // Desde a 0.44, "Rascunhos" (era "Apostas não registradas").
+        assertEquals("Rascunhos", TipoDoResumo.REGISTRAR.rotulo)
         assertEquals("1 aposta", textoDasApostas(1))
         assertEquals("3 apostas", textoDasApostas(3))
     }

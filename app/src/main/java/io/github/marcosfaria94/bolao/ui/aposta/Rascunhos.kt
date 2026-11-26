@@ -46,17 +46,20 @@ fun novaAposta(estado: Estado, m: Modalidade, ultimo: Concurso?, hoje: LocalDate
             concurso = especial.concurso,
             dataSorteio = especial.dia,
             premioEstimado = especial.premioEstimado,
+            valor = Operacoes.precoSimples(estado, m, especial.concurso),
         )
     }
+    val concurso = if (atual) ultimo?.proximoNumero ?: 0 else 0
     return Aposta(
         id = novoId(),
         numero = 0,
         modalidade = m,
-        concurso = if (atual) ultimo?.proximoNumero ?: 0 else 0,
+        concurso = concurso,
         dataAposta = hoje,
         dataSorteio = if (atual) ultimo?.proximaData else null,
         premioEstimado = if (atual) ultimo?.premioEstimadoProximo else null,
-        valor = estado.config.preco(m),
+        // O preço de Ajustes ou, num concurso com outro preço (desde a 0.44, ex.: a Quina Friday), o dele.
+        valor = Operacoes.precoSimples(estado, m, concurso),
         // Super Sete: as 7 colunas sem número (-1), como depois do "Limpar".
         numeros = if (m.formato == Formato.COLUNAS) List(Volante.COLUNAS_SUPER_SETE) { -1 } else emptyList(),
         fracoesFederal = if (m == Modalidade.FEDERAL) 10 else null,
@@ -75,6 +78,8 @@ fun proximaAposta(estado: Estado, registrada: Aposta, hoje: LocalDate, agora: Lo
         dataSorteio = registrada.dataSorteio,
         premioEstimado = registrada.premioEstimado,
         jogosLoteca = registrada.jogosLoteca,
+        valor = if (registrada.modalidade == Modalidade.FEDERAL) estado.config.preco(registrada.modalidade)
+        else Operacoes.precoSimples(estado, registrada.modalidade, registrada.concurso),
     )
 
 /**
@@ -242,6 +247,17 @@ class ApostaEmEdicao(
         conhecidas += proxima
         vistaGravada = false
         nova = true
+    }
+
+    /**
+     * "Novo rascunho" (desde a 0.44, pedido do usuário: "permita que a mesma modalidade possa fazer vários rascunhos"): a
+     * aposta do volante fica guardada como rascunho (com o volante completo ela já está) e o volante recomeça vazio, no
+     * mesmo concurso, numa aposta nova ([proxima]). Os rascunhos ficam na tela Rascunhos (Painel de Jogos).
+     */
+    fun novoRascunho(proxima: Aposta) {
+        val a = aposta
+        if (ficaEmAndamento(a)) repo.enfileirar { e -> if (e.apostas.any { it.id == a.id && it.registrada }) e else Operacoes.salvarRascunho(e, a) }
+        recomecar(proxima, emptyList())
     }
 
     /**

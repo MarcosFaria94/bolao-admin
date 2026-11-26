@@ -60,7 +60,8 @@ fun quantosEmAndamento(e: Estado, hoje: LocalDate): Int = jogosEmAndamento(e, ho
  */
 fun pendenciaDoJogo(e: Estado, a: Aposta): String? = when {
     !a.registrada -> "Aposta não registrada"
-    Operacoes.aguardandoComprovante(a) -> "A confirmar"
+    // Desde a 0.44 "Não efetivada" (de 0.36 a 0.43, "A confirmar").
+    Operacoes.aguardandoComprovante(a) -> "Não efetivada"
     Operacoes.aguardandoConferencia(a) -> "A conferir"
     !e.individual && Operacoes.comprovanteDaAposta(e, a)?.let { !it.envioDispensado && !e.enviado(it) } == true -> "Enviar ao grupo"
     else -> null

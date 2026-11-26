@@ -1,5 +1,8 @@
 package io.github.marcosfaria94.bolao.ui.comprovantes
 
+import io.github.marcosfaria94.bolao.ui.comum.Icones
+import io.github.marcosfaria94.bolao.ui.aposta.IR_PARA_A_CAIXA
+import io.github.marcosfaria94.bolao.ui.caixa.ROTA_CAIXA
 import android.app.Application
 import android.content.Context
 import android.net.Uri
@@ -121,13 +124,14 @@ class ComprovantesViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     /** Confirma todas as apostas a confirmar (desde a 0.36), criando os comprovantes do bolão. */
-    fun confirmarTodas(context: Context, aoFim: (String) -> Unit) {
+    /** Confirma as apostas [ids] (desde a 0.44 só as que a efetivação não pôs no carrinho; até a 0.43, todas as que esperavam). */
+    fun confirmarTodas(context: Context, ids: List<String>, aoFim: (String) -> Unit) {
         if (confirmando) return
         confirmando = true
         viewModelScope.launch {
             try {
                 val e = repo.atual()
-                val feitas = confirmarApostas(context, Operacoes.apostasSemComprovante(e).map { it.id }, repo)
+                val feitas = confirmarApostas(context, ids, repo)
                 aoFim(mensagemDaConfirmacao(feitas, e))
             } catch (t: Throwable) {
                 aoFim("Não foi possível confirmar tudo: ${t.message}")
@@ -292,6 +296,8 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
     var pedirConfirmacao by remember { mutableStateOf(false) }
 
     val semComprovante = Operacoes.apostasSemComprovante(estado)
+    // Desde a 0.44 o "Confirmar" só aparece para as que a efetivação não pôs no carrinho (as que vão o app confirma sozinho).
+    val comFalha = Operacoes.apostasComFalhaNaEfetivacao(estado)
     val rateiosSemPix = Operacoes.rateiosSemPix(estado)
     val apostasConferir = Operacoes.apostasParaConferir(estado)
     val rateiosConferir = Operacoes.rateiosParaConferir(estado)
@@ -320,17 +326,29 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
                             LinhaEsperando(
                                 emblema = { SeloModalidade(a.modalidade, 40.dp) },
                                 titulo = "Aposta Nº${a.numero} · ${a.modalidade.nome}",
-                                texto = "Registrada ${Datas.relativa(a.dataAposta, LocalDate.now()).lowercase()} · ${Dinheiro.rs(a.valor)}",
+                                texto = "Registrada ${Datas.relativa(a.dataAposta, LocalDate.now()).lowercase()} · ${Dinheiro.rs(a.valor)}" +
+                                    if (a.falhaNaEfetivacao != null) " · $EFETIVACAO_FALHOU" else "",
                                 aoTocar = { abrir("aposta/${a.id}") },
                             )
                         }
-                        Button(
-                            onClick = { pedirConfirmacao = true },
+                        OutlinedButton(
+                            onClick = { abrir(ROTA_CAIXA) },
                             enabled = !vm.confirmando,
                             modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                         ) {
-                            if (vm.confirmando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            else Text(textoConfirmarTodas(semComprovante.size))
+                            Icon(Icones.TrevoDaCaixa, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(IR_PARA_A_CAIXA)
+                        }
+                        if (comFalha.isNotEmpty()) {
+                            Button(
+                                onClick = { pedirConfirmacao = true },
+                                enabled = !vm.confirmando,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (vm.confirmando) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                else Text(textoConfirmarTodas(comFalha.size))
+                            }
                         }
                         // Desde a 0.25: descarta de uma vez as apostas que ainda não valem (com a confirmação).
                         TextButton(onClick = { confirmarDescarte = true }, enabled = !vm.confirmando, modifier = Modifier.fillMaxWidth()) {
@@ -508,12 +526,12 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
 
     if (pedirConfirmacao) {
         DialogoConfirmar(
-            titulo = tituloDaConfirmacao(semComprovante.map { it.numero }.sorted()),
-            texto = textoDaConfirmacao(semComprovante.size, estado),
+            titulo = tituloDaConfirmacao(comFalha.map { it.numero }.sorted()),
+            texto = textoDaConfirmacao(comFalha.size, estado),
             confirmar = CONFIRMAR,
             aoConfirmar = {
                 pedirConfirmacao = false
-                vm.confirmarTodas(ctx, avisar)
+                vm.confirmarTodas(ctx, comFalha.map { it.id }, avisar)
             },
             aoFechar = { pedirConfirmacao = false },
         )
@@ -544,13 +562,17 @@ fun ComprovantesTela(estado: Estado, abrir: (String) -> Unit, vm: ComprovantesVi
 }
 
 /** O título da seção das apostas a confirmar (desde a 0.36; até a 0.35 elas ficavam em "Esperando comprovante"). */
-const val SECAO_CONFIRMAR = "Confirmar apostas"
+const val SECAO_CONFIRMAR = "Apostas não efetivadas"
+
+/** A marca da aposta cuja efetivação falhou (desde a 0.44: só ela mostra o "Confirmar"). */
+const val EFETIVACAO_FALHOU = "efetivação falhou"
 
 /** O que fazer com as apostas a confirmar. */
-const val TEXTO_CONFIRMAR = "Faça as apostas no site da Caixa (botão Caixa, \"Transcrever em lote\") e confirme depois de pagar."
+const val TEXTO_CONFIRMAR = "Efetive as apostas na aba Loteria (botão \"Efetivar apostas\"): quando elas entram no carrinho do site, o " +
+    "app confirma sozinho. Se a efetivação falhar e você apostar direto no site, confirme aqui."
 
 /** O botão que confirma as apostas: "Confirmar a aposta" ou "Confirmar todas (3)". */
-fun textoConfirmarTodas(apostas: Int): String = if (apostas == 1) "Confirmar a aposta" else "Confirmar todas ($apostas)"
+fun textoConfirmarTodas(apostas: Int): String = if (apostas == 1) "Confirmar a que falhou" else "Confirmar as que falharam ($apostas)"
 
 /** O botão da seção das apostas a confirmar (desde a 0.25): descarta de uma vez as que ainda não valem. */
 const val DESCARTAR_TUDO = "Descartar tudo"

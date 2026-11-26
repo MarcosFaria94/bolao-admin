@@ -16,7 +16,6 @@ import io.github.marcosfaria94.bolao.ui.caixa.corDoCss
 import io.github.marcosfaria94.bolao.ui.caixa.corDoIconeDoCadeado
 import io.github.marcosfaria94.bolao.ui.caixa.lerCookie
 import io.github.marcosfaria94.bolao.ui.caixa.lugarDoCadeado
-import io.github.marcosfaria94.bolao.ui.caixa.tituloDoCarrinho
 import io.github.marcosfaria94.bolao.ui.jogos.TECLAS_INOCUAS
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -69,11 +68,11 @@ class Novidades039Test {
         assertEquals(141f, espelho.tamanho, 0.5f)
         assertEquals(81f, espelho.direita, 0.5f)
         assertEquals(81f, espelho.baixo, 0.5f)
-        // O ícone passou para a direita: o cadeado logo acima dele, no mesmo eixo.
+        // O ícone à direita (outro site): desde a 0.44 o cadeado fica logo à esquerda dele, na mesma altura (era logo acima).
         val direita = esquerda.copy(x = 1f - (81f + 70.5f) / largura, direita = true)
-        val acima = lugarDoCadeado(direita, largura, altura, d)
-        assertEquals(81f, acima.direita, 0.5f)
-        assertEquals(81f + 141f + 8f * d, acima.baixo, 0.5f)
+        val aoLado = lugarDoCadeado(direita, largura, altura, d)
+        assertEquals(81f + 141f + 8f * d, aoLado.direita, 0.5f)
+        assertEquals(81f, aoLado.baixo, 0.5f)
         // A cor: a do ícone (com a opacidade); sem ela, o azul a 50% da foto; o ícone branco, num fundo claro azul-noite.
         assertEquals(Color(COR_DO_COOKIE), corDoCadeado(null))
         assertEquals(0.4f, corDoCadeado(c.copy(cor = 0xFF0056A7.toInt(), opacidade = 0.4f)).alpha, 0.01f)
@@ -81,11 +80,7 @@ class Novidades039Test {
         assertEquals(Color(0xFF13294B), corDoIconeDoCadeado(Color(0xFFF5F5F5)))
     }
 
-    @Test
-    fun soOLote() {
-        assertEquals("1 aposta no carrinho", tituloDoCarrinho(1))
-        assertEquals("3 apostas no carrinho", tituloDoCarrinho(3))
-    }
+    // A faixa do carrinho (tituloDoCarrinho) saiu na 0.44: a aposta que entra no carrinho já fica confirmada.
 
     @Test
     fun porcentagemComTil() {

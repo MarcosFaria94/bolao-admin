@@ -33,7 +33,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
-import androidx.compose.material.icons.outlined.AddShoppingCart
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -76,7 +75,12 @@ import io.github.marcosfaria94.bolao.data.Estado
 import io.github.marcosfaria94.bolao.domain.Dinheiro
 import io.github.marcosfaria94.bolao.domain.Efetivacao
 import io.github.marcosfaria94.bolao.domain.Efetivacao.Situacao
+import io.github.marcosfaria94.bolao.bolao
+import io.github.marcosfaria94.bolao.data.Operacoes
+import io.github.marcosfaria94.bolao.ui.comum.Icones
 import io.github.marcosfaria94.bolao.ui.comum.SeloModalidade
+import io.github.marcosfaria94.bolao.ui.comum.confirmarApostas
+import androidx.compose.ui.platform.LocalContext
 import io.github.marcosfaria94.bolao.ui.tema.AzulMarinho
 import io.github.marcosfaria94.bolao.ui.tema.Dourado
 import kotlinx.coroutines.launch
@@ -142,7 +146,7 @@ fun BoxScope.BotaoDeEfetivar(navegador: NavegadorDaCaixa, medida: MedidaDaPagina
                 modifier = Modifier.fillMaxSize().semantics { contentDescription = nomeDoBotaoDeEfetivar(pendentes) },
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Outlined.AddShoppingCart, contentDescription = null, modifier = Modifier.size(tamanho * 0.5f))
+                    Icon(Icones.Prancheta, contentDescription = null, modifier = Modifier.size(tamanho * 0.5f))
                 }
             }
             if (chama) {
@@ -178,7 +182,10 @@ private val VAO_DOS_BOTOES = 8.dp
  */
 @Composable
 fun AreaDeEfetivar(estado: Estado, navegador: NavegadorDaCaixa, aoFechar: () -> Unit) {
+    val ctx = LocalContext.current
     val escopo = rememberCoroutineScope()
+    // O fim do último lote (desde a 0.44): quantas foram (e já ficaram confirmadas) e quantas não foram.
+    var fim by remember { mutableStateOf<FimDoLote?>(null) }
     val lista = remember(estado) { Efetivacao.lista(estado, LocalDate.now()) }
     val grupos = remember(lista) { Efetivacao.grupos(lista) }
     var escolhidas by remember { mutableStateOf(Efetivacao.preSelecionadas(lista, navegador.transcritas, navegador.situacoes)) }
@@ -209,6 +216,7 @@ fun AreaDeEfetivar(estado: Estado, navegador: NavegadorDaCaixa, aoFechar: () -> 
                     aoEntrar = aoFechar,
                 )
                 if (lista.isEmpty()) {
+                    if (rodou && !rodando) fim?.let { ResumoDoLote(it) }
                     Box(Modifier.weight(1f).fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                         Text("Nenhuma aposta esperando o site.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -225,7 +233,7 @@ fun AreaDeEfetivar(estado: Estado, navegador: NavegadorDaCaixa, aoFechar: () -> 
                         Spacer(Modifier.weight(1f))
                         Text(Efetivacao.resumo(lista, escolhidas), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (rodou && !rodando) ResumoDoLote(lista.map { situacao(it) })
+                    if (rodou && !rodando) fim?.let { ResumoDoLote(it) }
                     LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
                         grupos.forEach { g ->
                             item(key = "g:${g.modalidade}:${g.concurso}:${g.especial}") { CabecalhoDoGrupo(g) }
@@ -247,7 +255,7 @@ fun AreaDeEfetivar(estado: Estado, navegador: NavegadorDaCaixa, aoFechar: () -> 
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
                     if (!estado.individual) {
                         Text(
-                            "O pagamento continua no site. Depois de pagar, confirme aqui na faixa do carrinho.",
+                            TEXTO_DO_PAGAMENTO,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 8.dp),
@@ -258,7 +266,11 @@ fun AreaDeEfetivar(estado: Estado, navegador: NavegadorDaCaixa, aoFechar: () -> 
                     Button(
                         onClick = {
                             rodou = true
-                            escopo.launch { navegador.efetivar(marcadas) }
+                            fim = null
+                            escopo.launch {
+                                navegador.efetivar(marcadas)
+                                fim = depoisDoLote(ctx, marcadas, navegador)
+                            }
                         },
                         enabled = marcadas.isNotEmpty() && !rodando && !fechada && navegador.sessao != Efetivacao.Sessao.VERIFICANDO,
                         colors = ButtonDefaults.buttonColors(containerColor = AzulMarinho, contentColor = Dourado),
@@ -270,7 +282,7 @@ fun AreaDeEfetivar(estado: Estado, navegador: NavegadorDaCaixa, aoFechar: () -> 
                             val feitas = lista.count { navegador.situacoes[it.chave].let { s -> s != null && s != Situacao.NaFila && s != Situacao.Indo } && it.chave in escolhidas }
                             Text("Efetivando ${feitas + 1} de ${marcadas.size}…", fontWeight = FontWeight.Bold)
                         } else {
-                            Icon(Icons.Outlined.AddShoppingCart, null, modifier = Modifier.size(20.dp))
+                            Icon(Icones.Prancheta, null, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 when {
@@ -324,17 +336,66 @@ private fun FaixaDaSessao(s: Efetivacao.Sessao, rodando: Boolean, aoVerificar: (
     }
 }
 
-/** No fim do lote: quantas foram para o carrinho e quantas não. */
+/** O fim de um lote (desde a 0.44): quantas apostas foram para o carrinho, quantas delas o app confirmou e quantas não foram. */
+data class FimDoLote(val foram: Int, val confirmadas: Int, val falharam: Int)
+
+/**
+ * Depois do lote (desde a 0.44, pedido do usuário: "extinga o botão Confirmar aposta, ele só passa a aparecer se a
+ * efetivação falhar"): as apostas que entraram no carrinho do site já são confirmadas (o comprovante do bolão sai, como
+ * no "Confirmar" de antes) e as que não foram guardam o porquê, que faz aparecer o "Confirmar" na página delas e nos
+ * Comprovantes (para quem fez a aposta direto no site). Se a confirmação der erro, as do carrinho ficam com o porquê
+ * também (e o "Confirmar" aparece para elas).
+ */
+private suspend fun depoisDoLote(ctx: android.content.Context, marcadas: List<Efetivacao.Linha>, navegador: NavegadorDaCaixa): FimDoLote {
+    val repo = ctx.bolao.repo
+    val foram = marcadas.filter { navegador.situacoes[it.chave] == Situacao.NoCarrinho }.flatMap { it.item.ids }
+    val falhas = marcadas.mapNotNull { l -> (navegador.situacoes[l.chave] as? Situacao.Falhou)?.let { l to it.mensagem } }
+        .flatMap { (l, msg) -> l.item.ids.map { it to msg } }.toMap()
+    val foramLinhas = marcadas.count { navegador.situacoes[it.chave] == Situacao.NoCarrinho }
+    val falharamLinhas = marcadas.count { navegador.situacoes[it.chave].let { s -> s is Situacao.Falhou || s == Situacao.NaoEnviada } }
+    var confirmadas = 0
+    runCatching { repo.atualizar { Operacoes.guardarEfetivacao(it, falhas, foram) } }
+    if (foram.isNotEmpty()) {
+        try {
+            confirmadas = confirmarApostas(ctx, foram, repo)
+        } catch (t: Throwable) {
+            val porque = "Foi para o carrinho, mas o app não conseguiu confirmar (${t.message}). Confirme aqui."
+            runCatching { repo.atualizar { Operacoes.guardarEfetivacao(it, foram.associateWith { porque }, emptyList()) } }
+        }
+    }
+    return FimDoLote(foramLinhas, confirmadas, falharamLinhas)
+}
+
+/** O lembrete do rodapé da área (desde a 0.44; até a 0.43, "Depois de pagar, confirme aqui na faixa do carrinho"). */
+const val TEXTO_DO_PAGAMENTO = "O pagamento continua no site. A aposta que entra no carrinho já fica confirmada no app."
+
+/** O resumo do fim do lote: "2 no carrinho (confirmadas no app) · 1 não foi: continua marcada para tentar de novo." */
+fun textoDoFimDoLote(f: FimDoLote): String? {
+    if (f.foram == 0 && f.falharam == 0) return null
+    val partes = listOfNotNull(
+        f.foram.takeIf { it > 0 }?.let { n ->
+            "$n no carrinho" + when {
+                f.confirmadas <= 0 -> ""
+                f.confirmadas == 1 -> " (1 aposta confirmada no app)"
+                else -> " (${f.confirmadas} apostas confirmadas no app)"
+            }
+        },
+        f.falharam.takeIf { it > 0 }?.let { if (it == 1) "1 não foi" else "$it não foram" },
+    )
+    val fimDaFrase = when {
+        f.falharam == 1 -> ": continua marcada para tentar de novo."
+        f.falharam > 1 -> ": continuam marcadas para tentar de novo."
+        else -> "."
+    }
+    return partes.joinToString(" · ") + fimDaFrase
+}
+
+/** No fim do lote: quantas foram para o carrinho (e ficaram confirmadas) e quantas não. */
 @Composable
-private fun ResumoDoLote(situacoes: List<Situacao>) {
-    val ok = situacoes.count { it == Situacao.NoCarrinho }
-    val falhas = situacoes.count { it is Situacao.Falhou || it == Situacao.NaoEnviada }
-    if (ok == 0 && falhas == 0) return
+private fun ResumoDoLote(f: FimDoLote) {
+    val texto = textoDoFimDoLote(f) ?: return
     Text(
-        listOfNotNull(
-            "$ok no carrinho".takeIf { ok > 0 },
-            (if (falhas == 1) "1 não foi" else "$falhas não foram").takeIf { falhas > 0 },
-        ).joinToString(" · ") + if (falhas > 0) ": continuam marcadas para tentar de novo." else ".",
+        texto,
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

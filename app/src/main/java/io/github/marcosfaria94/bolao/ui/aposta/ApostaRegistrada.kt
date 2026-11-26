@@ -468,7 +468,11 @@ private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String
                 if (a.ehTeimosinha) LinhaInfo("Teimosinha", "concurso ${a.teimosinhaOrdem} de ${a.teimosinha}")
                 LinhaInfo(
                     "Situação",
-                    if (anexado == null) SITUACAO_A_CONFIRMAR else "Comprovante anexado: falta a conferência",
+                    when {
+                        anexado != null -> "Comprovante anexado: falta a conferência"
+                        a.falhaNaEfetivacao != null -> SITUACAO_EFETIVACAO_FALHOU
+                        else -> SITUACAO_A_CONFIRMAR
+                    },
                     destaque = true,
                     cor = if (anexado == null) MaterialTheme.colorScheme.error else corConferir(),
                 )
@@ -487,6 +491,18 @@ private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String
                     arquivo = repo.arquivo(anexado),
                     mime = anexado.mime,
                 )
+            } else if (a.falhaNaEfetivacao != null) {
+                // Desde a 0.44: a efetivação não pôs a aposta no carrinho (o porquê) e, só então, o "Confirmar".
+                Text(
+                    a.falhaNaEfetivacao,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Text(
+                    COMO_CONFIRMAR_COM_FALHA,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             } else {
                 Text(
                     COMO_CONFIRMAR,
@@ -494,13 +510,18 @@ private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Button(onClick = { confirmar = true }, enabled = !confirmando, modifier = Modifier.fillMaxWidth()) {
-                if (confirmando) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(textoConfirmarAposta(juntas.size))
+            // Desde a 0.44 (pedido do usuário: "extinga o botão Confirmar aposta, ele só passa a aparecer se a efetivação
+            // falhar"): a aposta que entra no carrinho do site o app confirma sozinho. Com o comprovante da Caixa anexado,
+            // o "Confirmar" continua (é a conferência dele).
+            if (anexado != null || a.falhaNaEfetivacao != null) {
+                Button(onClick = { confirmar = true }, enabled = !confirmando, modifier = Modifier.fillMaxWidth()) {
+                    if (confirmando) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(textoConfirmarAposta(juntas.size))
+                    }
                 }
             }
             if (anexado == null) {
@@ -562,18 +583,28 @@ private fun ApostaEsperandoComprovante(estado: Estado, a: Aposta, abrir: (String
     }
 }
 
-/** A situação da aposta registrada que ainda não foi confirmada (desde a 0.36; era "Esperando o comprovante da Caixa"). */
-const val SITUACAO_A_CONFIRMAR = "Falta confirmar"
+/**
+ * A situação da aposta registrada que ainda não foi efetivada (desde a 0.44 "Não efetivada"; de 0.36 a 0.43, "Falta
+ * confirmar"; antes, "Esperando o comprovante da Caixa").
+ */
+const val SITUACAO_A_CONFIRMAR = "Não efetivada"
 
-/** O que fazer com a aposta que ainda não foi confirmada (desde a 0.36). */
-const val COMO_CONFIRMAR = "Faça a aposta no site da Caixa (botão Caixa, \"Transcrever em lote\") e, depois de pagar, toque em " +
-    "Confirmar. Sem a confirmação, a aposta não vale para o bolão (até lá, ela ainda pode ser descartada)."
+/** A situação da aposta que o "Efetivar apostas" não conseguiu pôr no carrinho (desde a 0.44). */
+const val SITUACAO_EFETIVACAO_FALHOU = "Efetivação falhou"
+
+/** O que fazer com a aposta que ainda não foi efetivada (desde a 0.44; na 0.36 a 0.43, fazer no site e confirmar). */
+const val COMO_CONFIRMAR = "Efetive a aposta na aba Loteria (botão \"Efetivar apostas\"): quando ela entra no carrinho do site, o app " +
+    "confirma sozinho. Até lá, ela ainda pode ser descartada."
+
+/** Depois de uma efetivação que falhou (desde a 0.44): confirmar à mão quem fez a aposta direto no site. */
+const val COMO_CONFIRMAR_COM_FALHA = "Se você fez a aposta direto no site da Caixa e pagou, toque em Confirmar. Sem a confirmação, a " +
+    "aposta não vale para o bolão (até lá, ela ainda pode ser descartada)."
 
 /** O botão da aposta que ainda não foi confirmada: "Confirmar aposta" ou, pagas juntas, "Confirmar as 4 apostas". */
 fun textoConfirmarAposta(apostas: Int): String = if (apostas <= 1) "Confirmar aposta" else "Confirmar as $apostas apostas"
 
-/** O atalho para a tela da Caixa (desde a 0.36). */
-const val IR_PARA_A_CAIXA = "Ir para a Caixa"
+/** O atalho para a tela da Caixa (desde a 0.36; desde a 0.44, "Loteria"). */
+const val IR_PARA_A_CAIXA = "Ir para a Loteria"
 
 /** O comprovante da Caixa, que ficou opcional (desde a 0.36): anexar nos Comprovantes. */
 const val ANEXAR_O_DA_CAIXA = "Anexar o comprovante da Caixa (opcional)"

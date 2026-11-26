@@ -278,11 +278,13 @@ class Novidades042Test {
         assertTrue(cookies.contains("bolao-efetivar") && cookies.contains("BolaoCadeado.efetivar") && cookies.contains("__bolaoEfetivarEstado"))
     }
 
-    /** A barra de cima da Caixa sem o recarregar e sem o "Transcrever em lote"; o puxão do Painel desligado na Caixa. */
+    /**
+     * A barra de cima da Caixa sem o "Transcrever em lote"; o puxão das abas desligado na Caixa (desde a 0.44 o recarregar
+     * voltou, com a sessão e o Painel: Novidades044Test; o puxão para baixo vem da própria página).
+     */
     @Test
     fun barraDaCaixa() {
         val raiz = arquivo("src/main/java/io/github/marcosfaria94/bolao/ui/AppRaiz.kt", "app/src/main/java/io/github/marcosfaria94/bolao/ui/AppRaiz.kt").readText()
-        assertFalse(raiz.contains("Recarregar a página"))
         assertFalse(raiz.contains("TRANSCREVER_EM_LOTE"))
         assertTrue(raiz.contains("abaDa(paginas.settledPage) != Aba.CAIXA"))
         assertEquals("Qualquer prêmio", Calculadora.NOME_QUALQUER)
